@@ -46,7 +46,7 @@ docker compose up -d
 .venv/bin/python -m maha.cli demo --ibm data/raw/HI-Small_Trans.csv
 .venv/bin/python -m maha.cli sync
 cd frontend
-pnpm install --frozen-lockfile
+ppnpm install --frozen-lockfile
 pnpm build
 cd ..
 .venv/bin/python -m maha.cli serve
