@@ -1,0 +1,40 @@
+{
+  "code_sha256": {
+    "maha/__init__.py": "33ff31d88cd1fa835d9569aebc0853b2920534897058117512fd95fe30a10cf8",
+    "maha/analytics.py": "e66281a092398bcec0658e46d84efed5e03fc1416161751a17ae71968b4b1469",
+    "maha/api.py": "f36221b81a799c550df1b99d7166f2ccc759a8ad3c50d9778180d32529374313",
+    "maha/benchmark.py": "7cb98dff5c53fd3377ca5c64329ba6a37acd34280fb1c1529de3df87ff1ddb55",
+    "maha/cli.py": "ce15ea267222ed3e55501381454c16253bd602d1e579a1e6b2aa3c1b83c9028a",
+    "maha/demo.py": "846ea289f9a4be1ca6481103199a9e60cd94a8d5d522096d4d391a8c865d3f72",
+    "maha/demo_evaluation.py": "847162ee265223c17e44c01093624ab1ab557a4b48b73a09c4b4c8a34b2683be",
+    "maha/graph.py": "c6ba5eba280ed173670dff7649bce939149da5492dc2598cec0d2f0aae50574d",
+    "maha/ingestion.py": "f1cc620a3bb7ab73334b86e06c2618c5ff026666def6b9c39857a539cdacbbe2",
+    "maha/nlp.py": "0b9714556eae283e2f685857e13bfd739bc989910f5caabaa04c08ce3882b303",
+    "maha/store.py": "6852e02b7044c18a490cc1331af72db76bcf11b2bfd63624fb82905352ffdfa3"
+  },
+  "packages": {
+    "fastapi": "0.141.1",
+    "neo4j": "6.3.1",
+    "networkx": "3.6.1",
+    "scikit-learn": "1.9.1",
+    "numpy": "2.5.3",
+    "spacy": "3.8.16",
+    "en-core-web-sm": "3.8.0",
+    "pdfplumber": "0.11.10",
+    "reportlab": "4.5.1"
+  },
+  "source_downloads": [
+    {
+      "name": "elliptic.zip",
+      "url": "https://www.kaggle.com/api/v1/datasets/download/ellipticco/elliptic-data-set",
+      "bytes": 153218318,
+      "sha256": "70ed052c52002392720615a03261039b62d1ad594f6081ad021cb174a8ad5717"
+    },
+    {
+      "name": "HI-Small_Trans.csv",
+      "url": "https://www.kaggle.com/api/v1/datasets/download/ealtman2019/ibm-transactions-for-anti-money-laundering-aml/HI-Small_Trans.csv",
+      "bytes": 475664283,
+      "sha256": "b19d39f515523373f991b689c07e11e7b0b95c17a2c27a87d91584ae16c5b040"
+    }
+  ]
+}

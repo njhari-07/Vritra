@@ -1,0 +1,59 @@
+{
+  "dataset": "IBM HI-Small",
+  "synthetic": true,
+  "sha256": "b19d39f515523373f991b689c07e11e7b0b95c17a2c27a87d91584ae16c5b040",
+  "bytes": 475664283,
+  "records": 5078345,
+  "invalid_records": 0,
+  "error_examples": [],
+  "labels": {
+    "0": 5073168,
+    "1": 5177
+  },
+  "currency_fields": {
+    "US Dollar": 3774513,
+    "Bitcoin": 294217,
+    "Euro": 2340314,
+    "Australian Dollar": 275280,
+    "Yuan": 420303,
+    "Rupee": 382267,
+    "Yen": 311528,
+    "Mexican Peso": 221189,
+    "UK Pound": 361993,
+    "Ruble": 312539,
+    "Canadian Dollar": 281399,
+    "Swiss Franc": 472744,
+    "Brazil Real": 142247,
+    "Saudi Riyal": 178985,
+    "Shekel": 387172
+  },
+  "first_record": [
+    "2022/09/01 00:20",
+    "010",
+    "8000EBD30",
+    "010",
+    "8000EBD30",
+    "3697.34",
+    "US Dollar",
+    "3697.34",
+    "US Dollar",
+    "Reinvestment",
+    "0"
+  ],
+  "last_record": [
+    "2022/09/10 23:37",
+    "0154518",
+    "8148A6091",
+    "0256398",
+    "8148A8711",
+    "0.281983",
+    "Bitcoin",
+    "0.281983",
+    "Bitcoin",
+    "Bitcoin",
+    "0"
+  ],
+  "minimum_time": "2022-09-01 00:00:00",
+  "maximum_time": "2022-09-18 16:18:00",
+  "scope": "Full-file schema profile, not model evaluation"
+}

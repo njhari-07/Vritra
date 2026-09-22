@@ -1,0 +1,158 @@
+{
+  "inspection_date": "2026-09-19",
+  "scope": "Complete CSV records from initial 65536-byte HTTP ranges; not full datasets",
+  "full_file_hashes_verified": false,
+  "full_archive_crc_verified": false,
+  "files": [
+    {
+      "file": "elliptic_txs_features.csv",
+      "url": "https://www.kaggle.com/api/v1/datasets/download/ellipticco/elliptic-data-set/elliptic_bitcoin_dataset%2Felliptic_txs_features.csv",
+      "http_range": "bytes=0-65535",
+      "downloaded_bytes": 65536,
+      "range_sha256": "a9978df15cc36e7653780390af9c76dce2bca33675ac89265a54ef96b31cf0fb",
+      "csv_excerpt_sha256": "655a8a04424161d253cdb65e4288c2ffeeff2ef21a1993856cabdc887cbb296e",
+      "complete_data_records": 79,
+      "column_counts": {
+        "167": 79
+      },
+      "header": null,
+      "empty_cells_in_excerpt": 0,
+      "sample_locator": {
+        "record_ordinal": 1,
+        "line_start": 1,
+        "line_end": 1
+      },
+      "mapped_first_record": {
+        "record_type": "elliptic_transaction",
+        "tx_id": "230425980",
+        "time_step": 1,
+        "predictor_count": 165,
+        "first_three_predictors": [
+          -0.1714692896288031,
+          -0.18466755143291433,
+          -1.2013688016765636
+        ],
+        "event_time": null,
+        "time_basis": "discrete_step",
+        "synthetic": false
+      },
+      "mapping_note": "Predictors abbreviated here; original ordered values are in the private excerpt."
+    },
+    {
+      "file": "elliptic_txs_classes.csv",
+      "url": "https://www.kaggle.com/api/v1/datasets/download/ellipticco/elliptic-data-set/elliptic_bitcoin_dataset%2Felliptic_txs_classes.csv",
+      "http_range": "bytes=0-65535",
+      "downloaded_bytes": 65536,
+      "range_sha256": "0e31593f5466ed27eb5b488b86bb5bda0cfcf994a31feb0d0de2c623e9ec4e9c",
+      "csv_excerpt_sha256": "eb55036a963c46cd15b4c5dbdcd740d188ed1a669346fd968098e2f549dde84a",
+      "complete_data_records": 14073,
+      "column_counts": {
+        "2": 14073
+      },
+      "header": [
+        "txId",
+        "class"
+      ],
+      "empty_cells_in_excerpt": 0,
+      "sample_locator": {
+        "record_ordinal": 1,
+        "line_start": 2,
+        "line_end": 2
+      },
+      "mapped_first_record": {
+        "tx_id": "230425980",
+        "label": "unknown",
+        "supervised_eligible": false,
+        "synthetic": false
+      },
+      "labels_in_excerpt": {
+        "unknown": 10503,
+        "2": 3535,
+        "1": 35
+      }
+    },
+    {
+      "file": "elliptic_txs_edgelist.csv",
+      "url": "https://www.kaggle.com/api/v1/datasets/download/ellipticco/elliptic-data-set/elliptic_bitcoin_dataset%2Felliptic_txs_edgelist.csv",
+      "http_range": "bytes=0-65535",
+      "downloaded_bytes": 65536,
+      "range_sha256": "cf8fb873e7644a5c33995110bb81333079e355c754e72d7b6b6f4ca454b10134",
+      "csv_excerpt_sha256": "95b28ac03d25506767d2e98789d28de3f2fb28e37f2d046feed6da262fb89533",
+      "complete_data_records": 8544,
+      "column_counts": {
+        "2": 8544
+      },
+      "header": [
+        "txId1",
+        "txId2"
+      ],
+      "empty_cells_in_excerpt": 0,
+      "sample_locator": {
+        "record_ordinal": 1,
+        "line_start": 2,
+        "line_end": 2
+      },
+      "mapped_first_record": {
+        "record_type": "elliptic_flow",
+        "from_tx_id": "230425980",
+        "to_tx_id": "5530458",
+        "synthetic": false
+      }
+    },
+    {
+      "file": "HI-Small_Trans.csv",
+      "url": "https://www.kaggle.com/api/v1/datasets/download/ealtman2019/ibm-transactions-for-anti-money-laundering-aml/HI-Small_Trans.csv",
+      "http_range": "bytes=0-65535",
+      "downloaded_bytes": 65536,
+      "range_sha256": "58046cbe776609167edf5f39ea8b56da83bfe262cb2011615b6de099085a9133",
+      "csv_excerpt_sha256": "347636fe9a1d0200a97e1c24ad4a33312ec67a79964240f14e334c0810dbe695",
+      "complete_data_records": 684,
+      "column_counts": {
+        "11": 684
+      },
+      "header": [
+        "Timestamp",
+        "From Bank",
+        "Account",
+        "To Bank",
+        "Account",
+        "Amount Received",
+        "Receiving Currency",
+        "Amount Paid",
+        "Payment Currency",
+        "Payment Format",
+        "Is Laundering"
+      ],
+      "empty_cells_in_excerpt": 0,
+      "sample_locator": {
+        "record_ordinal": 1,
+        "line_start": 2,
+        "line_end": 2
+      },
+      "mapped_first_record": {
+        "record_type": "bank_transfer",
+        "source_bank_id": "010",
+        "source_account_id": "8000EBD30",
+        "destination_bank_id": "010",
+        "destination_account_id": "8000EBD30",
+        "event_time_raw": "2022/09/01 00:20",
+        "event_time": "2022-09-01T00:20:00Z",
+        "timezone_assumed": true,
+        "time_precision": "minute",
+        "amount_received": "3697.34",
+        "receiving_currency_raw": "US Dollar",
+        "amount_paid": "3697.34",
+        "payment_currency_raw": "US Dollar",
+        "payment_format": "Reinvestment",
+        "evaluation_label": 0,
+        "synthetic": true
+      },
+      "labels_in_excerpt": {
+        "0": 684
+      },
+      "currencies_in_excerpt": [
+        "US Dollar"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "dataset": "IBM HI-Small",
+  "synthetic": true,
+  "scope": "Illustrative synthetic transaction classification, not real-world validation",
+  "source_sha256": "b19d39f515523373f991b689c07e11e7b0b95c17a2c27a87d91584ae16c5b040",
+  "selection": "Seed-42 reservoir of 50000 records from entire source; chronological split after sampling",
+  "cutoffs": {
+    "validation_start": "2022/09/06 13:27",
+    "test_start": "2022/09/08 16:08"
+  },
+  "counts": {
+    "train": 29997,
+    "validation": 10003,
+    "test": 10000
+  },
+  "features": [
+    "log1p_amount_paid",
+    "log1p_amount_received",
+    "hour",
+    "payment_currency",
+    "receiving_currency",
+    "payment_format"
+  ],
+  "metrics": {
+    "isolation_forest": {
+      "precision": 0.001774622892635315,
+      "recall": 0.11764705882352941,
+      "f1": 0.0034965034965034965,
+      "average_precision": 0.0017637067865950327,
+      "threshold": 0.45651065752055553,
+      "support": 10000,
+      "positives": 17,
+      "confusion_matrix": [
+        [
+          8858,
+          1125
+        ],
+        [
+          15,
+          2
+        ]
+      ]
+    }
+  },
+  "seed": 42,
+  "threshold_policy": "Validation F1, then precision, then threshold"
+}

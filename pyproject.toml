@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maha-investigation"
+version = "0.1.0"
+requires-python = ">=3.11,<3.14"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "networkx>=3.4,<4", "scikit-learn>=1.5,<2", "numpy>=2,<3", "neo4j>=5.25,<7", "spacy>=3.8,<4", "pdfplumber>=0.11,<1", "reportlab>=4,<5", "python-multipart>=0.0.20"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "httpx>=0.28"]
+
+[project.scripts]
+maha = "maha.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["maha*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

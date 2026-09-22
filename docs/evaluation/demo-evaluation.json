@@ -1,0 +1,39 @@
+{
+  "dataset": "Team-authored tiny gold fixtures",
+  "synthetic": true,
+  "scope": "Illustrative extraction and candidate retrieval only; four sentences, two explicit relations, three identity observations",
+  "ner": {
+    "true_positives": 11,
+    "false_positives": 1,
+    "false_negatives": 1,
+    "precision": 0.9166666666666666,
+    "recall": 0.9166666666666666,
+    "f1": 0.9166666666666666
+  },
+  "relations": {
+    "true_positives": 2,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "candidate_retrieval": {
+    "true_positives": 1,
+    "false_positives": 1,
+    "false_negatives": 0,
+    "precision": 0.5,
+    "recall": 1.0,
+    "f1": 0.6666666666666666
+  },
+  "auto_resolution_policy": "Only exact issuer-scoped identifiers; name similarity never automatically merges",
+  "precision_at_k": null,
+  "precision_at_k_reason": "Awaiting investigator relevance adjudication; no labels fabricated",
+  "limitations": [
+    "Tiny authored set, not representative or independently adjudicated",
+    "Candidate retrieval precision is not post-review merge precision",
+    "Rule-based relation syntax is intentionally constrained"
+  ],
+  "model": "core_web_sm",
+  "model_version": "3.8.0"
+}

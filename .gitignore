@@ -1,0 +1,18 @@
+# Source datasets and runtime evidence must not enter version control.
+data/raw/
+data/processed/
+data/quarantine/
+data/private/
+artifacts/
+logs/
+.env
+.env.*
+!.env.example
+__pycache__/
+.pytest_cache/
+.venv/
+node_modules/
+dist/
+*.log
+*.egg-info/
+.ruff_cache/
