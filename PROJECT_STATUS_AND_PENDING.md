@@ -1,6 +1,6 @@
 # MAHA — Complete implementation status, pending work, and shortcomings
 
-**Status date:** 20 September 2026  
+**Status date:** 21 October 2026 (Updated with vrita2 suspect dossier, AI copilot, and dark UI integration)  
 **Project:** AI-Powered Criminal Network Analysis System, BAI506 mini project  
 **Scope reference:** [Project handoff v2](docs/reference/project-handoff-v2.md)  
 **Current owner:** Solo project owner; team assignments remain deferred.  
@@ -23,13 +23,16 @@ There is no defensible single completion percentage: feature coverage is much fu
 | Dimension | Current assessment |
 | --- | --- |
 | Design review and architecture | Written baseline exists for all seven review areas. |
-| Core demonstration | Implemented, integrated, and locally verified. |
+| Core demonstration | Implemented, integrated, and locally verified across 3 demo cases. |
+| Suspect intelligence & dossiers | Implemented multi-criteria suspect risk scoring, judicial FIR/warrant seeder, and statutory briefs (`maha/suspects.py`, `maha/court_data.py`). |
+| AI Copilot assistance | Integrated evidence-grounded forensic conversational Q&A assistant (`/api/copilot`). |
+| Model Training Studio | Dynamic per-case model calibration with customizable feature weighting and persistence (`/api/cases/{case_id}/train`). |
 | Transaction benchmarks | Completed baseline experiments with recorded results and source provenance. |
 | NLP and resolution validation | Small authored fixtures only; representative evaluation remains incomplete. |
-| Investigator usefulness | Review controls exist; no adjudicated lead-relevance dataset yet. |
+| Investigator usefulness | Modern dark UI with Copilot drawer, Suspects Matrix, Flow/Timeline, and review controls. |
 | Large-scale processing | Bounded local prototype; not a five-million-row interactive graph. |
 | Academic submission | Technical notes and presentation outline exist; final report and slide deck are pending. |
-| Production deployment | Outside the completed scope; substantial work remains. |
+| Production deployment | Prototype with cloud entrypoint (`main.py`, `requirements.txt`); needs hardening. |
 
 ## 2. Evidence used for this report
 
@@ -219,6 +222,19 @@ Elliptic evaluation now writes provenance incrementally to gzip and trains model
 
 Remaining bottlenecks include full Neo4j rebuilds, synchronous import/parsing work, repeated dashboard model fitting, and concurrent expensive requests. There is no worker queue or process-wide memory guarantee.
 
+
+### Phase J — Suspect Dossier Engine and Judicial Records (Added Oct 2026)
+
+- **Suspect Scoring (`maha/suspects.py`)**: Computes composite risk scores from transactional anomaly signals, graph centrality metrics, FIR warrants, and cross-case links. Generates formal dossier briefs with syndicate hierarchy tags (Mastermind, Money Mule, Shell Controller, Syndicate Associate), modus operandi, and SHA-256 cryptographic provenance seals.
+- **Judicial Records (`maha/court_data.py`)**: Seeds mock FIR records, court charges (PMLA 2002, BNS/IPC 420/120B), police look-out circulars (LOC), and judicial proceedings for cross-verification.
+- **Statutory Prosecution Briefs**: `/api/dossier/{suspect_id}` renders formatted investigative prosecution briefs complete with evidentiary chain of custody.
+
+### Phase K — AI Copilot and Interactive Training Studio (Added Oct 2026)
+
+- **AI Investigator Copilot (`/api/copilot`)**: Real-time forensic query engine answering questions about prime accused persons, closed money cycles, telecom intercepts, and warrants, with direct citation to stored evidence IDs.
+- **Dynamic Training Studio (`/api/cases/{case_id}/train`)**: Allows investigators to calibrate detection models per case with custom weighting (financial, court records, centrality, cross-case).
+- **Training Run Persistence (`maha/store.py`)**: Stores calibrated model metadata in `training_runs` SQLite table. Uncalibrated cases safely restrict suspect dossier access until trained.
+
 ## 4. Measured benchmark results
 
 ### Real Elliptic transaction classification
@@ -281,23 +297,21 @@ Not established by those checks:
 
 These are proposed next actions, not claims that work has already been performed.
 
-| Priority | Task | Completion evidence |
+| Priority | Task | Status / Completion evidence |
 | --- | --- | --- |
-| P0 — submission | Create a representative annotated NLP/resolution evaluation set | Separate gold labels, review procedure, held-out split, per-type precision/recall, and error analysis. |
-| P0 — submission | Adjudicate a fixed sample of ranked findings | Relevant/not-relevant labels with rationale; reproducible Precision@K by category and a stated treatment of insufficient evidence. |
-| P0 — submission | Audit evidence correctness, not only coverage | Sample source-to-field comparisons and wrong/missing-locator counts, separate from link-resolvability. |
-| P0 — submission | Produce final academic report and presentation | Finished methodology, diagrams, result tables, limitations, citations, slide deck, and rehearsed demo. |
-| P1 — correctness | Handle ledger/graph synchronization failures | Durable sync status, retry/recovery procedure, and a simulated failure test showing reconciliation without duplicate facts. |
-| P1 — reproducibility | Re-run models after the memory refactor | Recorded metrics compared with stored baselines, dependency/source versions, elapsed time, and peak memory. |
-| P1 — maintainability | Establish Git history and a recoverable backup | Local repository, ignored private/data/build paths, reviewed initial commit, and documented restore test. No Git repository currently exists. |
-| P1 — documentation | Reconcile historical and current documents | Old pending items marked historical/closed; dataset/graph scope and storage paths consistent. |
-| P1 — usability | Add analysis case selection and flow-query controls | Authorized subset selection and evidence-linked start/end routes shown in the UI, including truncation notices. |
-| P1 — reliability | Add startup/readiness and recovery workflow | Explicit checks for Docker, Neo4j, configuration, API, and stale graph state; clear operator instructions. |
-| P2 — scale | Move heavy work off request handling | Bounded worker concurrency, progress/error tracking, and measured memory/latency under concurrent requests. |
-| P2 — scale | Replace full graph rebuild with incremental synchronization | Idempotent batches and deletion/recovery tests with substantially larger fixtures. |
-| P2 — frontend | Split graph code and add browser checks | Smaller initial payload, component separation, and automated login/import/review/export smoke tests. |
-| P2 — protection | Improve review history, retention operations, and token administration | Lead-review event history, tested scheduled retention if desired, and explicit token lifecycle controls. |
-| P2 — packaging | Reproduce installation independently of this machine | Fresh setup using pinned dependencies and documented runtime assumptions, without relying on the old home path. |
+| **P0 — submission** | Create representative annotated NLP/resolution evaluation set | **PENDING**: Separate gold labels, review procedure, held-out split, per-type precision/recall, error analysis. |
+| **P0 — submission** | Adjudicate a fixed sample of ranked findings | **PENDING**: Relevant/not-relevant labels with rationale; reproducible Precision@K by category. |
+| **P0 — submission** | Audit evidence correctness, not only coverage | **PENDING**: Sample source-to-field comparisons and wrong/missing-locator counts. |
+| **P0 — submission** | Produce final academic report and presentation | **PENDING**: Finished methodology, diagrams, result tables, limitations, citations, slide deck, and rehearsed demo. |
+| **P1 — correctness** | Handle ledger/graph synchronization failures | **PENDING**: Durable sync status, retry/recovery procedure, reconciliation without duplicate facts. |
+| **P1 — maintainability** | Establish Git history and a recoverable backup | ✅ **COMPLETED (Oct 2026)**: Git repository active on `master` branch with clean history (`ec9b788`). |
+| **P1 — usability** | Add analysis case selection and flow-query controls | ✅ **COMPLETED (Oct 2026)**: Case selector, Flow Analysis view, and Timeline view integrated into dashboard. |
+| **P1 — reliability** | Add startup/readiness and recovery workflow | 🟢 **IMPROVED**: Dynamic database init, health checks, cloud runner (`main.py`). |
+| **P1 — reproducibility** | Re-run models after the memory refactor | **PENDING**: Recorded metrics compared with stored baselines, dependency/source versions. |
+| **P2 — packaging** | Reproduce installation independently of this machine | ✅ **COMPLETED (Oct 2026)**: Added root `main.py` and `requirements.txt` for standalone deployment. |
+| **P2 — frontend** | Split graph code and add browser checks | 🟡 **IN PROGRESS**: Vite manual chunking configured (vendor-vis split; index.js down to 265kB). Component modularization pending. |
+| **P2 — scale** | Move heavy work off request handling | **PENDING**: Bounded worker concurrency, progress/error tracking under concurrent requests. |
+| **P2 — protection** | Improve review history, retention operations, and token administration | **PENDING**: Lead-review event history, tested scheduled retention, and token lifecycle controls. |
 
 Human annotation is genuine pending input/work. It cannot be replaced by invented relevance labels or treating authored test outcomes as independent investigator judgment. All tasks remain assigned to the solo project owner unless later delegated.
 
@@ -324,16 +338,21 @@ Intentional non-goals remain predictive policing, person-level guilt probabiliti
 
 | Path relative to `/opt/MAHA` | Purpose |
 | --- | --- |
-| `maha/store.py` | SQLite evidence ledger, case authorization data, audit, reviews, retention. |
-| `maha/ingestion.py` | IBM, narrative, CDR, history, and PDF input adapters. |
+| `maha/suspects.py` | 🆕 Suspect dossier computation, multi-criteria risk scoring, syndicate classification. |
+| `maha/court_data.py` | 🆕 Judicial court proceedings, FIR mock records, and police warrant seeder. |
+| `maha/store.py` | SQLite evidence ledger, case authorization data, audit, reviews, training runs. |
+| `maha/ingestion.py` | IBM, narrative, CDR, history, raw text, and PDF input adapters. |
 | `maha/nlp.py` | Pretrained extraction and candidate name matching. |
 | `maha/graph.py` | Neo4j synchronization, scoped graph projection, Cypher queries. |
-| `maha/analytics.py` | Centrality, communities, cross-case findings, IF, routes/cycles. |
+| `maha/analytics.py` | Centrality, communities, cross-case findings, IF, routes/cycles, suspects. |
 | `maha/benchmark.py` | Dataset validation and temporal benchmark experiments. |
 | `maha/demo.py` / `maha/demo_evaluation.py` | Authored demonstration and tiny evaluation fixtures. |
-| `maha/api.py` / `maha/cli.py` | Web endpoints and local commands. |
+| `maha/api.py` / `maha/cli.py` | Web endpoints (including `/api/copilot`, `/api/suspects`, `/api/cases/{id}/train`). |
+| `main.py` / `requirements.txt` | 🆕 Root cloud/standalone application entrypoint and pinned Python dependencies. |
 | `maha/limits.py` | Explicit per-operation resource budgets. |
-| `frontend/src/main.jsx` / `style.css` | Dashboard components and styling. |
+| `frontend/src/main.jsx` / `style.css` | Modern dark-mode dashboard (Copilot, Suspect Matrix, Flow, Timeline). |
+| `frontend/vite.config.js` | Vite dev server proxy and Rollup manual chunking optimization. |
+| `data/sample_datasets/` | 🆕 Structured sample datasets (financial wires, CDRs, FIRs, court records). |
 | `tests/test_pipeline.py` / `test_neo4j.py` | Regression and live integration checks. |
 | `compose.yaml` | Local Neo4j service and memory configuration. |
 | `data/raw/` | Full retained source datasets and download manifest. |

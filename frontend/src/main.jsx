@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
-import '@dotlottie/player-component';
 import './style.css';
 
 const colors = {
