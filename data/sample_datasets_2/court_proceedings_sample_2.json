@@ -1,0 +1,58 @@
+[
+  {
+    "document_id": "CR-COURT-2026-101",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-01-18",
+    "synthetic": true,
+    "text": "IN THE SPECIAL COURT FOR PMLA & ECONOMIC OFFENSES, NEW DELHI.\nSpecial Case No. CC-1044/2026: Directorate of Enforcement vs. Aditya Vardhan Oberoi & Syndicate.\n\n1. Person Aditya Vardhan Oberoi [ID:P201] is named as Prime Accused in this case.\n2. Person Aditya Vardhan Oberoi [ID:P201] owns account [Bank:010; Account:ACC-OBEROI-901].\n3. Charges framed under Section 3 & Section 4 of Prevention of Money Laundering Act, 2002 (PMLA) read with Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), and Section 409 IPC (Criminal Breach of Trust).\n4. Prosecution establishes that Accused Aditya Vardhan Oberoi [ID:P201] established an international illicit banking conduit diverting ₹85,000,000 through offshore shell conduits.\n5. The investigation identified that Accused P201 operated account 010 / ACC-OBEROI-901 as the primary beneficiary layering pool.\n6. Case records reveal the unverified handwritten alias Singhania documented during search and seizure operations at corporate headquarters."
+  },
+  {
+    "document_id": "CR-COURT-2026-102",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-02-04",
+    "synthetic": true,
+    "text": "HIGH COURT OF DELHI // SPECIAL BAIL REJECTION ORDER NO. 512/2026.\nIn the matter of Sameer Kulkarni vs. Union of India (Directorate of Enforcement).\n\n1. Person Sameer Kulkarni [ID:P202] is named as Accused in this case.\n2. Person Sameer Kulkarni [ID:P202] owns account [Bank:010; Account:ACC-KULKARNI-902].\n3. Bail application under Section 439 CrPC is DISMISSED under Section 45 PMLA twin conditions.\n4. Forensic financial analysis reveals that Accused Sameer Kulkarni [ID:P202] managed a network of 12 hawala mules receiving structured wires from Aditya Vardhan Oberoi [ID:P201].\n5. Interrogation statements under Section 50 PMLA confirm Accused P202 was tasked with splitting high-value deposits into sub-threshold tranches."
+  },
+  {
+    "document_id": "CR-COURT-2026-103",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-02-15",
+    "synthetic": true,
+    "text": "IN THE SPECIAL COURT FOR PMLA & ECONOMIC OFFENSES, NEW DELHI.\nSupplementary Charge Sheet against Shell Corporate Entities.\n\n1. Person Radhika Singhania [ID:P203] is named as Accused in this case.\n2. Person Radhika Singhania [ID:P203] owns account [Bank:010; Account:ACC-VERTEX-903].\n3. Accused Radhika Singhania [ID:P203] functioned as dummy managing director of Vertex Exim Corp.\n4. Charges framed under Section 420 IPC, Section 468 IPC (Forgery for purpose of cheating), and Section 471 IPC (Using forged document as genuine).\n5. Financial audits reveal that Vertex Exim account 010 / ACC-VERTEX-903 acted as a transit node transferring funds back to Aditya Vardhan Oberoi [ID:P201] under the pretext of loan repayments."
+  },
+  {
+    "document_id": "CR-COURT-2026-104",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-02-28",
+    "synthetic": true,
+    "text": "CHIEF METROPOLITAN MAGISTRATE COURT, PATIALA HOUSE, NEW DELHI.\nArrest Remand Application for Cash Smurfing Operators.\n\n1. Person Farhan Akhtar Siddiqui [ID:P204] is named as Accused in this case.\n2. Person Farhan Akhtar Siddiqui [ID:P204] owns account [Bank:010; Account:ACC-FARHAN-904].\n3. Accused Farhan Akhtar Siddiqui [ID:P204] coordinated an Angadia courier cash-pickup network.\n4. Accused P204 received wires from Aditya Vardhan Oberoi [ID:P201] and immediately liquidated deposits into physical currency.\n5. Charges framed under Section 120B IPC and Section 420 IPC."
+  },
+  {
+    "document_id": "CR-COURT-2026-105",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-03-08",
+    "synthetic": true,
+    "text": "SPECIAL CYBER CRIME COURT, NEW DELHI // ORDER ON SUMMONS.\nCyber Forensic Memo in darknet crypto liquidation nexus.\n\n1. Person Tanya Deshmukh [ID:P205] is named as Accused in this case.\n2. Person Tanya Deshmukh [ID:P205] owns account [Bank:010; Account:ACC-TANYA-905].\n3. Charges under Section 66D Information Technology Act (Cheating by Impersonation) and Section 3 PMLA.\n4. Accused Tanya Deshmukh [ID:P205] operated unlicensed peer-to-peer crypto liquidity pools receiving funds from Aditya Vardhan Oberoi [ID:P201] and Sameer Kulkarni [ID:P202] to purchase untraceable digital assets."
+  },
+  {
+    "document_id": "CR-COURT-2026-106",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-03-14",
+    "synthetic": true,
+    "text": "IN THE SPECIAL COURT FOR PMLA & ECONOMIC OFFENSES, NEW DELHI.\nCognizance Order on Commercial Tax and Bogus Invoicing.\n\n1. Person Deepak Joshi [ID:P206] is named as Accused in this case.\n2. Person Deepak Joshi [ID:P206] owns account [Bank:010; Account:ACC-JOSHI-906].\n3. Accused Deepak Joshi [ID:P206] acted as syndicate Chartered Accountant generating fabricated e-way bills.\n4. Charges under Section 420 IPC, Section 120B IPC, and Section 447 Companies Act (Punishment for Fraud).\n5. Pass-through account 010 / ACC-JOSHI-906 handled intermediate layering transfers between Farhan Akhtar Siddiqui [ID:P204] and Radhika Singhania [ID:P203]."
+  },
+  {
+    "document_id": "CR-COURT-2026-107",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-03-22",
+    "synthetic": true,
+    "text": "SPECIAL CBI & ANTI-CORRUPTION COURT, ROUSE AVENUE, NEW DELHI.\nSanction for Prosecution of Public Banking Official.\n\n1. Person Kavita Roy [ID:P207] is named as Accused in this case.\n2. Person Kavita Roy [ID:P207] owns account [Bank:010; Account:ACC-KAVITA-907].\n3. Accused Kavita Roy [ID:P207] served as Senior Branch Operations Manager at Bank 010.\n4. Sanction under Section 19 Prevention of Corruption Act, 1988 for offenses under Section 7 and Section 13(1)(d) PC Act read with Section 120B IPC.\n5. Evidence proves Accused P207 overrode Automated Anti-Money Laundering (AML) red alerts and bypassed mandatory STR filings in exchange for pecuniary kickbacks."
+  },
+  {
+    "document_id": "CR-COURT-2026-108",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-03-29",
+    "synthetic": true,
+    "text": "WITNESS DEPOSITION & FORENSIC IT SEIZURE MEMO UNDER SECTION 164 CrPC.\n\n1. Person Arvind Swaminathan [ID:P208] is referenced in this case as a witness.\n2. Witness Arvind Swaminathan [ID:P208] was Principal Systems Auditor for the centralized banking core.\n3. Witness P208 produced raw database transaction logs establishing synchronized nocturnal API transfers initiated between 01:00 AM and 04:30 AM across syndicate accounts.\n4. Witness P208 confirmed phone intercepts coordinating transfers between Aditya Vardhan Oberoi [ID:P201], Sameer Kulkarni [ID:P202], and Farhan Akhtar Siddiqui [ID:P204]."
+  }
+]

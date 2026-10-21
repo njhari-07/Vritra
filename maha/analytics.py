@@ -6,6 +6,7 @@ import networkx as nx
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from .store import uid
+from .suspects import compute_suspect_dossiers
 
 
 STRUCTURAL={'OWNS_ACCOUNT','SENT_FROM','SENT_TO','COMMUNICATED_WITH','INVOLVED_IN_CASE','LOCATED_AT','RELATED_TO'}
@@ -104,5 +105,6 @@ def analyze(graph,cross_case_records=None):
     for path in flows['paths']:
         subjects=[e['source'] for e in path]
         add('flagged_behavior',['fund_flow'],subjects,'Chronological same-currency cycle; possible route only, not proof of identical funds.',[ev for e in path for ev in e['evidence_ids']],transaction_ids=[e['attrs']['transaction_id'] for e in path])
-    return {'leads':leads,'metrics':metrics,'communities':len(communities),'fund_flow_truncated':flows['truncated'],'anomaly_status':anomaly_status,
+    suspects=compute_suspect_dossiers(graph,leads,metrics)
+    return {'leads':leads,'suspects':suspects,'metrics':metrics,'communities':len(communities),'fund_flow_truncated':flows['truncated'],'anomaly_status':anomaly_status,
             'traceability_coverage':1.0 if leads else None,'projection':{'nodes':len(g),'edges':g.number_of_edges(),'excluded':['Document','Evidence','TRANSACTED_WITH shortcut'],'betweenness_sample_size':min(100,len(g))}}

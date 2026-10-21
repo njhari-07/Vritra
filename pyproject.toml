@@ -19,3 +19,6 @@ include = ["maha*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.vercel]
+entrypoint = "maha.api:app"

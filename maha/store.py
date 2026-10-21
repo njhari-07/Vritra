@@ -20,9 +20,13 @@ def uid(*parts):
 
 class Store:
     def __init__(self, root=None):
-        self.root = Path(root or os.getenv("MAHA_DATA", "data/private/runtime")).resolve()
-        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.root.chmod(0o700)
+        default_dir = "/tmp/maha" if os.getenv("VERCEL") else "data/private/runtime"
+        self.root = Path(root or os.getenv("MAHA_DATA", default_dir)).resolve()
+        try:
+            self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            self.root.chmod(0o700)
+        except OSError:
+            pass
         self.path = self.root / "ledger.sqlite3"
         with self.db() as db:
             db.executescript('''
@@ -40,6 +44,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS reviews(id TEXT PRIMARY KEY, case_scope TEXT, data TEXT);
             CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT, actor TEXT, action TEXT, case_id TEXT, object_id TEXT);
             CREATE INDEX IF NOT EXISTS audit_case ON audit(case_id);
+            CREATE TABLE IF NOT EXISTS training_runs(case_id TEXT PRIMARY KEY, trained_at TEXT, data TEXT);
             ''')
             # A disk-backed duplicate index avoids rescanning all evidence on each import.
             db.execute('BEGIN IMMEDIATE')
@@ -50,7 +55,26 @@ class Store:
                     prior = json.loads(old['data'])
                     if prior['extraction_method'] == 'csv-positional':
                         db.execute('INSERT INTO record_fingerprints VALUES(?,?,?,?)', (old['id'], old['case_id'], prior['dataset_id'], uid(prior['passage'])))
-        self.path.chmod(0o600)
+            
+            # Auto-seed default investigator user if new database
+            user_count = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            if user_count == 0:
+                default_token = "WT49DfCpDyYerqLF_cQI-hkzH7Et7UXGZNUrb_EcneA"
+                token_hash = hashlib.sha256(default_token.encode()).hexdigest()
+                default_cases = json.dumps(["DEMO-C01", "DEMO-C02", "DEMO-C03", "CASE-2026-TEST", "CASE-RIGOROUS-02"])
+                db.execute("INSERT OR REPLACE INTO users VALUES(?,?,?)", ("investigator", token_hash, default_cases))
+                for c in ["DEMO-C01", "DEMO-C02", "DEMO-C03", "CASE-2026-TEST", "CASE-RIGOROUS-02"]:
+                    db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (c,))
+                try:
+                    access_file = self.root / "access.json"
+                    access_file.write_text(json.dumps({"investigator": default_token}, indent=2))
+                except OSError:
+                    pass
+        try:
+            self.path.chmod(0o600)
+        except OSError:
+            pass
+
 
     @contextmanager
     def db(self):
@@ -79,6 +103,55 @@ class Store:
         if not row:
             raise PermissionError("Invalid access token")
         return {"name": row["name"], "cases": json.loads(row["cases"])}
+
+    def add_case_to_user(self, name, case_id):
+        case_id = case_id.strip()
+        with self.db() as db:
+            db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (case_id,))
+            row = db.execute("SELECT cases FROM users WHERE name=?", (name,)).fetchone()
+            if row:
+                current = json.loads(row["cases"])
+                if case_id not in current:
+                    current.append(case_id)
+                    current = sorted(set(current))
+                    db.execute("UPDATE users SET cases=? WHERE name=?", (json.dumps(current), name))
+        return case_id
+
+    def reset_case(self, case_id):
+        with self.db() as db:
+            db.execute("DELETE FROM facts WHERE case_id=?", (case_id,))
+            db.execute("DELETE FROM evidence WHERE case_id=?", (case_id,))
+            db.execute("DELETE FROM imports WHERE case_id=?", (case_id,))
+            db.execute("DELETE FROM record_fingerprints WHERE case_id=?", (case_id,))
+            db.execute("DELETE FROM training_runs WHERE case_id=?", (case_id,))
+
+    def record_training_run(self, case_id, data):
+        with self.db() as db:
+            db.execute("INSERT OR REPLACE INTO training_runs VALUES(?,?,?)", (case_id, now(), json.dumps(data)))
+
+    def get_training_run(self, case_id):
+        with self.db() as db:
+            row = db.execute("SELECT trained_at, data FROM training_runs WHERE case_id=?", (case_id,)).fetchone()
+            if row:
+                return {"trained_at": row["trained_at"], **json.loads(row["data"])}
+        return None
+
+    def case_status(self, cases):
+        res = []
+        with self.db() as db:
+            for cid in cases:
+                fc = db.execute("SELECT COUNT(*) FROM facts WHERE case_id=?", (cid,)).fetchone()[0]
+                ec = db.execute("SELECT COUNT(*) FROM evidence WHERE case_id=?", (cid,)).fetchone()[0]
+                tr = db.execute("SELECT trained_at, data FROM training_runs WHERE case_id=?", (cid,)).fetchone()
+                res.append({
+                    "case_id": cid,
+                    "facts_count": fc,
+                    "evidence_count": ec,
+                    "is_trained": bool(tr),
+                    "last_trained_at": tr["trained_at"] if tr else None,
+                    "training_info": json.loads(tr["data"]) if tr else None
+                })
+        return res
 
     def evidence(self, evidence_id, cases):
         with self.db() as db:
@@ -197,3 +270,49 @@ class Store:
             managed=self.root/'demo-sources'/Path(name).name
             if managed.is_file():managed.unlink()
         return expired
+
+    def record_training_run(self, case_id, data):
+        with self.db() as db:
+            db.execute("INSERT OR REPLACE INTO training_runs VALUES(?,?,?)", (case_id, now(), json.dumps(data)))
+
+    def get_training_run(self, case_id):
+        with self.db() as db:
+            row = db.execute("SELECT * FROM training_runs WHERE case_id=?", (case_id,)).fetchone()
+        return json.loads(row["data"]) if row else None
+
+    def add_case_to_user(self, username, case_id):
+        with self.db() as db:
+            db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (case_id,))
+            u = db.execute("SELECT cases FROM users WHERE name=?", (username,)).fetchone()
+            if u:
+                cases = json.loads(u["cases"])
+                if case_id not in cases:
+                    cases.append(case_id)
+                    db.execute("UPDATE users SET cases=? WHERE name=?", (json.dumps(cases), username))
+
+    def reset_case(self, case_id):
+        with self.db() as db:
+            for table in ["facts", "evidence", "imports", "record_fingerprints", "training_runs"]:
+                db.execute(f"DELETE FROM {table} WHERE case_id=?", (case_id,))
+            for table in ["decisions", "decision_events", "reviews"]:
+                for r in db.execute(f"SELECT id,case_scope FROM {table}").fetchall():
+                    if case_id in json.loads(r[1]):
+                        db.execute(f"DELETE FROM {table} WHERE id=?", (r[0],))
+        self.audit("system", "case_reset", case_id)
+
+    def case_status(self, cases):
+        status_list = []
+        with self.db() as db:
+            for c in cases:
+                f_count = db.execute("SELECT count(*) FROM facts WHERE case_id=?", (c,)).fetchone()[0]
+                e_count = db.execute("SELECT count(*) FROM evidence WHERE case_id=?", (c,)).fetchone()[0]
+                t_row = db.execute("SELECT trained_at, data FROM training_runs WHERE case_id=?", (c,)).fetchone()
+                status_list.append({
+                    "case_id": c,
+                    "facts_count": f_count,
+                    "evidence_count": e_count,
+                    "is_trained": t_row is not None,
+                    "last_trained_at": t_row["trained_at"] if t_row else None,
+                    "training_metadata": json.loads(t_row["data"]) if t_row else None
+                })
+        return status_list

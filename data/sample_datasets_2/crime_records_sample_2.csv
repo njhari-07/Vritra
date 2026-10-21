@@ -1,0 +1,19 @@
+record_id,person_id,case_id,record_date,record_status,text,synthetic
+CR-FIR-2021-901,P201,DEMO-C01,2021-09-12,Active Charge-Sheet,"EOW FIR No. 340/2021 registered under IPC Sections 420, 409, 120B. Misappropriation of ₹45 Crores in State Infrastructure Tenders via fabricated vendor bank accounts.",true
+CR-LOC-2022-902,P201,DEMO-C01,2022-03-15,Look Out Circular,Look Out Circular (LOC No. B-9912) opened by Bureau of Immigration at all international airports and seaports to prevent evasion from ongoing financial investigation.,true
+CR-ECIR-2023-903,P201,DEMO-C01,2023-01-10,PMLA Indictment,Directorate of Enforcement ECIR No. DL-08/2023 registered under Section 3 & 4 PMLA for generation and laundering of proceeds of crime totaling ₹85 Crores.,true
+CR-NBW-2024-904,P201,DEMO-C01,2024-06-20,Non-Bailable Warrant,Special Court for PMLA issued Non-Bailable Arrest Warrant following deliberate non-appearance across 8 consecutive statutory summons.,true
+CR-PROC-2025-905,P201,DEMO-C01,2025-02-14,Proclaimed Offender,Proclamation under Section 82 CrPC published in National Dailies declaring Aditya Vardhan Oberoi a Proclaimed Offender.,true
+CR-FIR-2022-906,P202,DEMO-C01,2022-08-04,Active Charge-Sheet,Mumbai Crime Branch EOW FIR 112/2022 under IPC 420/120B and FEMA violations for operating unauthorized foreign exchange and cash mule layering conduits.,true
+CR-NBW-2023-907,P202,DEMO-C01,2023-05-19,Non-Bailable Warrant,Metropolitan Magistrate Court issued Non-Bailable Warrant for absconding during trial in hawala smurfing proceedings.,true
+CR-CBI-2024-908,P202,DEMO-C01,2024-11-02,CBI Special Offense,CBI Banking Fraud Security Cell (BS&FC) RC-04/2024 for diversion of consortium credit lines into structured beneficiary accounts.,true
+CR-ROC-2023-909,P203,DEMO-C01,2023-04-18,Disqualified Director,Ministry of Corporate Affairs disqualification order under Section 164(2) Companies Act for directorship in bogus shell entities including Vertex Exim Corp.,true
+CR-SFIO-2024-910,P203,DEMO-C01,2024-03-30,SFIO Investigation,Serious Fraud Investigation Office (SFIO) inspection report identifying round-tripping of capital and fictitious loan amortization back to Aditya Oberoi.,true
+CR-FIR-2023-911,P204,DEMO-C01,2023-07-22,Active Charge-Sheet,Gujarat Police Crime Branch FIR 88/2023 under IPC 420/467/468. Seizure of ₹2.4 Crores unaccounted cash transit linked to Angadia courier syndicates.,true
+CR-LOC-2024-912,P204,DEMO-C01,2024-05-10,Look Out Circular,"Look Out Circular issued by Ministry of Home Affairs to monitor transit between Ahmedabad, Mumbai, and Delhi.",true
+CR-CYB-2024-913,P205,DEMO-C01,2024-08-14,Cyber Crime Notice,Notice under Section 91 CrPC by Delhi Police Cyber Cell regarding unhosted cryptocurrency wallets and P2P USDT liquidation conduits.,true
+CR-INTER-2025-914,P205,DEMO-C01,2025-01-20,INTERPOL Red Notice Alert,INTERPOL Purple Notice intelligence sharing on crypto tumbler / mixing protocols used to obscure criminal ransomware and fraud proceeds.,true
+CR-ICAI-2024-915,P206,DEMO-C01,2024-02-11,ICAI Disciplinary Bar,Institute of Chartered Accountants of India Disciplinary Directorate prima facie finding of professional misconduct for certifying fabricated balance sheets.,true
+CR-FIR-2024-916,P206,DEMO-C01,2024-09-08,Active Charge-Sheet,Central GST Intelligence (DGGI) FIR under Section 132 CGST Act and IPC 468/471 for generating ₹120 Crores in bogus Input Tax Credit (ITC) e-way bills.,true
+CR-CBI-2025-917,P207,DEMO-C01,2025-04-12,CBI Corruption Indictment,CBI Anti-Corruption Branch RC-22/2025 registered under Section 7 & 13(1)(d) Prevention of Corruption Act for accepting pecuniary gratification to suppress AML alerts.,true
+CR-VIG-2025-918,P207,DEMO-C01,2025-07-01,Bank Vigilance Suspension,Central Vigilance Commission (CVC) inquiry order and immediate departmental suspension from Senior Branch Operations Manager post at Bank 010.,true

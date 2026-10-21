@@ -121,12 +121,13 @@ HISTORY_HEADER=['record_id','person_id','case_id','record_date','record_status',
 def history_records(content,case_id):
     for r,loc in csv_rows(content,HISTORY_HEADER):
         try:
-            if len(r)!=7 or any(not x for x in r) or r[6]!='true' or r[2]!=case_id:raise ValueError('invalid_history_record_or_case')
+            if len(r)!=7 or any(not x for x in r) or r[6].strip().lower() not in ('true','1'):raise ValueError('invalid_history_record')
+            target_case=case_id or r[2]
             datetime.strptime(r[3],'%Y-%m-%d')
             pid='person:demo:'+r[1]
             yield dict(locator=loc,passage=json_row(r),method='synthetic-history-csv',facts=[
-                node('Person',pid,r[1],authoritative_id=r[1]),node('Case',case_id,case_id),
-                edge('INVOLVED_IN_CASE',pid,case_id,r[0],record_date=r[3],source_record_status=r[4],source_text=r[5])])
+                node('Person',pid,r[1],authoritative_id=r[1]),node('Case',target_case,target_case),
+                edge('INVOLVED_IN_CASE',pid,target_case,r[0],record_date=r[3],source_record_status=r[4],source_text=r[5])])
         except ValueError as e:yield {'locator':loc,'error':str(e)}
 
 

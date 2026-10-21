@@ -1,0 +1,30 @@
+[
+  {
+    "document_id": "CR-COURT-2026-001",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-02-14",
+    "synthetic": true,
+    "text": "IN THE SPECIAL COURT FOR PMLA & ECONOMIC OFFENSES, NEW DELHI.\nSpecial Criminal Case No. 812/2026: Directorate of Enforcement vs. Vikram Malhotra & Ors.\n\n1. Person Vikram Malhotra [ID:P101] is named as Prime Accused in this case.\n2. Person Vikram Malhotra [ID:P101] owns account [Bank:010; Account:ACC-MALHOTRA-771].\n3. Charges framed under Section 3 & Section 4 of Prevention of Money Laundering Act, 2002 (PMLA) read with Section 420 IPC (Cheating) and Section 120B IPC (Criminal Conspiracy).\n4. Prosecution establishes that Accused Vikram Malhotra [ID:P101] orchestrated an illegal healthcare procurement cartel diverting $750,000 through front entities.\n5. The investigation identified that Accused P101 operated account 010 / ACC-MALHOTRA-771 as the master disbursement pool.\n6. The intelligence dossier also records the handwritten alias Singhania in connection with unaccounted offshore bullion purchases."
+  },
+  {
+    "document_id": "CR-COURT-2026-002",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-03-02",
+    "synthetic": true,
+    "text": "HIGH COURT OF DELHI // BAIL APPLICATION NO. 441/2026.\nIn the matter of Sanjay Agarwal vs. State (Directorate of Enforcement).\n\n1. Person Sanjay Agarwal [ID:P102] is named as Accused in this case.\n2. Person Sanjay Agarwal [ID:P102] owns account [Bank:010; Account:ACC-AGARWAL-882].\n3. Bail is DISMISSED under Section 45 PMLA twin conditions due to high flight risk and ongoing hawala layering activities.\n4. Forensic bank records demonstrate that Accused Sanjay Agarwal [ID:P102] received rapid incoming wires from Vikram Malhotra [ID:P101] and immediately split transfers to obscure the audit trail.\n5. Interrogation logs confirm Accused P102 served as the designated hawala conduit and cash smurfing mule coordinator for the syndicate."
+  },
+  {
+    "document_id": "CR-COURT-2026-003",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-03-18",
+    "synthetic": true,
+    "text": "IN THE SPECIAL COURT FOR PMLA & ECONOMIC OFFENSES, NEW DELHI.\nSupplementary Prosecution Complaint against Shell Corporate Conduits.\n\n1. Person Karan Singhania [ID:P103] is referenced in this case as dummy director of Apex Logistics Corp.\n2. Person Karan Singhania [ID:P103] owns account [Bank:010; Account:ACC-APEXSHELL-993].\n3. Charges under Section 420 IPC and Section 467 IPC (Forgery of valuable security) for floating paper companies with bogus GST billings.\n4. Person Rohit Verma [ID:P104] owns account [Bank:010; Account:ACC-VERMA-104] and is referenced in this case as high-velocity structuring operator coordinating peer-to-peer cryptocurrency cash-outs."
+  },
+  {
+    "document_id": "CR-COURT-2026-004",
+    "case_id": "DEMO-C01",
+    "filed_date": "2026-03-25",
+    "synthetic": true,
+    "text": "WITNESS DEPOSITION & ELECTRONIC DISK SEIZURE MEMO UNDER SECTION 164 CrPC.\n\n1. Person Meera Kapoor [ID:P105] is referenced in this case as a witness.\n2. Witness Meera Kapoor [ID:P105] served as Head of Internal Procurement Audit at the vendor consortium.\n3. Witness P105 confirmed under oath that tenders were manipulated under direction of Vikram Malhotra [ID:P101].\n4. Witness P105 submitted encrypted forensic server logs revealing nocturnal wire transfers executed between 01:00 AM and 04:00 AM across the designated syndicate accounts."
+  }
+]

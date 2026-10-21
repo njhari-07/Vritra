@@ -1,0 +1,7 @@
+record_id,person_id,case_id,record_date,record_status,text,synthetic
+CR-FIR-812,P101,DEMO-C01,2021-11-14,Active Charge-Sheet,FIR No. 812/2021 (Economic Offenses Wing) under IPC Sections 420 and 120B. Special Court framed charges for public procurement cheating and fund diversion. Bail denied due to flight risk.,true
+CR-LOC-01,P101,DEMO-C01,2022-04-10,Look Out Circular,Look-Out Circular (LOC) issued by Bureau of Immigration at all international airports to prevent departure from national jurisdiction.,true
+CR-NBW-02,P102,DEMO-C01,2022-09-05,Non-Bailable Warrant,Non-Bailable Arrest Warrant issued by Chief Metropolitan Magistrate for repeated failure to produce books of accounts in illegal hawala smurfing investigation.,true
+CR-PMLA-03,P102,DEMO-C01,2023-01-20,PMLA Indictment,Enforcement Case Information Report (ECIR No. 24/2023) registered under PMLA Section 3 and Section 4 for concealing proceeds of crime.,true
+CR-ROC-04,P103,DEMO-C01,2023-06-15,Disqualified Director,Ministry of Corporate Affairs disqualification order under Section 164(2) Companies Act for operating bogus paper companies and pass-through invoicing channels.,true
+CR-CYB-05,P104,DEMO-C01,2024-02-18,Active Summons,Notice and summons issued under Section 91 CrPC by Cyber Crime Investigation Cell regarding peer-to-peer crypto wallet off-ramping.,true

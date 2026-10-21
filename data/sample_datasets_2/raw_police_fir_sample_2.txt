@@ -1,0 +1,31 @@
+FIRST INFORMATION REPORT (Under Section 154 Cr.P.C.)
+POLICE STATION: Special Investigation Bureau & Economic Offenses Wing (EOW), New Delhi
+FIR No: 588/2026 | Date: 28-03-2026 | Time: 16:45 HRS
+Acts & Sections: Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), Section 409 IPC (Criminal Breach of Trust), Section 468 & 471 IPC (Forgery), Section 66D Information Technology Act, Section 7 & 13(1)(d) Prevention of Corruption Act, read with Section 3 & 4 of Prevention of Money Laundering Act, 2002 (PMLA).
+
+1. COMPLAINANT PARTICULARS:
+Director of Forensic Audits, National Financial Intelligence Authority (NFIA), New Delhi.
+
+2. SUSPECTS & ACCUSED PARTICULARS:
+(i) Accused Aditya Vardhan Oberoi [ID:P201], Managing Director of Oberoi Global Conglomerate (Alias: Singhania). Beneficial owner of primary conduit account ACC-OBEROI-901 at Bank 010.
+(ii) Accused Sameer Kulkarni [ID:P202], Chief Cash Smurfing & Hawala Controller. Operates mule layering account ACC-KULKARNI-902 at Bank 010.
+(iii) Accused Radhika Singhania [ID:P203], Dummy Managing Director of Vertex Exim Corp. Operates corporate transit account ACC-VERTEX-903 at Bank 010.
+(iv) Accused Farhan Akhtar Siddiqui [ID:P204], Angadia Cash Courier Coordinator. Operates rapid liquidation account ACC-FARHAN-904 at Bank 010.
+(v) Accused Tanya Deshmukh [ID:P205], Unhosted Darknet Crypto Liquidity Operator. Operates digital off-ramp account ACC-TANYA-905 at Bank 010.
+(vi) Accused Deepak Joshi [ID:P206], Syndicate Chartered Accountant and Bogus Invoice Architect. Operates pass-through account ACC-JOSHI-906 at Bank 010.
+(vii) Accused Kavita Roy [ID:P207], Senior Branch Operations Manager at Bank 010. Operates kickback repository account ACC-KAVITA-907 at Bank 010.
+(viii) Witness Arvind Swaminathan [ID:P208], Principal Core Banking Systems Auditor. Deposed under Section 164 CrPC providing cryptographic log trails.
+
+3. DETAILS OF OFFENSE & MODUS OPERANDI:
+A rigorous forensic audit of core banking transaction ledgers revealed that between January and March 2026, the aforementioned syndicate hatched a sophisticated multi-hop money laundering conspiracy totaling ₹85,000,000 INR (approximately $1,020,000 USD).
+Accused Aditya Vardhan Oberoi [ID:P201] systematically transferred large tranches from account 010 / ACC-OBEROI-901 during nocturnal hours (01:00 AM to 04:30 AM) to circumvent internal compliance monitoring.
+The funds were layered across multiple concurrent pathways:
+- Primary 3-Hop Closed Loop: From ACC-OBEROI-901 into mule account ACC-KULKARNI-902, layered into shell entity ACC-VERTEX-903, and repatriated back to ACC-OBEROI-901 under the deceptive notation of 'Reinvestment'.
+- Secondary 4-Hop Loop: Diverted from ACC-OBEROI-901 into cash courier ACC-FARHAN-904, routed through fake billing account ACC-JOSHI-906, channeled through ACC-VERTEX-903, and reintegrated into ACC-OBEROI-901.
+- Darknet Crypto Tumbling: Funds channeled through ACC-TANYA-905 for unhosted P2P cryptocurrency off-ramping.
+- Bank Collusion: Accused Kavita Roy [ID:P207] systematically overrode automated AML Anti-Structuring alerts and accepted kickback wires directly into ACC-KAVITA-907.
+
+4. INVESTIGATIVE DIRECTIVES & ACTIONS REQUESTED:
+(a) Immediate freezing of all 7 syndicate bank accounts under Section 102 CrPC.
+(b) Transmittal of forensic dossiers to Directorate of Enforcement (ED) and Central Bureau of Investigation (CBI).
+(c) Execution of Non-Bailable Arrest Warrants (NBW) against P201, P202, and P204, and renewal of Look Out Circulars (LOC) at all international ports.

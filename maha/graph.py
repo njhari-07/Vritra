@@ -83,6 +83,14 @@ def snapshot(store,cases,use_neo=True,resolve=True):
         item['case_ids']=sorted(set(item['case_ids']+[f['case_id']]))
         item['evidence_ids']=sorted(set(item['evidence_ids']+f['evidence_ids']))
         item['assertions'].append(dict(attrs=f['attrs'],label=f.get('label'),evidence_ids=f['evidence_ids']))
+        if f['kind']=='node':
+            for ak,av in f.get('attrs',{}).items():
+                if av and ak not in item['attrs']:item['attrs'][ak]=av
+            cur_lbl=item.get('label','')
+            new_lbl=f.get('label','')
+            auth_id=item.get('attrs',{}).get('authoritative_id','')
+            if new_lbl and (not cur_lbl or cur_lbl==key or cur_lbl==auth_id or (len(new_lbl)>len(cur_lbl) and not new_lbl.startswith('person:'))):
+                item['label']=new_lbl
     resolution_map={}
     if resolve:
         parent={}

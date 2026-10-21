@@ -1,0 +1,24 @@
+FIRST INFORMATION REPORT (Under Section 154 Cr.P.C.)
+POLICE STATION: Economic Offenses Wing (EOW), Mandir Marg, New Delhi
+FIR No: 144/2026 | Date: 12-03-2026 | Time: 11:30 HRS
+Acts & Sections: Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), Section 409 IPC (Criminal Breach of Trust), read with Section 3 & 4 of Prevention of Money Laundering Act, 2002 (PMLA).
+
+1. COMPLAINANT:
+Director General, Central Medical Supplies Authority, New Delhi.
+
+2. SUSPECTS & ACCUSED PARTICULARS:
+(i) Accused Vikram Malhotra [ID:P101], Managing Director, Zenith Health Ventures Ltd. Role: Prime Syndicate Mastermind and beneficial owner of destination fund accounts.
+(ii) Accused Sanjay Agarwal [ID:P102], Financial Consultant & Hawala Remittance Mule Coordinator. Operates account ACC-AGARWAL-882 at Bank 010.
+(iii) Accused Karan Singhania [ID:P103], Dummy Director, Apex Logistics Front Corp. Operates account ACC-APEXSHELL-993 at Bank 010.
+(iv) Accused Rohit Verma [ID:P104], Operator of unauthorized digital escrow and crypto mixing channels, account ACC-VERMA-104 at Bank 010.
+
+3. DETAILS OF OFFENSE & MODUS OPERANDI:
+A written complaint was received alleging that during financial years 2024-2026, the aforementioned accused persons hatched a criminal conspiracy to defraud public healthcare tenders. 
+Accused Vikram Malhotra [ID:P101] utilized shell corporate vehicles to route approximately $750,000 USD of misappropriated funds through closed-loop layering transfers. 
+Primary layering was executed through bank account 010 / ACC-MALHOTRA-771 into mule account 010 / ACC-AGARWAL-882, which was then layered into shell account 010 / ACC-APEXSHELL-993 before returning into primary beneficiary accounts under the guise of dividend reinvestment.
+Further, technical logs reveal nocturnal phone calls between Accused P101, P102, and P103 coordinating transfers outside banking hours. 
+
+4. INVESTIGATIVE ACTION DIRECTED:
+(a) Immediate registration of FIR under Section 420/120B/409 IPC and transmission of record to Directorate of Enforcement under Section 66 PMLA.
+(b) Freezing of identified accounts: ACC-MALHOTRA-771, ACC-AGARWAL-882, ACC-APEXSHELL-993, and ACC-VERMA-104.
+(c) Issuance of Look-Out Circulars (LOC) and Non-Bailable Warrants to prevent accused persons from fleeing jurisdiction.
