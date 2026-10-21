@@ -23,7 +23,7 @@ def compute_suspect_dossiers(graph, leads, metrics=None, weights=None):
         w_fin, w_crt, w_cen, w_crs = w_fin * scale, w_crt * scale, w_cen * scale, w_crs * scale
 
     nodes_by_id = {n['id']: n for n in graph.get('nodes', [])}
-    people = [n for n in graph.get('nodes', []) if n.get('type') == 'Person']
+    people = [n for n in graph.get('nodes', []) if n.get('type') == 'Person' and not n.get('id', '').startswith('mention:')]
     if not people:
         return []
 
@@ -148,6 +148,7 @@ def compute_suspect_dossiers(graph, leads, metrics=None, weights=None):
         court_pts = 0.0
         court_cases = []
         crime_records = []
+        is_witness = False
         role = person.get('attrs', {}).get('case_role') or person.get('attrs', {}).get('role')
 
         # Inspect assertions and connected edges for court mentions, roles, and priors
@@ -170,24 +171,33 @@ def compute_suspect_dossiers(graph, leads, metrics=None, weights=None):
                     all_text += " " + str(attrs['source_text'])
                 if 'source_record_status' in attrs:
                     all_text += " " + str(attrs['source_record_status'])
+                if 'witness' in str(attrs.get('source_record_status', '')).lower() or 'witness' in str(attrs.get('source_text', '')).lower():
+                    is_witness = True
                 if e.get('type') == 'INVOLVED_IN_CASE' and attrs.get('source_text'):
-                    crime_records.append({
-                        "agency": "Police / Enforcement Registry",
-                        "record": str(attrs['source_text']),
-                        "status": str(attrs.get('source_record_status', 'Active Record')),
-                        "date": str(attrs.get('record_date', ''))
-                    })
+                    if 'witness' not in str(attrs.get('source_record_status', '')).lower():
+                        crime_records.append({
+                            "agency": "Police / Enforcement Registry",
+                            "record": str(attrs['source_text']),
+                            "status": str(attrs.get('source_record_status', 'Active Record')),
+                            "date": str(attrs.get('record_date', ''))
+                        })
 
         # Role determination & score weighting
         is_accused = False
+        if role and 'witness' in role.lower():
+            is_witness = True
+        elif 'witness' in all_text.lower() and not ('accused' in all_text.lower() or 'conspirator' in all_text.lower()):
+            is_witness = True
+
         if role and any(k in role.lower() for k in ['accused', 'prime', 'mastermind', 'conspirator', 'coordinator']):
             is_accused = True
+            is_witness = False
             court_pts += 18.0
-        elif role and 'witness' in role.lower():
-            court_pts += 2.0
-        elif 'accused' in all_text.lower():
+        elif 'accused' in all_text.lower() and not is_witness:
             is_accused = True
             court_pts += 14.0
+        elif is_witness:
+            court_pts = 0.0
 
         # Charges & Penal Code signals
         charges_detected = []
@@ -240,18 +250,22 @@ def compute_suspect_dossiers(graph, leads, metrics=None, weights=None):
         cross_case_pts = min(w_crs, crs_ratio * w_crs)
 
         # Calculate Total Composite Risk Score (0 to 100)
-        total_score = min(99.0, max(14.0, financial_pts + court_pts + centrality_pts + cross_case_pts))
-        total_score = round(total_score, 1)
-
-        # Assign Risk Level
-        if total_score >= 80.0:
-            risk_level = "CRITICAL"
-        elif total_score >= 60.0:
-            risk_level = "HIGH"
-        elif total_score >= 40.0:
-            risk_level = "MEDIUM"
+        if is_witness:
+            total_score = 12.0
+            risk_level = "WITNESS (NON-ACCUSED)"
+            role = "Eyewitness / Deposition Informant (Non-Accused)"
         else:
-            risk_level = "EVALUATING"
+            total_score = min(99.0, max(14.0, financial_pts + court_pts + centrality_pts + cross_case_pts))
+            total_score = round(total_score, 1)
+            # Assign Risk Level
+            if total_score >= 80.0:
+                risk_level = "CRITICAL"
+            elif total_score >= 60.0:
+                risk_level = "HIGH"
+            elif total_score >= 40.0:
+                risk_level = "MEDIUM"
+            else:
+                risk_level = "EVALUATING"
 
         # Determine Primary Role Label
         if not role:
@@ -268,6 +282,8 @@ def compute_suspect_dossiers(graph, leads, metrics=None, weights=None):
 
         # Construct Human-Readable "Why Flagged" Explanations
         why_flagged = []
+        if is_witness:
+            why_flagged.append("[Eyewitness Status] Explicitly documented as a non-accused witness in case files; cross-case presence reflects corroborating testimony, not criminal participation.")
         if charges_detected:
             why_flagged.append(f"[Court Charges] Indicted under {', '.join(charges_detected)} in judicial proceedings.")
         elif is_accused:
@@ -335,7 +351,9 @@ def compute_suspect_dossiers(graph, leads, metrics=None, weights=None):
         evidence_ids = sorted(list(set(evidence_ids)))
 
         # Syndicate Tier hierarchy
-        if is_accused or total_score >= 65.0:
+        if is_witness:
+            syndicate_tier = "Protected Witness / Deposition Record"
+        elif is_accused or total_score >= 65.0:
             syndicate_tier = "Tier-1 Mastermind / Beneficial Owner"
         elif has_cycle or total_score >= 50.0:
             syndicate_tier = "Tier-2 Financial Coordinator / Layering Mule"

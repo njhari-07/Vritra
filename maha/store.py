@@ -42,6 +42,8 @@ class Store:
             CREATE TABLE IF NOT EXISTS decisions(id TEXT PRIMARY KEY, case_scope TEXT, data TEXT);
             CREATE TABLE IF NOT EXISTS decision_events(id INTEGER PRIMARY KEY, decision_id TEXT, case_scope TEXT, data TEXT);
             CREATE TABLE IF NOT EXISTS reviews(id TEXT PRIMARY KEY, case_scope TEXT, data TEXT);
+            CREATE TABLE IF NOT EXISTS review_events(id INTEGER PRIMARY KEY, review_id TEXT, case_scope TEXT, data TEXT);
+            CREATE INDEX IF NOT EXISTS review_events_lead ON review_events(review_id);
             CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT, actor TEXT, action TEXT, case_id TEXT, object_id TEXT);
             CREATE INDEX IF NOT EXISTS audit_case ON audit(case_id);
             CREATE TABLE IF NOT EXISTS training_runs(case_id TEXT PRIMARY KEY, trained_at TEXT, data TEXT);
@@ -51,10 +53,15 @@ class Store:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name='record_fingerprints'").fetchone():
                 db.execute('CREATE TABLE record_fingerprints(evidence_id TEXT PRIMARY KEY, case_id TEXT, dataset TEXT, fingerprint TEXT)')
                 db.execute('CREATE INDEX fingerprint_lookup ON record_fingerprints(case_id,dataset,fingerprint)')
+                # Back-fill from existing evidence whenever the fingerprint table is (re)created.
                 for old in db.execute('SELECT id,case_id,data FROM evidence'):
                     prior = json.loads(old['data'])
-                    if prior['extraction_method'] == 'csv-positional':
-                        db.execute('INSERT INTO record_fingerprints VALUES(?,?,?,?)', (old['id'], old['case_id'], prior['dataset_id'], uid(prior['passage'])))
+                    if prior.get('extraction_method') == 'csv-positional':
+                        db.execute('INSERT OR IGNORE INTO record_fingerprints VALUES(?,?,?,?)', (old['id'], old['case_id'], prior['dataset_id'], uid(prior['passage'])))
+            # Migration: add review_events table for existing databases lacking it.
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='review_events'").fetchone():
+                db.execute('CREATE TABLE review_events(id INTEGER PRIMARY KEY, review_id TEXT, case_scope TEXT, data TEXT)')
+                db.execute('CREATE INDEX review_events_lead ON review_events(review_id)')
             
             # Auto-seed default investigator user if new database
             user_count = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
@@ -244,6 +251,24 @@ class Store:
             db.execute('INSERT INTO decision_events(decision_id,case_scope,data) VALUES(?,?,?)',(data['id'],json.dumps(sorted(cases)),json.dumps(data)))
         self.audit(data["actor"], "resolution_" + data["state"], sorted(cases)[0], data["id"])
 
+    def save_review(self, lead_id, case_scope_list, data):
+        scope_json = json.dumps(sorted(case_scope_list))
+        with self.db() as db:
+            db.execute('INSERT OR REPLACE INTO reviews VALUES(?,?,?)', (lead_id, scope_json, json.dumps(data)))
+            db.execute('INSERT INTO review_events(review_id,case_scope,data) VALUES(?,?,?)', (lead_id, scope_json, json.dumps(data)))
+
+    def review_history(self, lead_id, cases):
+        """Return all review event records for a lead, visible to the given case set."""
+        with self.db() as db:
+            rows = db.execute(
+                'SELECT data,case_scope FROM review_events WHERE review_id=? ORDER BY id ASC', (lead_id,)
+            ).fetchall()
+        result = []
+        for r in rows:
+            if set(json.loads(r['case_scope'])).issubset(set(cases)):
+                result.append(json.loads(r['data']))
+        return result
+
     def close_case(self, case_id):
         with self.db() as db:
             db.execute("UPDATE cases SET closed_at=? WHERE id=?", (now(), case_id))
@@ -298,6 +323,9 @@ class Store:
                 for r in db.execute(f"SELECT id,case_scope FROM {table}").fetchall():
                     if case_id in json.loads(r[1]):
                         db.execute(f"DELETE FROM {table} WHERE id=?", (r[0],))
+            for r in db.execute("SELECT id,case_scope FROM review_events").fetchall():
+                if case_id in json.loads(r[1]):
+                    db.execute("DELETE FROM review_events WHERE id=?", (r[0],))
         self.audit("system", "case_reset", case_id)
 
     def case_status(self, cases):
