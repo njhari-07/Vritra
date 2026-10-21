@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
+import GraphView from './components/GraphView';
 import './style.css';
 
 const colors = {
@@ -14,49 +15,8 @@ const colors = {
   Document: '#b5b2a6'
 };
 
-function Graph({ graph, onSelect }) {
-  const el = useRef();
-  useEffect(() => {
-    if (!graph || !graph.nodes) return;
-    const n = new Network(
-      el.current,
-      {
-        nodes: new DataSet(
-          graph.nodes.map(x => ({
-            id: x.id,
-            label: x.label.length > 24 ? x.label.slice(0, 23) + '…' : x.label,
-            color: colors[x.type] || '#889988',
-            shape: x.type === 'Case' ? 'diamond' : 'dot',
-            size: x.type === 'Person' ? 15 : 8,
-            title: x.type,
-            font: { size: 11, color: '#293f3d' }
-          }))
-        ),
-        edges: new DataSet(
-          graph.edges.map((e, i) => ({
-            id: i,
-            from: e.source,
-            to: e.target,
-            title: e.type,
-            color: { color: '#c7d2ce' },
-            width: 0.7
-          }))
-        )
-      },
-      {
-        interaction: { hover: true },
-        physics: { stabilization: { iterations: 100 }, barnesHut: { gravitationalConstant: -2600 } },
-        nodes: { borderWidth: 0 },
-        edges: { smooth: false }
-      }
-    );
-    n.on('selectNode', e => {
-      const x = graph.nodes.find(x => x.id === e.nodes[0]);
-      if (x) onSelect(x);
-    });
-    return () => n.destroy();
-  }, [graph]);
-  return <div className="network" ref={el} aria-label="Interactive evidence graph" />;
+function Graph({ graph, onSelect, darkMode = false, height = '520px' }) {
+  return <GraphView graph={graph} onSelect={onSelect} darkMode={darkMode} height={height} />;
 }
 
 function App() {
@@ -792,7 +752,7 @@ function App() {
                     Explore ↗
                   </button>
                 </div>
-                <Graph graph={graph} onSelect={setSelected} />
+                <Graph graph={graph} onSelect={setSelected} darkMode={darkMode} height="500px" />
                 <div className="legend">
                   {Object.entries(colors).map(([k, v]) => (
                     <span key={k}>
@@ -1688,7 +1648,7 @@ function App() {
                   ))}
               </div>
             )}
-            <Graph graph={graph} onSelect={setSelected} />
+            <Graph graph={graph} onSelect={setSelected} darkMode={darkMode} height="650px" />
             <div className="legend">Select a node to inspect its assertions and evidence. Documents are excluded from structural metrics.</div>
           </section>
         )}
