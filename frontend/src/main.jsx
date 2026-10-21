@@ -20,7 +20,7 @@ function Graph({ graph, onSelect, darkMode = false, height = '520px' }) {
 }
 
 function App() {
-  const defaultToken = 'WT49DfCpDyYerqLF_cQI-hkzH7Et7UXGZNUrb_EcneA';
+  const defaultToken = 'gbNPAhHnrkFgSCIvbBqDfbh1aX1kB3wpDSurFaCIYgU';
   const [token, setToken] = useState(() => localStorage.getItem('maha_token') || defaultToken);
   const [input, setInput] = useState(() => localStorage.getItem('maha_token') || defaultToken);
   const [me, setMe] = useState(null);
@@ -29,7 +29,7 @@ function App() {
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('maha_theme');
     if (saved) return saved === 'dark';
-    return false;
+    return true; // Default to sleek dark cyber-intelligence theme
   });
 
   useEffect(() => {
@@ -425,16 +425,26 @@ function App() {
             <span>{darkMode ? '☀️' : '🌙'}</span> {darkMode ? 'Light Canvas' : 'Dark Canvas'}
           </button>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+          <span className="badge" style={{ background: 'rgba(56,189,248,0.12)', color: 'var(--accent-cyan)', borderColor: 'rgba(56,189,248,0.3)' }}>
+            NCRB PS 26189 · PMLA 2002
+          </span>
+          <span className="badge" style={{ background: 'rgba(16,185,129,0.12)', color: 'var(--accent-emerald)', borderColor: 'rgba(16,185,129,0.3)' }}>
+            ● LEDGER ONLINE
+          </span>
+        </div>
         <div className="wordmark">
           M<span>✳</span>HA
         </div>
-        <p className="eyebrow">INVESTIGATION WORKSPACE / LOCAL PROTOTYPE</p>
+        <p className="eyebrow">CRIMINAL NETWORK INTELLIGENCE & LINK ANALYSIS WORKSPACE</p>
         <h1>
           Follow the evidence.
           <br />
-          Understand the connections.
+          Uncover the syndicate.
         </h1>
-        <p>Enter your local access token to open your authorized cases.</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', margin: '0 0 24px' }}>
+          Autonomous cross-case forensic network mapping, suspect risk scoring, and evidence-grounded intelligence.
+        </p>
         <form
           onSubmit={e => {
             e.preventDefault();
@@ -508,7 +518,7 @@ function App() {
         <div className="wordmark">
           M<span>✳</span>HA
         </div>
-        <p className="eyebrow">EVIDENCE WORKSPACE</p>
+        <p className="eyebrow">CRIMINAL INTELLIGENCE · NCRB PS 26189</p>
         <nav>
           {[
             'Overview',
