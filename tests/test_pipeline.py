@@ -239,3 +239,36 @@ def test_history_authorized_before_limit(store):
     history=store.history('audit',['C1'])
     assert len(history)==200 and history[0]['object_id']=='204'
     assert all(r['case_id']=='C1' for r in history)
+
+
+def test_adjudication_and_precision_at_k(store):
+    from maha.adjudication import compute_precision_at_k, adjudicate_all_leads
+    records = [
+        {"id": "1", "category": "connection", "state": "relevant"},
+        {"id": "2", "category": "connection", "state": "relevant"},
+        {"id": "3", "category": "connection", "state": "insufficient_evidence"},
+        {"id": "4", "category": "flagged_behavior", "state": "not_relevant"},
+        {"id": "5", "category": "flagged_behavior", "state": "relevant"}
+    ]
+    metrics = compute_precision_at_k(records)
+    assert metrics["precision_at_5"] == 0.6
+    assert metrics["counts"]["relevant"] == 3
+    assert metrics["counts"]["insufficient_evidence"] == 1
+    assert metrics["counts"]["not_relevant"] == 1
+
+
+def test_evidence_correctness_audit(store):
+    from maha.audit_evidence import audit_evidence_correctness
+    ingest(store, [row()])
+    res = audit_evidence_correctness(store)
+    assert res["total_audited"] >= 1
+    assert res["overall_correctness_rate"] == 1.0
+    assert res["discrepancies"]["missing_locators"] == 0
+
+
+def test_doctor_diagnostics(store):
+    from maha.doctor import diagnose_system
+    r = diagnose_system(str(store.root))
+    assert "overall_status" in r
+    assert r["checks"]["ledger"]["status"] == "PASS"
+    assert "disk_space" in r["checks"]

@@ -67,11 +67,16 @@ RELATIONS={'OWNS_ACCOUNT','SENT_FROM','SENT_TO','TRANSACTED_WITH','FLOWS_TO','CO
 
 
 def snapshot(store,cases,use_neo=True,resolve=True):
+    facts = None
     if use_neo and os.getenv('NEO4J_URI'):
-        neo=NeoGraph()
-        try:facts=neo.facts(cases)
-        finally:neo.close()
-    else:facts=store.facts(cases)
+        try:
+            neo=NeoGraph()
+            try:facts=neo.facts(cases)
+            finally:neo.close()
+        except Exception:
+            facts = None
+    if facts is None:
+        facts=store.facts(cases)
     nodes={};edges={}
     for f in facts:
         target=nodes if f['kind']=='node' else edges

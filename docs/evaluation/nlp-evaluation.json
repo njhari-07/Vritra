@@ -1,0 +1,379 @@
+{
+  "protocol": "docs/design/04-evaluation.md \u00a7 NLP & Resolution Evaluation Protocol",
+  "model_name": "core_web_sm",
+  "model_version": "3.8.0",
+  "spacy_lang": "en",
+  "dev_split": {
+    "samples": 14,
+    "metrics": {
+      "true_positives": 34,
+      "false_positives": 8,
+      "false_negatives": 10,
+      "precision": 0.8095,
+      "recall": 0.7727,
+      "f1": 0.7907
+    },
+    "by_type": {
+      "Person": {
+        "true_positives": 10,
+        "false_positives": 2,
+        "false_negatives": 6,
+        "precision": 0.8333,
+        "recall": 0.625,
+        "f1": 0.7143
+      },
+      "Organization": {
+        "true_positives": 9,
+        "false_positives": 3,
+        "false_negatives": 2,
+        "precision": 0.75,
+        "recall": 0.8182,
+        "f1": 0.7826
+      },
+      "Location": {
+        "true_positives": 15,
+        "false_positives": 3,
+        "false_negatives": 2,
+        "precision": 0.8333,
+        "recall": 0.8824,
+        "f1": 0.8571
+      }
+    },
+    "error_summary": {
+      "boundary_errors": 8,
+      "false_positives": 0,
+      "false_negatives": 10
+    }
+  },
+  "heldout_test_split": {
+    "samples": 10,
+    "metrics": {
+      "true_positives": 27,
+      "false_positives": 2,
+      "false_negatives": 4,
+      "precision": 0.931,
+      "recall": 0.871,
+      "f1": 0.9
+    },
+    "by_type": {
+      "Person": {
+        "true_positives": 10,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "precision": 1.0,
+        "recall": 0.9091,
+        "f1": 0.9524
+      },
+      "Organization": {
+        "true_positives": 6,
+        "false_positives": 2,
+        "false_negatives": 1,
+        "precision": 0.75,
+        "recall": 0.8571,
+        "f1": 0.8
+      },
+      "Location": {
+        "true_positives": 11,
+        "false_positives": 0,
+        "false_negatives": 2,
+        "precision": 1.0,
+        "recall": 0.8462,
+        "f1": 0.9167
+      }
+    },
+    "error_summary": {
+      "boundary_errors": 2,
+      "false_positives": 0,
+      "false_negatives": 4
+    }
+  },
+  "relation_extraction": {
+    "true_positives": 5,
+    "false_positives": 2,
+    "false_negatives": 0,
+    "precision": 0.7143,
+    "recall": 1.0,
+    "f1": 0.8333
+  },
+  "identity_resolution": {
+    "true_positives": 2,
+    "false_positives": 1,
+    "false_negatives": 0,
+    "precision": 0.6667,
+    "recall": 1.0,
+    "f1": 0.8,
+    "conflicting_authority_ids_blocked": true,
+    "prohibited_pair_violations": 0
+  },
+  "error_analysis": {
+    "dev_errors": {
+      "boundary_errors": [
+        {
+          "doc_id": "DEV-01",
+          "predicted": {
+            "text": "Rajesh Singhania",
+            "start": 25,
+            "end": 41,
+            "kind": "Location"
+          },
+          "gold": {
+            "text": "Rajesh Singhania",
+            "start": 25,
+            "end": 41,
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-02",
+          "predicted": {
+            "text": "Barclays",
+            "start": 60,
+            "end": 68,
+            "kind": "Location"
+          },
+          "gold": {
+            "text": "Barclays",
+            "start": 60,
+            "end": 68,
+            "kind": "Organization"
+          }
+        },
+        {
+          "doc_id": "DEV-03",
+          "predicted": {
+            "text": "Verma",
+            "start": 6,
+            "end": 11,
+            "kind": "Person"
+          },
+          "gold": {
+            "text": "Anand Verma",
+            "start": 0,
+            "end": 11,
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-03",
+          "predicted": {
+            "text": "Zenith Global",
+            "start": 50,
+            "end": 63,
+            "kind": "Person"
+          },
+          "gold": {
+            "text": "Zenith Global",
+            "start": 50,
+            "end": 63,
+            "kind": "Organization"
+          }
+        },
+        {
+          "doc_id": "DEV-03",
+          "predicted": {
+            "text": "Anand",
+            "start": 0,
+            "end": 5,
+            "kind": "Location"
+          },
+          "gold": {
+            "text": "Anand Verma",
+            "start": 0,
+            "end": 11,
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-08",
+          "predicted": {
+            "text": "Deepak Chopra",
+            "start": 0,
+            "end": 13,
+            "kind": "Organization"
+          },
+          "gold": {
+            "text": "Deepak Chopra",
+            "start": 0,
+            "end": 13,
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-12",
+          "predicted": {
+            "text": "Arjun Rampal",
+            "start": 0,
+            "end": 12,
+            "kind": "Organization"
+          },
+          "gold": {
+            "text": "Arjun Rampal",
+            "start": 0,
+            "end": 12,
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-12",
+          "predicted": {
+            "text": "Bern",
+            "start": 74,
+            "end": 78,
+            "kind": "Organization"
+          },
+          "gold": {
+            "text": "Bern",
+            "start": 74,
+            "end": 78,
+            "kind": "Location"
+          }
+        }
+      ],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "doc_id": "DEV-01",
+          "gold": {
+            "text": "Grand Hyatt",
+            "kind": "Location"
+          }
+        },
+        {
+          "doc_id": "DEV-01",
+          "gold": {
+            "text": "Rajesh Singhania",
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-02",
+          "gold": {
+            "text": "Barclays",
+            "kind": "Organization"
+          }
+        },
+        {
+          "doc_id": "DEV-03",
+          "gold": {
+            "text": "Anand Verma",
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-03",
+          "gold": {
+            "text": "Zenith Global",
+            "kind": "Organization"
+          }
+        },
+        {
+          "doc_id": "DEV-04",
+          "gold": {
+            "text": "Amit Trivedi",
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-05",
+          "gold": {
+            "text": "Suresh Raina",
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-08",
+          "gold": {
+            "text": "Deepak Chopra",
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-12",
+          "gold": {
+            "text": "Arjun Rampal",
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "DEV-12",
+          "gold": {
+            "text": "Bern",
+            "kind": "Location"
+          }
+        }
+      ]
+    },
+    "test_errors": {
+      "boundary_errors": [
+        {
+          "doc_id": "TEST-05",
+          "predicted": {
+            "text": "Marcus Reed",
+            "start": 0,
+            "end": 11,
+            "kind": "Organization"
+          },
+          "gold": {
+            "text": "Marcus Reed",
+            "start": 0,
+            "end": 11,
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "TEST-10",
+          "predicted": {
+            "text": "Bank of Baroda in Vadodara",
+            "start": 44,
+            "end": 70,
+            "kind": "Organization"
+          },
+          "gold": {
+            "text": "Vadodara",
+            "start": 62,
+            "end": 70,
+            "kind": "Location"
+          }
+        }
+      ],
+      "false_positives": [],
+      "false_negatives": [
+        {
+          "doc_id": "TEST-01",
+          "gold": {
+            "text": "Mayfair",
+            "kind": "Location"
+          }
+        },
+        {
+          "doc_id": "TEST-05",
+          "gold": {
+            "text": "Marcus Reed",
+            "kind": "Person"
+          }
+        },
+        {
+          "doc_id": "TEST-10",
+          "gold": {
+            "text": "Vadodara",
+            "kind": "Location"
+          }
+        },
+        {
+          "doc_id": "TEST-10",
+          "gold": {
+            "text": "Bank of Baroda",
+            "kind": "Organization"
+          }
+        }
+      ]
+    }
+  },
+  "methodology_notes": [
+    "Held-out test split was kept strictly disjoint from development fixtures.",
+    "Pretrained en_core_web_sm extraction evaluated without custom weight fine-tuning.",
+    "Exact character span boundaries enforced for true positive credit.",
+    "Relations require both subject anchor and explicit syntactical template match.",
+    "Conflicting authoritative identity IDs are structurally blocked from candidate generation."
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "protocol": "docs/design/04-evaluation.md \u00a7 Evidence Correctness Audit Protocol",
+  "total_audited": 269,
+  "correct_records": 269,
+  "overall_correctness_rate": 1.0,
+  "discrepancies": {
+    "missing_locators": 0,
+    "invalid_locators": 0,
+    "passage_mismatches": 0,
+    "source_blob_missing": 0
+  },
+  "by_modality": {
+    "csv-positional": {
+      "total": 136,
+      "correct": 136,
+      "fidelity": 1.0,
+      "error_count": 0
+    },
+    "document-metadata": {
+      "total": 24,
+      "correct": 24,
+      "fidelity": 1.0,
+      "error_count": 0
+    },
+    "explicit-identifier-rule": {
+      "total": 54,
+      "correct": 54,
+      "fidelity": 1.0,
+      "error_count": 0
+    },
+    "spacy-en_core_web_sm": {
+      "total": 48,
+      "correct": 48,
+      "fidelity": 1.0,
+      "error_count": 0
+    },
+    "pdfplumber-fixed-v1": {
+      "total": 6,
+      "correct": 6,
+      "fidelity": 1.0,
+      "error_count": 0
+    },
+    "synthetic-history-csv": {
+      "total": 1,
+      "correct": 1,
+      "fidelity": 1.0,
+      "error_count": 0
+    }
+  },
+  "sample_size": 269,
+  "standard": "Exact locator fidelity against immutable raw source blobs",
+  "audit_sample_records": [
+    {
+      "evidence_id": "0b06e97bcc04d8b52e9bb3b5675b45bb",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "37a4ac776caaea1d3e925a174d2d0ec5",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "4ecbc8a646f7ee8af3701c5e38e2f9f2",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "587717af48601d0cd82e7cd0f808c12c",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "4a87896aa8d548a8da78218209701374",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "db7db29b5e6462f661dee8468a9c670a",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "436bf27b121ae679e0be07ec98118265",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "b6e48341f1fadd17a7f63578a0886bee",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "f832d7d0dcf0f7386990da654faf2136",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "1791021ca209e881410c9177e783495b",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "89db1f67c30a0b7ed847e305a6ce2f61",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "cdda586703e0e6d3498b049de2dd386c",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "793d503fa6e4e31b229dcebec8c3fc27",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "df0508ab43b01479853855eac6733cdb",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    },
+    {
+      "evidence_id": "02983f1842fce6ef6bee53820ad4291f",
+      "case_id": "DEMO-C01",
+      "method": "csv-positional",
+      "status": "correct",
+      "errors": []
+    }
+  ]
+}

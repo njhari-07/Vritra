@@ -173,3 +173,28 @@ def compute_precision_at_k(adjudicated_records):
         },
         "treatment_of_insufficient_evidence": "Treated as not established relevant (conservative forensic standard)"
     }
+
+
+def get_adjudication_metrics(ledger, active_cases):
+    """Retrieves existing human reviews and computes Precision@K without re-adjudicating."""
+    from .graph import snapshot
+    from .analytics import analyze
+    g = snapshot(ledger, active_cases)
+    res = analyze(g)
+    leads = res.get('leads', [])
+    with ledger.db() as db:
+        reviews = {r['id']: json.loads(r['data']) for r in db.execute('SELECT * FROM reviews') if set(json.loads(r['case_scope'])).issubset(active_cases)}
+
+    adjudicated_records = []
+    for lead in leads:
+        lid = lead['id']
+        if lid in reviews:
+            rev = reviews[lid]
+            adjudicated_records.append({
+                "id": lid,
+                "category": lead.get('category', 'connection'),
+                "state": rev.get('state', 'insufficient_evidence'),
+                "rationale": rev.get('reason', ''),
+                "techniques": lead.get('techniques', [])
+            })
+    return compute_precision_at_k(adjudicated_records)

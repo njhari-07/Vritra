@@ -440,8 +440,13 @@ th{{background:#eaeaea;font-weight:bold}}
         leads={l['id']:l for l in results(u)['leads']}
         if lid not in leads:raise HTTPException(404,'Lead unavailable')
         data={**body.model_dump(),'actor':u['name'],'at':now()}
-        with ledger.db() as db:db.execute('INSERT OR REPLACE INTO reviews VALUES(?,?,?)',(lid,json.dumps(leads[lid]['case_ids']),json.dumps(data)))
+        ledger.save_review(lid, leads[lid]['case_ids'], data)
         ledger.audit(u['name'],'lead_review',leads[lid]['case_ids'][0],lid);return data
+    @app.get('/api/leads/{lid}/history')
+    def lead_review_history(lid:str,u=Depends(user)):
+        """Return the full ordered event history of review decisions for a specific lead."""
+        history=ledger.review_history(lid,u['cases'])
+        return {'lead_id':lid,'history':history,'count':len(history)}
     @app.get('/api/quality')
     def quality(u=Depends(user)):
         return [{**r,'summary':json.loads(r['summary'])} for r in ledger.history('imports',u['cases'])]
@@ -450,11 +455,39 @@ th{{background:#eaeaea;font-weight:bold}}
     @app.get('/api/benchmarks')
     def benchmarks(u=Depends(user)):
         reports=[]
-        for name in ['elliptic-evaluation.json','ibm-evaluation.json']:
+        for name in ['elliptic-evaluation.json','ibm-evaluation.json','nlp-evaluation.json','evidence-audit.json','demo-evaluation.json']:
             path=Path('artifacts/evaluation')/name
             if path.exists():
-                data=json.loads(path.read_text());data.pop('source_line_numbers',None);reports.append(data)
+                try:
+                    data=json.loads(path.read_text())
+                    data.pop('source_line_numbers',None)
+                    reports.append(data)
+                except Exception:
+                    pass
         return reports
+
+    @app.get('/api/doctor')
+    def get_doctor():
+        from .doctor import diagnose_system
+        return diagnose_system(str(ledger.root))
+
+    @app.get('/api/adjudication')
+    def get_adjudication(u=Depends(user)):
+        from .adjudication import get_adjudication_metrics
+        return get_adjudication_metrics(ledger, u['cases'])
+
+    @app.post('/api/adjudicate/run')
+    def run_adjudication(u=Depends(user)):
+        from .adjudication import adjudicate_all_leads
+        return adjudicate_all_leads(ledger, u['cases'], actor=u.get('name', 'Senior Investigator'))
+
+    @app.get('/api/evidence/audit')
+    def get_evidence_audit(u=Depends(user)):
+        path=Path('artifacts/evaluation/evidence-audit.json')
+        if path.exists():
+            return json.loads(path.read_text())
+        from .audit_evidence import run_and_save_evidence_audit
+        return run_and_save_evidence_audit(ledger)
     @app.get('/api/timeline')
     def timeline(u=Depends(user)):
         g=graph(u);names={n['id']:n['label'] for n in g['nodes']}
