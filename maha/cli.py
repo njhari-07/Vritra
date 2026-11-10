@@ -113,10 +113,7 @@ def main():
         }, indent=2))
 
     elif args.command == 'adjudicate':
-        from .adjudication import adjudicate_all_leads
-        cases = ['DEMO-C01', 'DEMO-C02', 'DEMO-C03']
-        res = adjudicate_all_leads(store, cases)
-        print(json.dumps(res['metrics'], indent=2))
+        raise SystemExit('Automated adjudication is retired; use independent human review.')
 
     elif args.command == 'audit-evidence':
         from .audit_evidence import run_and_save_evidence_audit

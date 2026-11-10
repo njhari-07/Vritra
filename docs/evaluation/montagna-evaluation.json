@@ -1,0 +1,87 @@
+{
+  "dataset": "Montagna Operation",
+  "synthetic": false,
+  "scope": "Separate structural benchmark on an observed, anonymized network",
+  "source": "https://doi.org/10.5281/zenodo.3938818",
+  "networkx_version": "3.6.1",
+  "source_sha256": {
+    "Montagna_Meetings_Edgelist.csv": "79c38065afa597b3496dbc33f9d5e503e5152e19834578fc0a6d0e86a391577c",
+    "Montagna_Phone_Calls_Edgelist.csv": "80aafccbc695f56e630ebf96955c0faff25da1f514371e6d93d523eadfefcae5",
+    "Montagna_Roles.csv": "51dc5bf13c5ddc7bde89a91d09fb27a185831286ac94c86effa2e86dd9df4ad5"
+  },
+  "projection": "Unweighted undirected ties, no self-loops; reciprocal arcs for PageRank",
+  "label_policy": "Explicit boss and member prefixes only; clan from explicit quoted family names",
+  "rank_policy": "Descending scores; ties use average rank",
+  "shared_nodes": 46,
+  "layers": {
+    "meetings": {
+      "nodes": 95,
+      "edges": 248,
+      "role_coverage": 65,
+      "bosses": 7,
+      "explicit_members": 18,
+      "ranks": {
+        "degree": {
+          "boss_median_rank": 44.5,
+          "member_median_rank": 49.0,
+          "bosses_ranked_at_most_10": 1
+        },
+        "betweenness": {
+          "boss_median_rank": 66.0,
+          "member_median_rank": 66.0,
+          "bosses_ranked_at_most_10": 0
+        },
+        "pagerank": {
+          "boss_median_rank": 33.0,
+          "member_median_rank": 58.0,
+          "bosses_ranked_at_most_10": 0
+        }
+      },
+      "communities": 11,
+      "clan_label_counts": {
+        "Barcellona Pozzo di Gotto": 2,
+        "Caltagirone": 1,
+        "Mistretta": 7,
+        "Mazzaroti": 3,
+        "Batanesi": 14,
+        "Brancaccio": 1,
+        "San Mauro Castelverde": 1,
+        "Tortorici": 2
+      },
+      "clan_labeled_nodes": 31,
+      "clan_adjusted_rand_index": 0.41006484352974343
+    },
+    "phone_calls": {
+      "nodes": 94,
+      "edges": 120,
+      "role_coverage": 58,
+      "bosses": 2,
+      "explicit_members": 17,
+      "ranks": {
+        "degree": {
+          "boss_median_rank": 38.5,
+          "member_median_rank": 28.5,
+          "bosses_ranked_at_most_10": 0
+        },
+        "betweenness": {
+          "boss_median_rank": 43.5,
+          "member_median_rank": 61.0,
+          "bosses_ranked_at_most_10": 0
+        },
+        "pagerank": {
+          "boss_median_rank": 16.25,
+          "member_median_rank": 33.0,
+          "bosses_ranked_at_most_10": 1
+        }
+      },
+      "communities": 8,
+      "clan_label_counts": {
+        "Mazzaroti": 2,
+        "Mistretta": 9,
+        "Batanesi": 14
+      },
+      "clan_labeled_nodes": 25,
+      "clan_adjusted_rand_index": 0.36999413948036725
+    }
+  }
+}

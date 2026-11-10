@@ -1,23 +1,38 @@
 """Neo4j stores evidence-scoped graph assertions; SQLite is the import/audit ledger."""
+import fcntl
 import json
+import logging
 import os
-from collections import defaultdict
-from .store import uid
+from neo4j.exceptions import DriverError, Neo4jError
 from .limits import budget, check
 
 
 class NeoGraph:
     def __init__(self):
         from neo4j import GraphDatabase
-        self.driver=GraphDatabase.driver(os.environ['NEO4J_URI'],auth=(os.getenv('NEO4J_USER','neo4j'),os.environ['NEO4J_PASSWORD']))
+        self.driver=GraphDatabase.driver(os.environ['NEO4J_URI'],auth=(os.getenv('NEO4J_USER','neo4j'),os.environ['NEO4J_PASSWORD']),
+            connection_timeout=3, max_transaction_retry_time=5)
 
     def close(self): self.driver.close()
 
-    def sync(self,store):
-        """Replace this application's namespace atomically; safe against partial imports."""
-        with store.db() as db:
-            facts=[json.loads(r[0]) for r in db.execute('SELECT data FROM facts')]
-            evidence=[json.loads(r[0]) for r in db.execute('SELECT data FROM evidence')]
+    def revision(self):
+        with self.driver.session() as session:
+            row = session.run(
+                'MATCH (n:Maha:ProjectionState) RETURN n.ledger_id AS ledger_id, n.revision AS revision'
+            ).single(strict=False)
+        return (row['ledger_id'], row['revision']) if row else None
+
+    def sync(self, store):
+        """Publish the committed ledger revision atomically with its graph."""
+        with (store.root / 'graph-sync.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if self.revision() == store.graph_revision():
+                return False
+            revision, facts, evidence = store.graph_export()
+            self._replace(revision, facts, evidence)
+            return True
+
+    def _replace(self, revision, facts, evidence):
         def write(tx):
             tx.run('MATCH (n:Maha) DETACH DELETE n').consume()
             for start in range(0,len(facts),1000):
@@ -35,6 +50,10 @@ class NeoGraph:
                 props={**{k:v for k,v in f['attrs'].items() if isinstance(v,(str,int,float,bool))},'id':f['id'],'case_id':f['case_id'],'evidence_ids':f['evidence_ids']}
                 evidence_ids=props.pop('evidence_ids')
                 tx.run(f'MATCH (a:Maha:Entity {{id:$source}}),(b:Maha:Entity {{id:$target}}) MERGE (a)-[r:{rel} {{id:$id,case_id:$case_id}}]->(b) SET r += $props, r.evidence_ids=reduce(acc=coalesce(r.evidence_ids,[]), e IN $evidence_ids | CASE WHEN e IN acc THEN acc ELSE acc+e END)',source=f['source'],target=f['target'],case_id=f['case_id'],id=f['id'],props=props,evidence_ids=evidence_ids).consume()
+            tx.run(
+                'CREATE (:Maha:ProjectionState {ledger_id:$ledger_id, revision:$revision})',
+                ledger_id=revision[0], revision=revision[1],
+            ).consume()
         with self.driver.session() as session:session.execute_write(write)
 
     def facts(self,cases):
@@ -63,20 +82,53 @@ class NeoGraph:
                 LIMIT 50''',cases=cases)]
 
 
+def synchronize_projection(store, stop):
+    """Reconcile durable revisions on startup and after every committed change."""
+    logger = logging.getLogger(__name__)
+    delay = 1
+    reported_failure = False
+    while not stop.is_set():
+        try:
+            neo = NeoGraph()
+            try:
+                neo.sync(store)
+            finally:
+                neo.close()
+        except Exception:
+            if not reported_failure:
+                logger.exception('Graph synchronization failed; retrying from the ledger')
+                reported_failure = True
+            delay = min(delay * 2, 30)
+        else:
+            if reported_failure:
+                logger.info('Graph synchronization recovered')
+                reported_failure = False
+            delay = 1
+        stop.wait(delay)
+
+
 RELATIONS={'OWNS_ACCOUNT','SENT_FROM','SENT_TO','TRANSACTED_WITH','FLOWS_TO','COMMUNICATED_WITH','INVOLVED_IN_CASE','LOCATED_AT','MENTIONED_IN','FILED_UNDER','RELATED_TO'}
 
 
 def snapshot(store,cases,use_neo=True,resolve=True):
     facts = None
+    backend = 'local-ledger'
     if use_neo and os.getenv('NEO4J_URI'):
         try:
-            neo=NeoGraph()
-            try:facts=neo.facts(cases)
-            finally:neo.close()
-        except Exception:
-            facts = None
+            neo = NeoGraph()
+            try:
+                expected = store.graph_revision()
+                if neo.revision() == expected:
+                    projected = neo.facts(cases)
+                    if neo.revision() == expected == store.graph_revision():
+                        facts = projected
+                        backend = 'neo4j'
+            finally:
+                neo.close()
+        except (DriverError, Neo4jError, OSError, KeyError):
+            pass
     if facts is None:
-        facts=store.facts(cases)
+        facts = store.facts(cases)
     nodes={};edges={}
     for f in facts:
         target=nodes if f['kind']=='node' else edges
@@ -115,4 +167,4 @@ def snapshot(store,cases,use_neo=True,resolve=True):
         for e in edges.values():e['source']=find(e['source']);e['target']=find(e['target'])
     valid=[e for e in edges.values() if e['source'] in nodes and e['target'] in nodes]
     check(len(nodes),'GRAPH_NODES',2000)
-    return {'nodes':list(nodes.values()),'edges':valid,'case_ids':sorted(cases),'projection_version':'0.1','resolution_map':resolution_map,'backend':'neo4j' if use_neo and os.getenv('NEO4J_URI') else 'local-ledger'}
+    return {'nodes':list(nodes.values()),'edges':valid,'case_ids':sorted(cases),'projection_version':'0.1','resolution_map':resolution_map,'backend':backend}

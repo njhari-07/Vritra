@@ -46,6 +46,27 @@ def extract(doc,base,nlp=None):
                    facts=[node(kind,entity,ent.text),edge("MENTIONED_IN",entity,did,str(ent.start_char))])
 
 
+def raw_text_records(text):
+    """Generic NER observations for pasted text, with no inferred relationships."""
+    if not text.strip() or '\x00' in text:
+        raise ValueError('Provide nonblank text without NUL characters')
+    model = pipeline()
+    version = model.meta.get('version', 'unknown')
+    yield {
+        'locator': {'char_start': 0, 'char_end': min(len(text), 360), 'text_label': 'Source excerpt'},
+        'passage': text[:360], 'method': 'raw-text-source', 'facts': [],
+    }
+    for entity in model(text).ents:
+        yield {
+            'locator': {'char_start': entity.start_char, 'char_end': entity.end_char,
+                        'text_label': entity.label_, 'offset_basis': 'decoded UTF-8 text'},
+            'passage': entity.text, 'method': 'spacy-en_core_web_sm',
+            'extraction_version': f'model:{version};raw-text:1',
+            'confidence': None, 'confidence_basis': 'Unreviewed model output; no calibrated confidence',
+            'facts': [],
+        }
+
+
 def candidates(nodes,threshold=0.9):
     from .limits import check
     people=[n for n in nodes if n['type']=='Person'];result=[]

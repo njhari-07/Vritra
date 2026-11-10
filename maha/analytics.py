@@ -56,14 +56,18 @@ def fund_flow(graph,start=None,end=None,max_hops=4,limit=50):
     return {'paths':output,'truncated':truncated,'explored':explored,'max_hops':max_hops}
 
 
-def analyze(graph,cross_case_records=None):
-    g,d=projection(graph);nodes={n['id']:n for n in graph['nodes']};leads=[]
+def structural_metrics(g,d):
     degree=nx.degree_centrality(g)
     between=nx.betweenness_centrality(g,k=min(100,len(g)),seed=42) if g else {}
     rank=nx.pagerank(d) if d else {}
     communities=nx.community.louvain_communities(g,seed=42) if g.number_of_edges() else [{n} for n in g]
     community={n:i for i,c in enumerate(communities) for n in c}
-    metrics={n:dict(degree=degree[n],betweenness=between[n],pagerank=rank[n],community=community[n]) for n in g}
+    return {n:dict(degree=degree[n],betweenness=between[n],pagerank=rank[n],community=community[n]) for n in g}, communities
+
+
+def analyze(graph,cross_case_records=None):
+    g,d=projection(graph);nodes={n['id']:n for n in graph['nodes']};leads=[]
+    metrics,communities=structural_metrics(g,d)
     def add(category,techniques,subjects,reason,evidence,**extra):
         evidence=sorted(set(evidence))
         if not evidence:return
@@ -81,7 +85,7 @@ def analyze(graph,cross_case_records=None):
         case_evidence={r['entity_id']:[eid for group in r['evidence_groups'] for eid in group] for r in cross_case_records}
     for entity,cs in sorted(cases.items(),key=lambda x:(-len(x[1]),x[0])):
         if len(cs)>1:add('connection',['cross_case'],[entity],f'Referenced in {len(cs)} authorized cases; review the source passages.',case_evidence[entity],case_count=len(cs),structural_context=metrics.get(entity,{}))
-    for n in sorted(g,key=lambda n:(-rank[n],n))[:10]:
+    for n in sorted(g,key=lambda n:(-metrics[n]['pagerank'],n))[:10]:
         ev=list(nodes[n]['evidence_ids'])
         for e in graph['edges']:
             if n in {e['source'],e['target']} and e['type'] in STRUCTURAL:ev+=e['evidence_ids']

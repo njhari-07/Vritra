@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
 import GraphView from './components/GraphView';
+import JudgmentReview from './components/JudgmentReview';
 import LeadsPanel from './components/LeadsPanel';
 import ResolutionTab from './components/ResolutionTab';
 import TimelineTab from './components/TimelineTab';
@@ -29,9 +30,8 @@ function Graph({ graph, onSelect, darkMode = false, height = '520px' }) {
 }
 
 function App() {
-  const defaultToken = 'gbNPAhHnrkFgSCIvbBqDfbh1aX1kB3wpDSurFaCIYgU';
-  const [token, setToken] = useState(() => localStorage.getItem('maha_token') || defaultToken);
-  const [input, setInput] = useState(() => localStorage.getItem('maha_token') || defaultToken);
+  const [token, setToken] = useState('');
+  const [input, setInput] = useState('');
   const [me, setMe] = useState(null);
 
   // Dark Canvas / Theme Mode
@@ -54,7 +54,6 @@ function App() {
   const [graph, setGraph] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [tab, setTab] = useState('Overview');
-  const [riskFilter, setRiskFilter] = useState('ALL');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -70,24 +69,17 @@ function App() {
 
   // Model Training Pipeline State
   const [isTraining, setIsTraining] = useState(false);
-  const [trainStep, setTrainStep] = useState(0);
   const [showTrainingStudio, setShowTrainingStudio] = useState(false);
 
   // Feature 1: Hop-by-Hop Fund Trail Visualizer
-  const [expandedTrail, setExpandedTrail] = useState(null);
 
   // Feature 3: Raw Free-Text Ingestor
   const [rawText, setRawText] = useState('');
   const [rawTitle, setRawTitle] = useState('FIR-CRIME-REGISTRY-01');
   const [rawSourceType, setRawSourceType] = useState('police_fir');
+  const [rawSynthetic, setRawSynthetic] = useState(false);
 
   // Feature 4: ML Tuning & Weights
-  const [showTuning, setShowTuning] = useState(false);
-  const [contamination, setContamination] = useState(0.05);
-  const [wFinancial, setWFinancial] = useState(35);
-  const [wCourt, setWCourt] = useState(30);
-  const [wCentrality, setWCentrality] = useState(20);
-  const [wCrossCase, setWCrossCase] = useState(15);
 
   // Modals
   const [showNewCaseModal, setShowNewCaseModal] = useState(false);
@@ -138,18 +130,23 @@ function App() {
     setSelected(null);
     setEv(null);
     setList([]);
-    if (!me) return;
+    if (!me || !activeCase) return;
+    let current = true;
     const paths = {
       Resolution: '/candidates',
-      Timeline: '/timeline',
-      Quality: '/quality',
-      Audit: '/audit',
+      Timeline: '/timeline?case=' + encodeURIComponent(activeCase),
+      Quality: '/quality?case=' + encodeURIComponent(activeCase),
+      Audit: '/audit?case=' + encodeURIComponent(activeCase),
       Benchmarks: '/benchmarks'
     };
-    if (paths[tab]) api(paths[tab]).then(setList).catch(e => setError(e.message));
-  }, [tab, me]);
+    if (paths[tab]) api(paths[tab]).then(data => { if (current) setList(data); })
+      .catch(error => { if (current) setError(error.message); });
+    return () => { current = false; };
+  }, [tab, me, activeCase]);
 
   const changeCase = cId => {
+    setGraph(null);
+    setAnalysis(null);
     setActiveCase(cId);
     setShowTrainingStudio(false);
     load(cId);
@@ -170,7 +167,7 @@ function App() {
       setNewCaseInput('');
       setNotice(`Case "${cId}" created. Ingest investigation data or load sample package to begin.`);
       await load(cId);
-      setTab('Suspects');
+      setTab('Dossiers');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -207,40 +204,19 @@ function App() {
 
   const handleTrainModels = async () => {
     setIsTraining(true);
-    setTrainStep(1);
     try {
-      // Animated stepper progression
-      await new Promise(r => setTimeout(r, 600));
-      setTrainStep(2);
-      await new Promise(r => setTimeout(r, 700));
-      setTrainStep(3);
-      await new Promise(r => setTimeout(r, 700));
-      setTrainStep(4);
-      await new Promise(r => setTimeout(r, 800));
-      setTrainStep(5);
-
       const res = await api(`/cases/${encodeURIComponent(activeCase)}/train`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contamination: parseFloat(contamination),
-          weight_financial: parseFloat(wFinancial),
-          weight_court: parseFloat(wCourt),
-          weight_centrality: parseFloat(wCentrality),
-          weight_cross_case: parseFloat(wCrossCase)
-        })
+        method: 'POST'
       });
 
-      await new Promise(r => setTimeout(r, 500));
-      setNotice(`⚡ ML Models Trained Successfully! Extracted ${res.suspects.length} ranked suspects with provenance seals.`);
+      setNotice(`Analysis complete. ${res.suspects.length} dossiers available for review.`);
       setShowTrainingStudio(false);
       await load(activeCase);
-      setTab('Suspects');
+      setTab('Dossiers');
     } catch (e) {
       setError(e.message);
     } finally {
       setIsTraining(false);
-      setTrainStep(0);
     }
   };
 
@@ -269,13 +245,15 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: rawText.trim(),
+          text: rawText,
           title: rawTitle.trim() || 'FREE-TEXT-FIR',
-          source_type: rawSourceType
+          source_type: rawSourceType,
+          synthetic: rawSynthetic
         })
       });
-      setNotice(`Zero-Shot NLP parsed ${res.records_parsed} entities & assertions from raw text into ${activeCase}.`);
+      setNotice(`${res.summary.accepted_new} new evidence records · ${res.summary.recognized_repeat} repeats. Open Quality to inspect them.`);
       setRawText('');
+      setRawSynthetic(false);
       await load(activeCase);
     } catch (e) {
       setError(e.message);
@@ -315,7 +293,7 @@ function App() {
 
   const exportReport = async () => {
     try {
-      const data = await api('/report');
+      const data = await api('/report?case=' + encodeURIComponent(activeCase));
       const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
@@ -332,7 +310,7 @@ function App() {
     const reason = window.prompt('Record your review rationale');
     if (!reason) return;
     try {
-      await api('/leads/' + lead.id + '/review', {
+      await api('/leads/' + lead.id + '/review?case=' + encodeURIComponent(activeCase), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state, reason })
@@ -386,7 +364,7 @@ function App() {
     if (!q) return;
     setCopilotBusy(true);
     try {
-      const res = await api('/copilot', {
+      const res = await api('/copilot?case=' + encodeURIComponent(activeCase), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q })
@@ -401,14 +379,14 @@ function App() {
 
   const downloadDossier = async s => {
     try {
-      const d = await api('/dossier/' + s.id + '?case=' + encodeURIComponent(activeCase));
+      const d = await api('/dossier/' + encodeURIComponent(s.id) + '?case=' + encodeURIComponent(activeCase));
       const url = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `prosecution-dossier-${s.authoritative_id || s.id}.json`;
+      a.download = `evidence-dossier-${s.authoritative_id || s.id}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      setNotice(`Official prosecution dossier exported with SHA-256 seal for ${s.name}`);
+      setNotice(`Evidence dossier exported for ${s.name}`);
     } catch (e) {
       setError(e.message);
     }
@@ -431,7 +409,7 @@ function App() {
             onClick={() => setDarkMode(prev => !prev)}
             title={darkMode ? "Switch to light canvas" : "Switch to dark canvas"}
           >
-            <span>{darkMode ? '☀️' : '🌙'}</span> {darkMode ? 'Light Canvas' : 'Dark Canvas'}
+            {darkMode ? 'Light mode' : 'Dark mode'}
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
@@ -443,21 +421,21 @@ function App() {
           </span>
         </div>
         <div className="wordmark">
-          M<span>✳</span>HA
+          <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 18L12 5l7 13H5Z" />
+            <circle cx="5" cy="18" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="18" r="2" />
+          </svg> MAHA
         </div>
-        <p className="eyebrow">CRIMINAL NETWORK INTELLIGENCE & LINK ANALYSIS WORKSPACE</p>
+        <p className="eyebrow">LOCAL EVIDENCE WORKSPACE</p>
         <h1>
-          Follow the evidence.
-          <br />
-          Uncover the syndicate.
+          Open your workspace
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', margin: '0 0 24px' }}>
-          Autonomous cross-case forensic network mapping, suspect risk scoring, and evidence-grounded intelligence.
+          Explore case records, trace connections, and review source evidence.
         </p>
         <form
           onSubmit={e => {
             e.preventDefault();
-            localStorage.setItem('maha_token', input);
             if (input === token) load();
             else setToken(input);
           }}
@@ -472,20 +450,6 @@ function App() {
           />
           <button disabled={busy}>{busy ? 'Opening…' : 'Open workspace →'}</button>
         </form>
-        <div style={{ marginTop: '10px' }}>
-          <button
-            type="button"
-            className="quiet"
-            style={{ fontSize: '11px', padding: '6px 12px' }}
-            onClick={() => {
-              setInput(defaultToken);
-              setToken(defaultToken);
-              localStorage.setItem('maha_token', defaultToken);
-            }}
-          >
-            ⚡ Auto-Fill Local Investigator Token
-          </button>
-        </div>
         {error && (
           <p role="alert" className="error">
             {error}
@@ -505,7 +469,8 @@ function App() {
     is_trained: analysis?.is_trained || false
   };
 
-  const isTrained = analysis?.is_trained && (analysis?.suspects?.length > 0);
+  const isTrained = Boolean(activeStatus.is_trained);
+  const caseStatus = isTrained ? "Analysis complete" : activeStatus.facts_count ? "Ready to analyze" : "No graph evidence yet";
   const connections = analysis?.leads?.filter(l => l.category === 'connection') || [];
   const behavior = analysis?.leads?.filter(l => l.category === 'flagged_behavior') || [];
   const suspects = analysis?.suspects || [];
@@ -515,23 +480,28 @@ function App() {
     (l.reason + ' ' + l.subject_ids.map(id => graph?.nodes?.find(n => n.id === id)?.label).join(' ')).toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredSuspects = suspects.filter(s => {
-    const matchText = (s.name + ' ' + s.title + ' ' + (s.role || '') + ' ' + s.why_flagged.join(' ')).toLowerCase().includes(search.toLowerCase());
-    const matchRisk = riskFilter === 'ALL' || s.risk_level === riskFilter;
-    return matchText && matchRisk;
-  });
+  const dossierGroups = [
+    ['witness', 'Witnesses in source records', s => s.source_roles?.some(role => /\bwitness\b/i.test(role))],
+    ['other', 'Other people in case records', s => !s.source_roles?.some(role => /\bwitness\b/i.test(role))]
+  ];
+  const filteredSuspects = suspects.filter(s =>
+    [s.name, s.role, s.authoritative_id].join(' ').toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className={`shell ${darkMode ? 'dark-theme' : ''}`}>
       <aside className="sidebar">
         <div className="wordmark">
-          M<span>✳</span>HA
+          <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 18L12 5l7 13H5Z" />
+            <circle cx="5" cy="18" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="18" r="2" />
+          </svg> MAHA
         </div>
-        <p className="eyebrow">CRIMINAL INTELLIGENCE · NCRB PS 26189</p>
+        <p className="eyebrow">EVIDENCE WORKSPACE</p>
         <nav>
           {[
             'Overview',
-            'Suspects',
+            'Dossiers',
             'Connections',
             'Flagged behavior',
             'Graph explorer',
@@ -545,12 +515,13 @@ function App() {
             <button
               key={name}
               className={tab === name ? 'active' : ''}
+              aria-current={tab === name ? 'page' : undefined}
               onClick={() => {
                 setTab(name);
                 setSearch('');
               }}
             >
-              <span className="nav-icon">{['◈', '⚡', '⌘', '⚑', '◎', '⇄', '◷', '＋', '☷', '☰', '▥'][i]}</span>
+              <span className="nav-icon" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
               {name}
             </button>
           ))}
@@ -563,7 +534,7 @@ function App() {
             onClick={() => setDarkMode(prev => !prev)}
             title={darkMode ? "Switch to light canvas" : "Switch to dark canvas"}
           >
-            <span>{darkMode ? '☀️' : '🌙'}</span> {darkMode ? 'Light Canvas' : 'Dark Canvas'}
+            {darkMode ? 'Light mode' : 'Dark mode'}
           </button>
           <span className="dot" /> Local workspace
           <p>
@@ -596,9 +567,9 @@ function App() {
               onClick={() => setDarkMode(prev => !prev)}
               title={darkMode ? "Switch to light canvas" : "Switch to dark canvas"}
             >
-              <span>{darkMode ? '☀️' : '🌙'}</span> {darkMode ? 'Light Canvas' : 'Dark Canvas'}
+              {darkMode ? 'Light mode' : 'Dark mode'}
             </button>
-            <span className="badge">{tab === 'Benchmarks' ? 'SEPARATE BENCHMARKS' : 'SYNTHETIC DEMO'}</span>
+            <span className="badge">{tab === 'Benchmarks' ? 'BENCHMARKS' : 'LOCAL WORKSPACE'}</span>
             <button className="quiet" onClick={exportReport}>
               Export report ↗
             </button>
@@ -614,16 +585,17 @@ function App() {
               value={activeCase}
               onChange={e => changeCase(e.target.value)}
               aria-label="Active Case"
+              disabled={busy}
             >
               {casesList.map(c => (
                 <option key={c.case_id} value={c.case_id}>
-                  {c.case_id} ({c.facts_count} facts · {c.is_trained ? 'Trained' : 'Untrained'})
+                  {c.case_id} · {c.facts_count} facts
                 </option>
               ))}
             </select>
 
             <span className={`case-status-pill ${isTrained ? 'status-trained' : 'status-untrained'}`}>
-              {isTrained ? `● ML Models Trained (${suspects.length} Suspects)` : `○ Untrained · Awaiting ML Execution`}
+              {caseStatus}
             </span>
           </div>
 
@@ -635,23 +607,10 @@ function App() {
               ↺ Reset Case
             </button>
             <button className="btn-tmpl" onClick={openTemplateModal}>
-              📥 Data Templates
+              Data Templates
             </button>
-            <button
-              className="btn-new-case"
-              style={{
-                background: showTrainingStudio ? '#b09459' : '#174c44',
-                color: showTrainingStudio ? '#102822' : '#fff',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-              onClick={() => {
-                setTab('Suspects');
-                setShowTrainingStudio(!showTrainingStudio);
-              }}
-            >
-              {showTrainingStudio ? '▲ View Ranked Suspects' : '➕ Add Evidence & Ingest Data'}
+            <button className="btn-train-primary" onClick={() => setTab('Import records')}>
+              Add evidence
             </button>
           </div>
         </section>
@@ -661,20 +620,20 @@ function App() {
             <p className="eyebrow">CASE INTELLIGENCE / {new Date().getFullYear()}</p>
             <h1>
               {tab === 'Overview'
-                ? 'An evidence-first perspective.'
-                : tab === 'Suspects'
+                ? 'Case overview'
+                : tab === 'Dossiers'
                 ? isTrained && !showTrainingStudio
-                  ? 'Ranked Suspect Intelligence Dossiers'
-                  : 'Investigation Intake & Model Training Studio'
+                  ? 'Dossiers'
+                  : 'Case analysis'
                 : tab}
             </h1>
             <p>
               {tab === 'Overview'
                 ? 'Explore relationships. Review unusual activity. Keep every source within reach.'
-                : tab === 'Suspects'
+                : tab === 'Dossiers'
                 ? isTrained && !showTrainingStudio
                   ? 'Synthesized across judicial proceedings, financial layering cycles, prior FIR records, and telecom communications.'
-                  : 'Ingest multi-modal evidence across Court Proceedings, Financial Transactions, Crime Records, and Telecom CDR calls. Train the ML models to dynamically synthesize connections and identify suspects.'
+                  : 'Import structured evidence and run case analysis.'
                 : 'Findings are for investigator review. A connection does not establish wrongdoing.'}
             </p>
           </div>
@@ -699,50 +658,33 @@ function App() {
         {tab === 'Overview' && (
           <>
             {!isTrained && (
-              <div
-                style={{
-                  background: '#fcf8ee',
-                  border: '1px solid #ebd9a2',
-                  borderRadius: '10px',
-                  padding: '20px 24px',
-                  marginBottom: '24px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '16px',
-                  flexWrap: 'wrap'
-                }}
-              >
+              <section className="case-next">
                 <div>
-                  <strong style={{ color: '#8a5e12', fontSize: '14px', display: 'block', marginBottom: '4px' }}>
-                    ⚡ Investigation Case "{activeCase}" Requires ML Training
-                  </strong>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#68501e' }}>
-                    Suspects are withheld until the model is trained on case evidence. You have {activeStatus.facts_count} facts recorded in this case. Ingest records and trigger the ML pipeline to extract suspect dossiers.
-                  </p>
+                  <strong>{caseStatus}</strong>
+                  <p>{activeStatus.facts_count
+                    ? 'Run case analysis to review connections and transaction patterns.'
+                    : 'Import records to build the case graph, or load a sample package.'}</p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn-sample" style={{ color: '#173d32', background: '#fff', borderColor: '#ebd9a2' }} onClick={handleLoadSample}>
-                    ⚡ Load Sample Package
-                  </button>
-                  <button
-                    className="btn-train-primary"
-                    style={{ padding: '10px 18px', fontSize: '12px' }}
-                    onClick={() => {
-                      setTab('Suspects');
+                <div className="case-actions">
+                  {!activeStatus.facts_count && (
+                    <button className="quiet" onClick={handleLoadSample} disabled={busy}>Load sample</button>
+                  )}
+                  <button className="btn-train-primary" onClick={() => {
+                    if (activeStatus.facts_count) {
                       setShowTrainingStudio(true);
-                    }}
-                  >
-                    Open Training Studio →
-                  </button>
+                      setTab('Dossiers');
+                    } else {
+                      setTab('Import records');
+                    }
+                  }}>{activeStatus.facts_count ? 'Open case analysis' : 'Import records'}</button>
                 </div>
-              </div>
+              </section>
             )}
 
             <section className="stats">
               {[
                 [casesList.length, 'Authorized cases'],
-                [suspects.length, isTrained ? 'Ranked suspects' : 'Suspects (Awaiting Train)'],
+                [suspects.length, 'Dossiers'],
                 [connections.length, 'Connection findings'],
                 [behavior.length, 'Behavior findings']
               ].map(([v, l]) => (
@@ -750,9 +692,7 @@ function App() {
                   <span>{l}</span>
                   <strong>{v.toString().padStart(2, '0')}</strong>
                   <small>
-                    {l.includes('Ranked suspects')
-                      ? 'Composite risk scored (0-100)'
-                      : l.includes('Behavior findings')
+                    {l.includes('Behavior findings')
                       ? 'Review signals, not conclusions'
                       : `Case: ${activeCase}`}
                   </small>
@@ -783,36 +723,36 @@ function App() {
               </section>
 
               <section className="panel review-panel">
-                <p className="eyebrow">PRIORITY TARGETS</p>
-                <h2>Suspects of interest</h2>
+                <p className="eyebrow">REVIEW QUEUE</p>
+                <h2>Case dossiers</h2>
                 {isTrained ? (
                   <>
-                    <p>Top ranked suspects synthesized across court records and fund flows.</p>
+                    <p>People with source references in the selected case.</p>
                     {suspects.slice(0, 3).map(s => (
-                      <button className="mini-lead" key={s.id} onClick={() => { setTab('Suspects'); setSelected(s); }}>
-                        <span>⚡</span>
+                      <button className="mini-lead" key={s.id} onClick={() => { setTab('Dossiers'); setSelected(s); }}>
+
                         <div>
                           <strong>{s.title}: {s.name}</strong>
-                          <p>{s.role} · Risk {s.risk_score} ({s.risk_level})</p>
+                          <p>{s.role || 'Role unspecified'}</p>
                         </div>
                         <b>→</b>
                       </button>
                     ))}
-                    <button className="quiet" style={{ marginTop: '12px', width: '100%' }} onClick={() => setTab('Suspects')}>
-                      View all {suspects.length} suspect dossiers →
+                    <button className="quiet" style={{ marginTop: '12px', width: '100%' }} onClick={() => setTab('Dossiers')}>
+                      View all {suspects.length} person dossiers →
                     </button>
                   </>
                 ) : (
                   <div style={{ padding: '20px 0' }}>
-                    <p style={{ color: '#8c6827' }}>
-                      No suspects shown yet. The model has not been trained on this case data.
+                    <p >
+                      Run case analysis to see available dossiers.
                     </p>
                     <button
                       className="btn-train-primary"
                       style={{ width: '100%', marginTop: '8px', fontSize: '12px', padding: '12px' }}
-                      onClick={() => setTab('Suspects')}
+                      onClick={() => setTab('Dossiers')}
                     >
-                      ⚡ Train Model on Data →
+                      Open case analysis
                     </button>
                   </div>
                 )}
@@ -826,7 +766,7 @@ function App() {
         )}
 
         {/* SUSPECTS TAB */}
-        {tab === 'Suspects' && (
+        {tab === 'Dossiers' && (
           <>
             {/* If Untrained OR User clicked 'Ingest & Retrain', render the INTAKE & TRAINING STUDIO */}
             {(!isTrained || showTrainingStudio) && (
@@ -834,67 +774,89 @@ function App() {
                 <div className="intake-hero">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
                     <div>
-                      <h2>Investigation Evidence Intake & ML Training Studio</h2>
+                      <h2>Evidence intake</h2>
                       <p>
-                        Feed real or synthetic multi-modal data into case <strong>{activeCase}</strong> across Judicial Proceedings, Financial Wires, Police FIRs, and Telecom CDR calls. When ready, execute the ML training pipeline to extract ranked suspect intelligence dossiers.
+                        Import court, transaction, incident, and call records for <strong>{activeCase}</strong>.
                       </p>
                     </div>
                     {isTrained && (
                       <button className="quiet" onClick={() => setShowTrainingStudio(false)}>
-                        View Current Suspects ({suspects.length}) →
+                        View dossiers ({suspects.length}) →
                       </button>
                     )}
                   </div>
                 </div>
 
-                {/* Feature 3: Raw Free-Text FIR / Court Judgment Zero-Shot Ingestor */}
+                {/* Feature 3: Paste case text */}
                 <div className="raw-text-panel">
-                  <h3><span>📝</span> Raw Free-Text FIR / Court Judgment Zero-Shot Ingestor</h3>
+                  <h3>Paste case text</h3>
                   <p>
-                    Paste raw, unformatted police FIR text, interrogation transcripts, or judicial orders. The Zero-Shot NLP parser automatically extracts accused persons, bank accounts, and statutory sections without requiring JSON.
+                    Choose the document type. Judgment text uses legal entity extraction. FIR and other text use general entity extraction. Review the results under Quality.
                   </p>
                   <div className="raw-text-presets">
-                    <span style={{ fontSize: '11px', color: '#557063', alignSelf: 'center' }}>Sample Presets:</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', alignSelf: 'center' }}>Sample Presets:</span>
                     <button
                       type="button"
                       className="btn-preset"
                       onClick={() => {
+                        setRawSynthetic(true);
+                        setRawSourceType('police_fir');
                         setRawTitle('ED-PMLA-COMPLAINT-142');
                         setRawText(`IN THE SPECIAL COURT FOR PMLA OFFENSES: Directorate of Enforcement vs. Vikram Singhania [ID:P001] & Ors.\nPrime Accused Vikram Singhania operates HDFC Bank account 001928374 for layering procurement fraud kickbacks of ₹14,200,000.\nCo-conspirator Rajesh Sharma operates ICICI Bank account 009847261 as hawala mule routing pass-through tranches.\nCharges registered under PMLA Section 3 & 4 and IPC Section 420 and 120B.\nNon-Bailable Warrant issued by EOW.`);
                       }}
                     >
-                      ⚡ Preset 1: PMLA Procurement FIR
+                      Preset 1: PMLA Procurement FIR
                     </button>
                     <button
                       type="button"
                       className="btn-preset"
                       onClick={() => {
+                        setRawSynthetic(true);
+                        setRawSourceType('police_fir');
                         setRawTitle('CYBER-PS-FIR-204');
                         setRawText(`CYBER CRIME POLICE STATION: State vs. Dev Shah [ID:P003] & Associates.\nAccused Dev Shah operates darknet crypto conversion infrastructure and Axis Bank account 005511223.\nMule coordinator Vikas Agarwal routed funds through Axis Bank and ICICI Bank.\nFIR No. 204/2023 under IT Act Section 66D and IPC Section 420. Look-Out Circular (LOC) active at international airports.`);
                       }}
                     >
-                      ⚡ Preset 2: Cyber Financial Fraud FIR
+                      Preset 2: Cyber Financial Fraud FIR
                     </button>
                     <button
                       type="button"
                       className="btn-preset"
                       onClick={() => {
+                        setRawSynthetic(true);
+                        setRawSourceType('police_fir');
                         setRawTitle(`EOW-FIR-144-${activeCase}`);
                         setRawText(`POLICE STATION: Economic Offenses Wing (EOW), Mandir Marg, New Delhi\nFIR No: 144/2026 | Date: 12-03-2026\nActs & Sections: Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), read with Section 3 & 4 of Prevention of Money Laundering Act, 2002 (PMLA).\n(i) Accused Vikram Malhotra [ID:P101], Managing Director, Zenith Health Ventures Ltd. Role: Prime Syndicate Mastermind and beneficial owner of destination fund accounts.\n(ii) Accused Sanjay Agarwal [ID:P102], Financial Consultant & Hawala Remittance Mule Coordinator. Operates account ACC-AGARWAL-882 at Bank 010.\n(iii) Accused Karan Singhania [ID:P103], Dummy Director, Apex Logistics Front Corp. Operates account ACC-APEXSHELL-993 at Bank 010.\n(iv) Accused Rohit Verma [ID:P104], Operator of unauthorized digital escrow and crypto mixing channels, account ACC-VERMA-104 at Bank 010.\nAllegations: Accused Vikram Malhotra [ID:P101] utilized shell corporate vehicles to route approximately $750,000 USD of misappropriated funds through closed-loop layering transfers. Primary layering was executed through bank account 010 / ACC-MALHOTRA-771 into mule account 010 / ACC-AGARWAL-882, which was then layered into shell account 010 / ACC-APEXSHELL-993 before returning into primary beneficiary accounts under the guise of dividend reinvestment.`);
                       }}
                     >
-                      ⚡ Preset 3: Zenith Healthcare Syndicate (P101/P102/P103)
+                      Preset 3: Zenith Healthcare Syndicate (P101/P102/P103)
                     </button>
+                  </div>
+                  <div className="case-actions">
+                    <label>Document type
+                      <select value={rawSourceType} onChange={event => setRawSourceType(event.target.value)}>
+                        <option value="police_fir">Police FIR</option>
+                        <option value="court_judgment">English Indian court judgment</option>
+                        <option value="other">Other English text</option>
+                      </select>
+                    </label>
+                    <label>Source title
+                      <input value={rawTitle} maxLength={120} onChange={event => setRawTitle(event.target.value)} />
+                    </label>
+                    <label><input type="checkbox" checked={rawSynthetic}
+                      onChange={event => setRawSynthetic(event.target.checked)} /> Synthetic example</label>
                   </div>
                   <textarea
                     className="raw-text-area"
+                    aria-label="Case text"
+                    maxLength={50000}
                     placeholder="Paste raw police FIR, prosecution complaint, or interrogation transcript here..."
                     value={rawText}
                     onChange={e => setRawText(e.target.value)}
                   />
                   <div className="raw-text-footer">
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>
-                      Case Scope: <strong style={{ color: '#0f172a' }}>{activeCase}</strong>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      Case Scope: <strong style={{ color: 'var(--text-primary)' }}>{activeCase}</strong>
                     </span>
                     <button
                       type="button"
@@ -902,7 +864,7 @@ function App() {
                       disabled={!rawText.trim() || busy}
                       onClick={handleRawTextImport}
                     >
-                      ⚡ Parse & Ingest with Zero-Shot NLP →
+                      Extract mentions
                     </button>
                   </div>
                 </div>
@@ -913,7 +875,7 @@ function App() {
                   <div className="intake-card">
                     <div>
                       <div className="intake-card-top">
-                        <span className="intake-card-icon">🏛️</span>
+
                         <div>
                           <h3 className="intake-card-title">Court Proceedings</h3>
                           <span className="intake-card-format">Legal Narrative JSON</span>
@@ -964,7 +926,7 @@ function App() {
                   <div className="intake-card">
                     <div>
                       <div className="intake-card-top">
-                        <span className="intake-card-icon">💳</span>
+
                         <div>
                           <h3 className="intake-card-title">Financial Wires</h3>
                           <span className="intake-card-format">Transactions CSV</span>
@@ -1007,7 +969,7 @@ function App() {
                   <div className="intake-card">
                     <div>
                       <div className="intake-card-top">
-                        <span className="intake-card-icon">🚨</span>
+
                         <div>
                           <h3 className="intake-card-title">Crime FIR Records</h3>
                           <span className="intake-card-format">History Registry CSV</span>
@@ -1050,7 +1012,7 @@ function App() {
                   <div className="intake-card">
                     <div>
                       <div className="intake-card-top">
-                        <span className="intake-card-icon">📞</span>
+
                         <div>
                           <h3 className="intake-card-title">Telecom CDR Calls</h3>
                           <span className="intake-card-format">CDR Intercepts CSV</span>
@@ -1090,529 +1052,79 @@ function App() {
                   </div>
                 </div>
 
-                {/* Feature 4: ML Tuning & Custom Risk Weights */}
-                <div className="tuning-box">
-                  <div className="tuning-head" onClick={() => setShowTuning(!showTuning)}>
-                    <h4>
-                      <span>🎛️</span> Model Hyperparameters & Investigative Risk Weights Policy
-                    </h4>
-                    <span className="tuning-toggle-btn">
-                      {showTuning ? '▲ Hide Tuning' : '▼ Customize Weights & Anomaly Sensitivity'}
-                    </span>
-                  </div>
-                  {showTuning && (
-                    <>
-                      <div className="tuning-grid">
-                        <div className="tuning-item">
-                          <div className="tuning-label">
-                            <span>Isolation Forest Contamination:</span> <strong>{(contamination * 100).toFixed(0)}%</strong>
-                          </div>
-                          <input
-                            type="range"
-                            className="tuning-slider"
-                            min="0.01"
-                            max="0.15"
-                            step="0.01"
-                            value={contamination}
-                            onChange={e => setContamination(parseFloat(e.target.value))}
-                          />
-                          <small>Proportion of transactions flagged as anomalous.</small>
-                        </div>
-                        <div className="tuning-item">
-                          <div className="tuning-label">
-                            <span>Financial Layering Weight:</span> <strong>{wFinancial} pts</strong>
-                          </div>
-                          <input
-                            type="range"
-                            className="tuning-slider"
-                            min="10"
-                            max="60"
-                            step="1"
-                            value={wFinancial}
-                            onChange={e => setWFinancial(parseInt(e.target.value))}
-                          />
-                          <small>Multi-hop loops and Isolation Forest score.</small>
-                        </div>
-                        <div className="tuning-item">
-                          <div className="tuning-label">
-                            <span>Court & Crime Charges Weight:</span> <strong>{wCourt} pts</strong>
-                          </div>
-                          <input
-                            type="range"
-                            className="tuning-slider"
-                            min="10"
-                            max="50"
-                            step="1"
-                            value={wCourt}
-                            onChange={e => setWCourt(parseInt(e.target.value))}
-                          />
-                          <small>PMLA, IPC 420/120B, warrants and LOCs.</small>
-                        </div>
-                        <div className="tuning-item">
-                          <div className="tuning-label">
-                            <span>Network Centrality Weight:</span> <strong>{wCentrality} pts</strong>
-                          </div>
-                          <input
-                            type="range"
-                            className="tuning-slider"
-                            min="5"
-                            max="40"
-                            step="1"
-                            value={wCentrality}
-                            onChange={e => setWCentrality(parseInt(e.target.value))}
-                          />
-                          <small>Betweenness, PageRank, and CDR degree.</small>
-                        </div>
-                        <div className="tuning-item">
-                          <div className="tuning-label">
-                            <span>Cross-Jurisdiction Scope:</span> <strong>{wCrossCase} pts</strong>
-                          </div>
-                          <input
-                            type="range"
-                            className="tuning-slider"
-                            min="5"
-                            max="30"
-                            step="1"
-                            value={wCrossCase}
-                            onChange={e => setWCrossCase(parseInt(e.target.value))}
-                          />
-                          <small>Multi-case involvement & alias identity.</small>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <button
-                          type="button"
-                          className="btn-tuning-reset"
-                          onClick={() => {
-                            setContamination(0.05);
-                            setWFinancial(35);
-                            setWCourt(30);
-                            setWCentrality(20);
-                            setWCrossCase(15);
-                          }}
-                        >
-                          ↺ Reset to Standard Weights (35/30/20/15)
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-
                 {/* Training Trigger Box */}
                 <div className="train-box" style={{ marginTop: '16px' }}>
                   <div className="train-box-info">
-                    <h3>⚡ Ready to Train Machine Learning Models</h3>
+                    <h3>Run case analysis</h3>
                     <p>
                       Current Case Facts: <strong>{activeStatus.facts_count} records</strong> in SQLite ledger.
                       <br />
-                      Models to train: Isolation Forest (AML Anomaly Detector), Graph Layering Cycle Classifier, and NLP Entity Resolver.
+                      Checks graph connections and fund-flow cycles. Fits Isolation Forest when a transaction group has enough records.
                     </p>
                   </div>
                   <div className="train-box-actions">
                     <button className="btn-sample" onClick={handleLoadSample} disabled={isTraining || busy}>
-                      ⚡ 1-Click Load Sample Package
+                      1-Click Load Sample Package
                     </button>
                     <button
                       className="btn-train-primary"
                       onClick={handleTrainModels}
                       disabled={isTraining || busy || activeStatus.facts_count === 0}
                     >
-                      {isTraining ? 'Training in Progress…' : '⚡ Train ML Models & Extract Suspects'}
+                      {isTraining ? 'Analyzing…' : 'Run analysis'}
                     </button>
                   </div>
                 </div>
 
-                {/* Training Stepper Progress */}
                 {isTraining && (
-                  <div className="training-stepper">
-                    <div className="stepper-head">
-                      <span className="step-spin" />
-                      <span>Machine Learning Training Pipeline in Execution:</span>
-                    </div>
-                    <div className="stepper-steps">
-                      {[
-                        'Ingesting Multi-Modal Evidence & Assertions (Court, Trans, Crime, CDR)...',
-                        'Fitting Isolation Forest AML Anomaly Detection Model...',
-                        'Detecting Closed Graph Layering Cycles & Hawala Hop Flow...',
-                        'Running NLP Spacy Entity Resolution & Statutory Charge Extraction...',
-                        'Synthesizing Multi-Factor Risk Scores (0-100) & Digital Provenance Seals...'
-                      ].map((stepName, sIdx) => {
-                        const stepNum = sIdx + 1;
-                        let stateClass = 'pending';
-                        let icon = '○';
-                        if (trainStep === stepNum) {
-                          stateClass = 'active';
-                          icon = '⚡';
-                        } else if (trainStep > stepNum) {
-                          stateClass = 'done';
-                          icon = '✓';
-                        }
-                        return (
-                          <div key={sIdx} className={`step-row ${stateClass}`}>
-                            <span>{icon}</span>
-                            <span>
-                              Stage {stepNum}: {stepName}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div className="training-stepper" role="status">
+                    <div className="stepper-head"><span className="step-spin" /> Analyzing case evidence…</div>
                   </div>
                 )}
               </section>
             )}
 
-            {/* If TRAINED, render the RANKED SUSPECT DOSSIERS */}
             {isTrained && !showTrainingStudio && (
-              <section className="panel" style={{ padding: '24px' }}>
-                {/* Persistent Action Bar for Ingesting More Records */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f5f8f2', border: '1px solid #d8e5d3', borderRadius: '8px', padding: '14px 20px', marginBottom: '22px', flexWrap: 'wrap', gap: '14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '20px', background: '#e3ece0', borderRadius: '6px', padding: '6px 10px' }}>📂</span>
-                    <div>
-                      <strong style={{ fontSize: '13px', color: '#163d33', display: 'block' }}>Active Evidence Base: {activeStatus.facts_count} facts stored in {activeCase}</strong>
-                      <span style={{ fontSize: '11px', color: '#556d61' }}>Need to add more court documents, banking transactions, FIRs, or CDR call logs?</span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="btn-new-case"
-                      style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', border: '1px solid #334155', color: '#fff', fontSize: '12px', padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: '6px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
-                      onClick={() => setShowTrainingStudio(true)}
-                    >
-                      ➕ Ingest More Records & Retrain →
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-sample"
-                      style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#334155', fontSize: '11px', padding: '9px 14px', borderRadius: '8px', fontWeight: 500, cursor: 'pointer' }}
-                      onClick={openTemplateModal}
-                    >
-                      📥 Download Templates
-                    </button>
-                  </div>
+              <section className="panel">
+                <div className="panel-head">
+                  <h2>{filteredSuspects.length} person dossiers</h2>
+                  <input aria-label="Search dossiers" placeholder="Search names, roles, or IDs"
+                    value={search} onChange={event => setSearch(event.target.value)} />
+                  <button className="quiet" onClick={() => setShowTrainingStudio(true)}>Open case analysis</button>
                 </div>
-
-                {/* AI Investigator Copilot */}
-                <div className="copilot-container">
-                  <div className="copilot-header">
-                    <h3>
-                      <span className="copilot-lottie-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', flexShrink: 0, overflow: 'hidden' }}>
-                        <iframe
-                          src="https://lottie.host/embed/1f50be53-bbab-4714-9203-ee03f8fe47cf/DDNJAaolxB.lottie"
-                          style={{ width: '44px', height: '44px', border: 'none', background: 'transparent', pointerEvents: 'none', overflow: 'hidden' }}
-                          title="AI Investigator Copilot Animation"
-                        />
-                      </span>
-                      AI Investigator Copilot / Query Assistant
-                    </h3>
-                    <span className="copilot-badge">NCRB PS 26189 · EVIDENCE-GROUNDED</span>
-                  </div>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 12px' }}>
-                    Ask forensic queries across judicial records, financial layering loops, and communication networks:
-                  </p>
-                  <div className="copilot-chips">
-                    {[
-                      `Who is the prime accused in ${activeCase}?`,
-                      'Show closed layering fund-flow cycles',
-                      'Active Look-Out Circulars (LOC) and police warrants',
-                      'CDR call intercepts between suspects'
-                    ].map(chip => (
-                      <button
-                        key={chip}
-                        className="chip-btn"
-                        onClick={() => {
-                          setCopilotQuery(chip);
-                          askCopilot(chip);
-                        }}
-                      >
-                        ⚡ {chip}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="copilot-input-row">
-                    <input
-                      className="copilot-input"
-                      placeholder="Type forensic query (e.g., 'Who is the mastermind?', 'Accounts in money loop'…)"
-                      value={copilotQuery}
-                      onChange={e => setCopilotQuery(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') askCopilot();
-                      }}
-                    />
-                    <button className="copilot-btn" onClick={() => askCopilot()} disabled={copilotBusy}>
-                      {copilotBusy ? 'Analyzing…' : 'Ask Evidence →'}
-                    </button>
-                  </div>
-                  {copilotResult && (
-                    <div className="copilot-result">
-                      <div className="copilot-summary">
-                        <strong>Analysis:</strong> {copilotResult.summary}
-                      </div>
-                      <div className="copilot-findings">
-                        {copilotResult.findings.map((f, fi) => (
-                          <div className="copilot-finding-item" key={fi}>
-                            <strong>{f.title}</strong>
-                            <p>{f.detail}</p>
-                            {f.evidence_ids?.length > 0 && (
-                              <button
-                                className="quiet"
-                                style={{ marginTop: '6px', fontSize: '10px', padding: '4px 8px' }}
-                                onClick={() => evidence(f.evidence_ids[0])}
-                              >
-                                View Source Evidence ({f.evidence_ids.length}) →
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Banner & Filter Bar */}
-                <div className="suspect-banner">
-                  <div>
-                    <strong>Multi-Factor Suspect Prioritization Engine ({activeCase})</strong>
-                    <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#526b5d' }}>
-                      Combines Financial Layering & Anomalies ({wFinancial}%) · Court & Criminal Charges ({wCourt}%) · Network Centrality ({wCentrality}%) · Cross-Jurisdiction Scope ({wCrossCase}%).
-                    </p>
-                  </div>
-                  <div className="suspect-filters">
-                    <span>Risk level:</span>
-                    {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'EVALUATING'].map(lvl => (
-                      <button
-                        key={lvl}
-                        className={`filter-btn ${riskFilter === lvl ? 'active' : ''}`}
-                        onClick={() => setRiskFilter(lvl)}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="panel-head" style={{ padding: '0 0 20px', borderBottom: '1px solid #edf0e9' }}>
-                  <h2>{filteredSuspects.length} Ranked Suspects Generated by Model</h2>
-                  <input
-                    aria-label="Search suspects"
-                    placeholder="Search by name, role, FIR, or charge…"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    style={{ minWidth: '280px' }}
-                  />
-                </div>
-
-                <div style={{ marginTop: '20px' }}>
-                  {filteredSuspects.map(s => (
-                    <article className="suspect-card" key={s.id}>
-                      <div className="suspect-top">
-                        <div className="suspect-identity">
-                          <span className="suspect-rank">{s.title}</span>
-                          <h3 className="suspect-name">{s.name}</h3>
-                          <span className="suspect-auth">ID: {s.authoritative_id}</span>
-                          {s.role && <span className="suspect-role">{s.role}</span>}
-                          {s.syndicate_tier && (
-                            <span
-                              className={`tier-badge ${
-                                s.syndicate_tier.startsWith('Tier-1')
-                                  ? 'tier-1'
-                                  : s.syndicate_tier.startsWith('Tier-2')
-                                  ? 'tier-2'
-                                  : 'tier-3'
-                              }`}
-                            >
-                              {s.syndicate_tier}
-                            </span>
-                          )}
-                        </div>
-                        <div>
-                          <span className={`risk-pill risk-${s.risk_level.toLowerCase()}`}>
-                            ⚡ Risk {s.risk_score} / 100 · {s.risk_level} RISK
-                          </span>
-                        </div>
-                      </div>
-
-                      {s.modus_operandi && (
-                        <div className="mo-box">
-                          <strong>Modus Operandi (M.O.) Analysis</strong>
-                          <p>{s.modus_operandi}</p>
-                        </div>
-                      )}
-
-                      <div className="risk-breakdown-bar">
-                        <div className="breakdown-item">
-                          <span className="breakdown-label">Financial Layering / IF</span>
-                          <span className="breakdown-value">{s.risk_breakdown.financial_anomaly} / {wFinancial} pts</span>
-                        </div>
-                        <div className="breakdown-item">
-                          <span className="breakdown-label">Court & Crime Charges</span>
-                          <span className="breakdown-value">{s.risk_breakdown.court_criminal} / {wCourt} pts</span>
-                        </div>
-                        <div className="breakdown-item">
-                          <span className="breakdown-label">Network Centrality</span>
-                          <span className="breakdown-value">{s.risk_breakdown.network_centrality} / {wCentrality} pts</span>
-                        </div>
-                        <div className="breakdown-item">
-                          <span className="breakdown-label">Cross-Case / Aliases</span>
-                          <span className="breakdown-value">{s.risk_breakdown.cross_case_identity} / {wCrossCase} pts</span>
-                        </div>
-                      </div>
-
-                      <div className="suspect-section-title">
-                        <span>⚑</span> WHY FLAGGED BY INVESTIGATION ENGINE
-                      </div>
-                      <ul className="why-flagged-list">
-                        {s.why_flagged.map((why, idx) => {
-                          const tagMatch = why.match(/^\[(.*?)\]\s*(.*)$/);
-                          return (
-                            <li className="why-flagged-item" key={idx}>
-                              {tagMatch ? (
-                                <>
-                                  <span className="why-tag">{tagMatch[1]}</span>
-                                  <span>{tagMatch[2]}</span>
-                                </>
-                              ) : (
-                                <span>{why}</span>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-
-                      {/* Feature 1: Hop-by-Hop Fund Trail Visualizer */}
-                      {expandedTrail === s.id && (
-                        <div className="fund-trail-box">
-                          <div className="fund-trail-title">
-                            <strong><span>🌊</span> Hop-by-Hop Financial Fund Flow Trail ({s.fund_trail?.length || 0} Hops)</strong>
-                            <span style={{ fontSize: '10px', color: '#527264' }}>Closed Loop Layering Analysis</span>
-                          </div>
-                          {s.fund_trail?.length > 0 ? (
-                            <div className="trail-hops-grid">
-                              {s.fund_trail.map((hop, hidx) => (
-                                <div className="trail-hop-item" key={hidx}>
-                                  <span className="hop-badge">HOP #{hop.hop}</span>
-                                  <div className="hop-flow">
-                                    <span className="hop-account">{hop.from_account}</span>
-                                    <span className="hop-arrow">➔</span>
-                                    <span className="hop-account">{hop.to_account}</span>
-                                    <span className="hop-amount">{hop.amount}</span>
-                                    <span style={{ fontSize: '10px', color: '#77887e' }}>via {hop.payment_format}</span>
-                                  </div>
-                                  <div className="hop-meta">
-                                    <span className={`hop-flag ${hop.is_laundering ? 'flag-laundering' : 'flag-normal'}`}>{hop.flag}</span>
-                                    <span style={{ fontSize: '10px', color: '#688073' }}>{hop.stage}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p style={{ margin: 0, fontSize: '11px', color: '#798d81' }}>No direct account layering cycles identified for this profile.</p>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="suspect-section-title">
-                        <span>☰</span> KEY INVESTIGATIVE DETAILS
-                      </div>
-                      <div className="details-grid">
-                        <div className="detail-box">
-                          <strong>Associated Accounts ({s.key_details.accounts.length})</strong>
-                          {s.key_details.accounts.length ? (
-                            s.key_details.accounts.map((ac, ai) => (
-                              <div key={ai} style={{ margin: '2px 0' }}>
-                                <span>
-                                  {ac.bank} / {ac.account_number}
-                                </span>
+                {dossierGroups.map(([key, label, matches]) => {
+                  const dossiers = filteredSuspects.filter(matches);
+                  if (!dossiers.length) return null;
+                  return (
+                    <section key={key} className={`dossier-group dossier-group--${key}`}>
+                      <div className="dossier-group-heading"><h3>{label}</h3><span>{dossiers.length}</span></div>
+                      {dossiers.map(dossier => (
+                        <article className="suspect-card" key={dossier.id}>
+                          <h3>{dossier.name}</h3>
+                          <p>{dossier.role || 'No explicit source role recorded'}</p>
+                          {['connection', 'flagged_behavior'].map(category => {
+                            const findings = (dossier.findings || []).filter(finding => finding.category === category);
+                            return findings.length > 0 && (
+                              <div key={category}>
+                                <h4>{category === 'connection' ? 'Connections' : 'Transaction findings'}</h4>
+                                <ul>{findings.map(finding => (
+                                  <li key={finding.id}><button className="quiet"
+                                    onClick={() => { setEv(null); setSelected(finding); }}>{finding.reason}</button></li>
+                                ))}</ul>
                               </div>
-                            ))
-                          ) : (
-                            <span style={{ color: '#8a968e', fontWeight: 400 }}>No domestic accounts linked</span>
-                          )}
-                        </div>
-                        <div className="detail-box">
-                          <strong>Cross-Case Scope ({s.key_details.case_ids.length})</strong>
-                          <span>{s.key_details.case_ids.join(', ') || 'Single case'}</span>
-                        </div>
-                        <div className="detail-box">
-                          <strong>Criminal & FIR Records</strong>
-                          {s.key_details.crime_records.length ? (
-                            <span>{s.key_details.crime_records.map(cr => cr.record).join('; ')}</span>
-                          ) : (
-                            <span style={{ color: '#8a968e', fontWeight: 400 }}>No prior convictions in registry</span>
-                          )}
-                        </div>
-                        <div className="detail-box">
-                          <strong>CDR Phone Intercepts</strong>
-                          {s.key_details.communications?.length ? (
-                            <span>
-                              {s.key_details.communications.length} calls recorded · Contact:{' '}
-                              {s.key_details.communications[0].partner_name}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#8a968e', fontWeight: 400 }}>No direct calls recorded</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {s.recommended_actions?.length > 0 && (
-                        <div className="action-box">
-                          <strong style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#846c31' }}>
-                            Recommended Investigative Actions
-                          </strong>
-                          <ul className="action-list">
-                            {s.recommended_actions.map((act, ai) => (
-                              <li key={ai}>
-                                <span>⚡</span> {act}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {s.provenance_seal && (
-                        <div className="seal-bar" title={s.provenance_seal}>
-                          <span>🔒</span> <strong>Digital Provenance Seal (SHA-256):</strong> <span>{s.provenance_seal}</span>
-                        </div>
-                      )}
-
-                      <div className="suspect-actions-footer">
-                        <small>{s.evidence_ids.length} linked evidentiary sources in SQLite ledger</small>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          {/* Feature 1: Hop-by-Hop Trail Toggle Button */}
-                          <button
-                            className="btn-ego"
-                            onClick={() => setExpandedTrail(expandedTrail === s.id ? null : s.id)}
-                          >
-                            🌊 {expandedTrail === s.id ? 'Hide Fund Trail' : `Trace Fund Flow Trail (${s.fund_trail?.length || 0} Hops)`}
-                          </button>
-
-                          {/* Feature 2: Prosecution Charge Sheet */}
-                          <button
-                            className="btn-charge-sheet"
-                            onClick={() => window.open(`/api/charge-sheet/${s.id}?case=${encodeURIComponent(activeCase)}`, '_blank')}
-                          >
-                            🏛️ Court Charge Sheet ↗
-                          </button>
-
-                          <button className="btn-dossier" onClick={() => downloadDossier(s)}>
-                            📄 Court Dossier JSON ⬇
-                          </button>
-
-                          <button className="btn-ego" onClick={() => isolateInGraph(s)}>
-                            ◎ Focus in Graph
-                          </button>
-
-                          <button className="quiet" onClick={() => setSelected(s)}>
-                            Inspect Sources ({s.evidence_ids.length}) →
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                  {!filteredSuspects.length && <p className="empty">No suspects match this search or filter criteria.</p>}
-                </div>
+                            );
+                          })}
+                          <div className="case-actions">
+                            <button className="quiet" onClick={() => { setEv(null); setSelected(dossier); }}>Inspect sources ({dossier.evidence_ids.length})</button>
+                            <button className="quiet" onClick={() => isolateInGraph(dossier)}>Focus in graph</button>
+                            <button className="quiet" onClick={() => downloadDossier(dossier)}>Download evidence dossier</button>
+                          </div>
+                        </article>
+                      ))}
+                    </section>
+                  );
+                })}
+                {!filteredSuspects.length && <p className="empty">No person dossiers match this search.</p>}
               </section>
             )}
           </>
@@ -1718,7 +1230,7 @@ function App() {
         {tab === 'Import records' && (
           <section className="panel import-panel">
             <h2>Add evidence to a case</h2>
-            <p>Prototype intake accepts synthetic records only. Maximum file size: 25 MiB.</p>
+            <p>Demo formats are for synthetic records. Court judgment text is stored as reviewable mentions. Maximum file size: 25 MiB.</p>
             <form onSubmit={upload}>
               <label>
                 Authorized case
@@ -1735,6 +1247,7 @@ function App() {
                 <select name="kind">
                   <option value="ibm">IBM HI-Small CSV</option>
                   <option value="narrative">Synthetic narrative JSON</option>
+                  <option value="judgment">English Indian court judgment (.txt)</option>
                   <option value="cdr">Synthetic CDR CSV</option>
                   <option value="history">Synthetic case-history CSV</option>
                   <option value="pdf">MAHA fixed-layout PDF v1</option>
@@ -1742,7 +1255,7 @@ function App() {
               </label>
               <label>
                 Source file
-                <input name="file" type="file" accept=".csv,.json,.pdf" required />
+                <input name="file" type="file" accept=".csv,.json,.pdf,.txt" required />
               </label>
               <button disabled={busy}>Validate and import →</button>
             </form>
@@ -1763,6 +1276,30 @@ function App() {
                   <p>
                     {r.summary.rows_seen} records · {r.summary.accepted_new} accepted · {r.summary.recognized_repeat} repeats · {r.summary.quarantined} quarantined
                   </p>
+                  {r.summary.legal_mentions?.length > 0 && (
+                    <details>
+                      <summary>{r.summary.legal_mentions.length} legal mentions to review</summary>
+                      {r.summary.legal_mentions.map(({ evidence_id, label }) => (
+                        <button key={evidence_id} className="source-button" onClick={() => {
+                          setEv(null);
+                          setSelected({ label, reason: 'Original model extraction from this judgment' });
+                          evidence(evidence_id);
+                        }}>{label} ↗</button>
+                      ))}
+                    </details>
+                  )}
+                  {r.summary.text_mentions?.length > 0 && (
+                    <details>
+                      <summary>{r.summary.text_mentions.length} text observations</summary>
+                      {r.summary.text_mentions.map(({ evidence_id, label }) => (
+                        <button key={evidence_id} className="source-button" onClick={() => {
+                          setEv(null);
+                          setSelected({ label, reason: 'Source observation from pasted text' });
+                          evidence(evidence_id);
+                        }}>{label} ↗</button>
+                      ))}
+                    </details>
+                  )}
                   {r.summary.issues.map((x, i) => (
                     <p key={i} className="error">
                       {JSON.stringify(x.locator)}: {x.reason}
@@ -1778,10 +1315,33 @@ function App() {
         {tab === 'Benchmarks' && (
           <section className="panel">
             <div className="panel-head">
-              <h2>Temporal evaluation</h2>
+              <h2>Benchmark results</h2>
               <span className="badge">DATASETS REPORTED SEPARATELY</span>
             </div>
-            {list.map(r => (
+            {list.filter(report => report.layers).map(report => (
+              <article className="benchmark" key={report.dataset}>
+                <h2>{report.dataset}</h2>
+                <p>{report.scope}. {report.shared_nodes} nodes appear in both layers.</p>
+                {Object.entries(report.layers).map(([name, layer]) => (
+                  <div key={name}>
+                    <h3>{name.replaceAll('_', ' ')}</h3>
+                    <p>{layer.nodes} nodes, {layer.edges} ties, {layer.communities} communities.
+                      Clan agreement (adjusted Rand index) {layer.clan_adjusted_rand_index?.toFixed(3) ?? 'unavailable'} across {layer.clan_labeled_nodes} labeled nodes.</p>
+                    <table>
+                      <thead><tr><th>Metric</th><th>Boss median rank</th><th>Member median rank</th><th>Bosses ranked 10 or better</th></tr></thead>
+                      <tbody>
+                        {Object.entries(layer.ranks).map(([metric, ranks]) => (
+                          <tr key={metric}><td>{metric}</td><td>{ranks.boss_median_rank ?? '—'}</td>
+                            <td>{ranks.member_median_rank ?? '—'}</td><td>{ranks.bosses_ranked_at_most_10} / {layer.bosses}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+                <p>Ranks use explicit role labels from the release. Results describe one observed network.</p>
+              </article>
+            ))}
+            {list.filter(r => r.metrics).map(r => (
               <article className="benchmark" key={r.dataset}>
                 <h2>{r.dataset}</h2>
                 <p>{r.scope}</p>
@@ -1851,7 +1411,7 @@ function App() {
           </button>
           <p className="eyebrow">EVIDENCE DETAIL</p>
           <h2>{selected.title ? `${selected.title}: ${selected.name}` : selected.label || selected.left_name || selected.name || 'Finding for review'}</h2>
-          <p>{selected.role ? `${selected.role} · Risk Score: ${selected.risk_score} (${selected.risk_level})` : selected.reason || selected.type || 'Candidate identity match'}</p>
+          <p>{selected.role || selected.reason || selected.type || 'Inspect the source references below.'}</p>
           {selected.structural_context && <pre>{JSON.stringify(selected.structural_context, null, 2)}</pre>}
           {selected.behavior_score != null && (
             <p>
@@ -1874,7 +1434,7 @@ function App() {
           ))}
           {ev && (
             <div className="evidence">
-              <span className="tag">{ev.synthetic ? 'SYNTHETIC' : 'BENCHMARK'}</span>
+              <span className="tag">{ev.synthetic ? 'SYNTHETIC' : ev.dataset_id === 'court-judgment' ? 'LEGAL MENTION' : 'SOURCE EVIDENCE'}</span>
               <h3>{ev.source}</h3>
               <p>{JSON.stringify(ev.source_locator)}</p>
               <blockquote>{ev.passage}</blockquote>
@@ -1886,6 +1446,9 @@ function App() {
                 Imported: {ev.ingestion_time}
               </small>
             </div>
+          )}
+          {ev?.dataset_id === 'court-judgment' && (
+            <JudgmentReview key={ev.id} evidenceId={ev.id} api={api} />
           )}
           {selected.category && (
             <div className="review-actions">
@@ -1912,11 +1475,11 @@ function App() {
                 ×
               </button>
             </div>
-            <p style={{ fontSize: '12px', color: '#556d61', marginBottom: '16px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
               Create an isolated investigation container. The case will start completely clean with 0 facts and un-trained models.
             </p>
             <form onSubmit={handleCreateCase}>
-              <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 600, color: '#173f35' }}>
+              <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
                 Case Identifier / Number:
                 <input
                   placeholder="e.g. CASE-2026-X1"
@@ -1949,7 +1512,7 @@ function App() {
                 ×
               </button>
             </div>
-            <p style={{ fontSize: '12px', color: '#556d61', marginBottom: '20px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
               Use these exact file formats and headers to ingest real or synthetic records for court hearings, bank transactions, police FIRs, and telecom calls.
             </p>
 
@@ -1962,7 +1525,7 @@ function App() {
                     style={{ fontSize: '10px', padding: '4px 10px' }}
                     onClick={() => downloadFile(t.filename, t.content, t.format)}
                   >
-                    ⬇ Download {t.filename}
+                    Download {t.filename}
                   </button>
                 </h4>
                 <p>{t.description}</p>

@@ -36,7 +36,47 @@ class Store:
             CREATE TABLE IF NOT EXISTS imports(id TEXT PRIMARY KEY, source_id TEXT, case_id TEXT, created TEXT, summary TEXT);
             CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, source_id TEXT, case_id TEXT, data TEXT);
             CREATE TABLE IF NOT EXISTS facts(id TEXT PRIMARY KEY, case_id TEXT, evidence_id TEXT, data TEXT);
+            CREATE TABLE IF NOT EXISTS graph_state (
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                ledger_id TEXT NOT NULL,
+                revision INTEGER NOT NULL
+            );
+            INSERT OR IGNORE INTO graph_state VALUES (1, lower(hex(randomblob(16))), 0);
+            CREATE TRIGGER IF NOT EXISTS graph_facts_insert AFTER INSERT ON facts
+            BEGIN
+                UPDATE graph_state SET revision=revision+1 WHERE singleton=1;
+            END;
+            CREATE TRIGGER IF NOT EXISTS graph_facts_update AFTER UPDATE ON facts
+            BEGIN
+                UPDATE graph_state SET revision=revision+1 WHERE singleton=1;
+            END;
+            CREATE TRIGGER IF NOT EXISTS graph_facts_delete AFTER DELETE ON facts
+            BEGIN
+                UPDATE graph_state SET revision=revision+1 WHERE singleton=1;
+            END;
+            CREATE TRIGGER IF NOT EXISTS graph_evidence_insert AFTER INSERT ON evidence
+            BEGIN
+                UPDATE graph_state SET revision=revision+1 WHERE singleton=1;
+            END;
+            CREATE TRIGGER IF NOT EXISTS graph_evidence_update AFTER UPDATE ON evidence
+            BEGIN
+                UPDATE graph_state SET revision=revision+1 WHERE singleton=1;
+            END;
+            CREATE TRIGGER IF NOT EXISTS graph_evidence_delete AFTER DELETE ON evidence
+            BEGIN
+                UPDATE graph_state SET revision=revision+1 WHERE singleton=1;
+            END;
             CREATE INDEX IF NOT EXISTS facts_case ON facts(case_id);
+            CREATE TABLE IF NOT EXISTS judgment_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                evidence_id TEXT NOT NULL,
+                data TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS judgment_reviews_evidence ON judgment_reviews(evidence_id,id);
+            CREATE TRIGGER IF NOT EXISTS judgment_review_retention AFTER DELETE ON evidence
+            BEGIN
+                DELETE FROM judgment_reviews WHERE evidence_id=OLD.id;
+            END;
             CREATE INDEX IF NOT EXISTS evidence_case ON evidence(case_id);
             CREATE INDEX IF NOT EXISTS imports_case ON imports(case_id);
             CREATE TABLE IF NOT EXISTS decisions(id TEXT PRIMARY KEY, case_scope TEXT, data TEXT);
@@ -63,20 +103,6 @@ class Store:
                 db.execute('CREATE TABLE review_events(id INTEGER PRIMARY KEY, review_id TEXT, case_scope TEXT, data TEXT)')
                 db.execute('CREATE INDEX review_events_lead ON review_events(review_id)')
             
-            # Auto-seed default investigator user if new database
-            user_count = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-            if user_count == 0:
-                default_token = "WT49DfCpDyYerqLF_cQI-hkzH7Et7UXGZNUrb_EcneA"
-                token_hash = hashlib.sha256(default_token.encode()).hexdigest()
-                default_cases = json.dumps(["DEMO-C01", "DEMO-C02", "DEMO-C03", "CASE-2026-TEST", "CASE-RIGOROUS-02"])
-                db.execute("INSERT OR REPLACE INTO users VALUES(?,?,?)", ("investigator", token_hash, default_cases))
-                for c in ["DEMO-C01", "DEMO-C02", "DEMO-C03", "CASE-2026-TEST", "CASE-RIGOROUS-02"]:
-                    db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (c,))
-                try:
-                    access_file = self.root / "access.json"
-                    access_file.write_text(json.dumps({"investigator": default_token}, indent=2))
-                except OSError:
-                    pass
         try:
             self.path.chmod(0o600)
         except OSError:
@@ -110,19 +136,6 @@ class Store:
         if not row:
             raise PermissionError("Invalid access token")
         return {"name": row["name"], "cases": json.loads(row["cases"])}
-
-    def add_case_to_user(self, name, case_id):
-        case_id = case_id.strip()
-        with self.db() as db:
-            db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (case_id,))
-            row = db.execute("SELECT cases FROM users WHERE name=?", (name,)).fetchone()
-            if row:
-                current = json.loads(row["cases"])
-                if case_id not in current:
-                    current.append(case_id)
-                    current = sorted(set(current))
-                    db.execute("UPDATE users SET cases=? WHERE name=?", (json.dumps(current), name))
-        return case_id
 
     def reset_case(self, case_id):
         with self.db() as db:
@@ -167,6 +180,22 @@ class Store:
             raise KeyError(evidence_id)
         return json.loads(row["data"])
 
+    def graph_revision(self, db=None):
+        if db is None:
+            with self.db() as connection:
+                return self.graph_revision(connection)
+        row = db.execute('SELECT ledger_id,revision FROM graph_state WHERE singleton=1').fetchone()
+        return row['ledger_id'], row['revision']
+
+    def graph_export(self):
+        """Read the revision and both projected tables from one SQLite snapshot."""
+        with self.db() as db:
+            db.execute('BEGIN')
+            revision = self.graph_revision(db)
+            facts = [json.loads(row[0]) for row in db.execute('SELECT data FROM facts')]
+            evidence = [json.loads(row[0]) for row in db.execute('SELECT data FROM evidence')]
+        return revision, facts, evidence
+
     def facts(self, cases):
         if not cases:
             return []
@@ -205,6 +234,14 @@ class Store:
                     continue
                 extraction_version=record.get('extraction_version','0.1')
                 evidence_id = uid(dataset, source_id, case_id, record["locator"], extraction_version)
+                if record.get('method') == 'en_legal_ner_sm':
+                    summary.setdefault('legal_mentions', []).append({
+                        'evidence_id': evidence_id, 'label': record['locator']['legal_label']
+                    })
+                if 'text_label' in record['locator']:
+                    summary.setdefault('text_mentions', []).append({
+                        'evidence_id': evidence_id, 'label': record['locator']['text_label']
+                    })
                 if db.execute("SELECT 1 FROM evidence WHERE id=?", (evidence_id,)).fetchone():
                     summary["recognized_repeat"] += 1
                     continue
@@ -307,13 +344,17 @@ class Store:
 
     def add_case_to_user(self, username, case_id):
         with self.db() as db:
-            db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (case_id,))
-            u = db.execute("SELECT cases FROM users WHERE name=?", (username,)).fetchone()
-            if u:
-                cases = json.loads(u["cases"])
-                if case_id not in cases:
-                    cases.append(case_id)
-                    db.execute("UPDATE users SET cases=? WHERE name=?", (json.dumps(cases), username))
+            db.execute('BEGIN IMMEDIATE')
+            user = db.execute('SELECT cases FROM users WHERE name=?', (username,)).fetchone()
+            if user is None:
+                raise PermissionError('User unavailable')
+            cases = json.loads(user['cases'])
+            if case_id in cases:
+                return
+            inserted = db.execute('INSERT OR IGNORE INTO cases(id) VALUES(?)', (case_id,))
+            if not inserted.rowcount:
+                raise ValueError('Case identifier unavailable')
+            db.execute('UPDATE users SET cases=? WHERE name=?', (json.dumps([*cases, case_id]), username))
 
     def reset_case(self, case_id):
         with self.db() as db:

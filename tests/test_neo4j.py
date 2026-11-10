@@ -12,6 +12,7 @@ def test_live_neo4j_parity_and_scope():
     load_env();store=Store();neo=NeoGraph();cases=['DEMO-C01','DEMO-C02','DEMO-C03']
     try:
         local=snapshot(store,cases,use_neo=False);remote=snapshot(store,cases)
+        assert remote['backend']=='neo4j'
         assert {n['id'] for n in local['nodes']}=={n['id'] for n in remote['nodes']}
         cypher=neo.cross_cases(cases,remote['resolution_map'])
         leads=analyze(local)['leads']
@@ -21,3 +22,33 @@ def test_live_neo4j_parity_and_scope():
         assert {tuple(e['attrs']['transaction_id'] for e in p) for p in paths}=={tuple(r['transaction_ids']) for r in cycles}
         assert all(e['case_id']=='DEMO-C01' for e in neo.facts(['DEMO-C01']))
     finally:neo.close()
+
+
+@pytest.mark.skipif(os.getenv('MAHA_NEO4J_TEST')!='1',reason='Requires running seeded local Neo4j')
+def test_live_rebuild_rolls_back_on_failure():
+    from maha.cli import load_env
+    from maha.graph import NeoGraph
+    from maha.store import Store
+
+    load_env()
+    store = Store()
+    neo = NeoGraph()
+    cases = ['DEMO-C01']
+    try:
+        revision = neo.revision()
+        assert revision == store.graph_revision()
+        before = {fact['fact_id'] for fact in neo.facts(cases)}
+        assert before
+        # The writer deletes the old projection and inserts this assertion
+        # before the unsupported relationship causes the transaction to abort.
+        invalid_edge = {
+            'fact_id': 'rollback-probe', 'kind': 'edge', 'type': 'UNSUPPORTED',
+            'case_id': cases[0],
+        }
+        with pytest.raises(ValueError, match='Unsupported relationship'):
+            neo._replace((revision[0], revision[1] + 1), [invalid_edge], [])
+        assert neo.revision() == revision
+        assert {fact['fact_id'] for fact in neo.facts(cases)} == before
+        assert neo.sync(store) is False
+    finally:
+        neo.close()

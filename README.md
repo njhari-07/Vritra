@@ -107,11 +107,13 @@ Reports live under `artifacts/evaluation/`; committed summaries are in
 - `maha/api.py`, `frontend/`: authenticated API and React investigation workspace.
 - `docs/design/`: the five design artifacts and initial source inspection.
 
-Neo4j is the served graph when `.env` is loaded via the CLI. SQLite retains original
-observations; graph sync is an atomic replacement of only `Maha`-labeled graph data.
-After trusted CLI imports, run `sync`. Web imports sync automatically. If synchronization
-fails, the import remains in the ledger and must be retried with `sync`; Neo4j errors are
-not silently replaced with fabricated results.
+SQLite is the source of truth. With Neo4j configured, the API reconciles the
+ledger's committed revision in the background, including writes from CLI imports.
+Neo4j publishes its revision in the same transaction as the graph replacement.
+Until the revisions match, case graph reads use the SQLite ledger and identify
+it as their backend. A failed sync is retried automatically with backoff.
+Use `maha sync` to reconcile immediately. Run a dedicated Neo4j database per
+ledger. Synchronization still rebuilds the MAHA projection in one transaction.
 
 The graph demo is bounded and deliberately small. Full datasets are profiled/evaluated
 separately; the app does not load five million transfers into an interactive browser.

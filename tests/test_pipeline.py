@@ -272,3 +272,133 @@ def test_doctor_diagnostics(store):
     assert "overall_status" in r
     assert r["checks"]["ledger"]["status"] == "PASS"
     assert "disk_space" in r["checks"]
+
+
+def test_dossier_requires_sources_and_never_invents_charges(store):
+    from maha.api import create_app
+
+    token = store.create_user('reviewer', ['C1'])
+    headers = {'Authorization': 'Bearer ' + token}
+    person = node('Person', 'p', 'Example Person')
+    history = edge('INVOLVED_IN_CASE', 'p', 'C1', 'history',
+                   source_text='Witness mentioned PMLA, 420, and an FIR.',
+                   source_record_status='witness')
+    store.import_records('history', b'example', 'fixture', True, 'C1', [
+        {'locator': {'row': 1}, 'facts': [person, node('Case', 'C1', 'C1'), history]}
+    ])
+    client = TestClient(create_app(store))
+    run = client.post('/api/cases/C1/train', headers=headers)
+    assert run.status_code == 200
+    assert 'convergence_loss' not in run.json()['training_metadata']
+    response = client.get('/api/dossier/p?case=C1', headers=headers)
+    assert response.status_code == 200
+    dossier = response.json()
+    assert dossier['person']['key_details']['crime_records'][0]['status'] == 'witness'
+    assert dossier['source_evidence']
+    assert 'risk_score' not in dossier['person']
+    assert 'recommended_actions' not in dossier['person']
+    assert client.get('/api/charge-sheet/p', headers=headers).status_code == 410
+    assert client.get('/api/token').status_code == 404
+    for path in ('graph', 'analysis', 'dossier/p', 'report'):
+        assert client.get(f'/api/{path}?case=C2', headers=headers).status_code == 404
+
+
+def test_case_creation_cannot_grant_existing_case(store):
+    from maha.api import create_app
+
+    store.create_user('owner', ['C2'])
+    token = store.create_user('reviewer', ['C1'])
+    headers = {'Authorization': 'Bearer ' + token}
+    client = TestClient(create_app(store))
+    assert client.post('/api/cases', json={'case_id': 'C2'}, headers=headers).status_code == 409
+    assert client.get('/api/me', headers=headers).json()['cases'] == ['C1']
+    assert client.post('/api/cases', json={'case_id': 'C3'}, headers=headers).status_code == 200
+    assert client.post('/api/adjudicate/run', headers=headers).status_code == 410
+
+
+def test_judgment_review_preserves_original_and_case_scope(store):
+    from maha.api import create_app
+
+    reviewer = store.create_user('reviewer', ['C1'])
+    outsider = store.create_user('outsider', ['C2'])
+    headers = {'Authorization': 'Bearer ' + reviewer}
+    outside = {'Authorization': 'Bearer ' + outsider}
+    text = '🙂\r\nJustice A. Rao heard the matter.'
+    start = text.index('A. Rao')
+    result = store.import_records('judgment.txt', text.encode(), 'court-judgment', False, 'C1', [{
+        'locator': {'char_start': start, 'char_end': start + 6, 'legal_label': 'LAWYER'},
+        'method': 'en_legal_ner_sm', 'passage': 'A. Rao', 'facts': [],
+    }])
+    eid = result['legal_mentions'][0]['evidence_id']
+    original = store.evidence(eid, ['C1'])
+    revision = store.graph_revision()
+    url = f'/api/evidence/{eid}/judgment-review'
+    client = TestClient(create_app(store))
+    assert client.get(url, headers=outside).status_code == 404
+    initial = client.get(url, headers=headers).json()
+    assert initial['context'] == text and initial['history'] == []
+    payload = {'decision': 'corrected', 'reason': 'Honorific and context identify the judge',
+               'previous_id': None, 'start': text.index('Justice'), 'end': start + 6,
+               'label': 'JUDGE'}
+    assert client.post(url, json=payload, headers=outside).status_code == 404
+    assert client.post(url, json={**payload, 'end': len(text) + 1}, headers=headers).status_code == 422
+    saved = client.post(url, json=payload, headers=headers)
+    assert saved.status_code == 200
+    event = saved.json()
+    assert event['mention']['passage'] == 'Justice A. Rao'
+    assert event['actor'] == 'reviewer'
+    assert client.post(url, json=payload, headers=headers).status_code == 409
+    rejected = client.post(url, json={'decision': 'rejected', 'reason': 'Review superseded',
+                                    'previous_id': event['id']}, headers=headers)
+    assert rejected.status_code == 200
+    assert client.get(url, headers=headers).json()['history'] == [rejected.json(), event]
+    assert store.evidence(eid, ['C1']) == original
+    assert store.graph_revision() == revision
+    assert len([row for row in store.history('audit', ['C1'])
+                if row['action'] == 'judgment_mention_review']) == 2
+    store.reset_case('C1')
+    with store.db() as db:
+        assert db.execute('SELECT count(*) FROM judgment_reviews').fetchone()[0] == 0
+
+
+def test_pasted_text_routes_to_document_extractor(store, monkeypatch):
+    from types import SimpleNamespace
+    from maha import api, nlp
+
+    token = store.create_user('reviewer', ['C1'])
+    headers = {'Authorization': 'Bearer ' + token}
+    text = '  Justice Rao heard the matter.'
+    entity = SimpleNamespace(start_char=2, end_char=13, label_='PERSON', text='Justice Rao')
+
+    class GenericModel:
+        meta = {'version': 'test'}
+
+        def __call__(self, value):
+            assert value == text
+            return SimpleNamespace(ents=[entity])
+
+    def legal_records(content):
+        assert content.decode() == text
+        yield {'locator': {'char_start': 2, 'char_end': 13, 'legal_label': 'JUDGE'},
+               'passage': 'Justice Rao', 'method': 'en_legal_ner_sm', 'facts': []}
+
+    monkeypatch.setattr(nlp, 'pipeline', GenericModel)
+    monkeypatch.setattr(api, 'judgment_records', legal_records)
+    client = TestClient(api.create_app(store))
+    url = '/api/import/raw-text/C1'
+    payload = {'text': text, 'title': 'Review sample', 'source_type': 'police_fir', 'synthetic': True}
+    generic = client.post(url, json=payload, headers=headers)
+    assert generic.status_code == 200
+    mention = generic.json()['summary']['text_mentions'][1]
+    evidence = client.get('/api/evidence/' + mention['evidence_id'], headers=headers).json()
+    assert evidence['synthetic'] and evidence['passage'] == 'Justice Rao'
+    assert evidence['source_locator']['char_start'] == 2
+    legal = client.post(url, json={**payload, 'source_type': 'court_judgment'}, headers=headers)
+    assert legal.status_code == 200
+    eid = legal.json()['summary']['legal_mentions'][0]['evidence_id']
+    assert client.get(f'/api/evidence/{eid}/judgment-review', headers=headers).status_code == 200
+    repeated = client.post(url, json=payload, headers=headers)
+    assert repeated.json()['summary']['recognized_repeat'] == 2
+    assert client.post(url, json={**payload, 'source_type': 'unknown'}, headers=headers).status_code == 422
+    assert client.post('/api/import/raw-text/C2', json=payload, headers=headers).status_code == 403
+    assert not store.facts(['C1'])

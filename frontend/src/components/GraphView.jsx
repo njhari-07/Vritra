@@ -352,14 +352,14 @@ export default function GraphView({ graph, onSelect, darkMode = false, height = 
               onClick={() => setViewMode('clean')}
               title="Untangled view showing direct person-to-person and account flows"
             >
-              ⭐ Key Entities & Flows ({filteredData.nodes.length})
+              Key Entities & Flows ({filteredData.nodes.length})
             </button>
             <button
               className={`segmented-btn ${viewMode === 'full' ? 'active' : ''}`}
               onClick={() => setViewMode('full')}
               title="Complete forensic topology including all raw transaction and document nodes"
             >
-              🔬 Full Forensic Topology
+              Full Forensic Topology
             </button>
           </div>
 
@@ -370,9 +370,9 @@ export default function GraphView({ graph, onSelect, darkMode = false, height = 
             onChange={e => setLayoutMode(e.target.value)}
             title="Graph Physics & Layout Algorithm"
           >
-            <option value="forceAtlas2">🌐 Clustered (ForceAtlas2)</option>
-            <option value="hierarchical">🌳 Flow Hierarchy (Tree L→R)</option>
-            <option value="barnesHut">🌌 Organic Spread (Barnes-Hut)</option>
+            <option value="forceAtlas2">Clustered (ForceAtlas2)</option>
+            <option value="hierarchical">Flow Hierarchy (Tree L→R)</option>
+            <option value="barnesHut">Organic Spread (Barnes-Hut)</option>
           </select>
         </div>
 
@@ -387,7 +387,7 @@ export default function GraphView({ graph, onSelect, darkMode = false, height = 
               className="graph-search-input"
             />
             <button type="submit" className="graph-icon-btn" title="Focus entity">
-              🔍
+              Search
             </button>
           </form>
 
@@ -421,7 +421,7 @@ export default function GraphView({ graph, onSelect, darkMode = false, height = 
               className={`type-pill ${isEnabled ? 'active' : 'disabled'}`}
               style={{
                 borderColor: isEnabled ? theme.border : 'transparent',
-                backgroundColor: isEnabled ? (darkMode ? '#1e293b' : '#f1f5f9') : 'transparent'
+                backgroundColor: isEnabled ? ('var(--bg-subtle)') : 'transparent'
               }}
             >
               <span className="type-dot" style={{ backgroundColor: theme.bg }} />
@@ -465,7 +465,7 @@ export default function GraphView({ graph, onSelect, darkMode = false, height = 
           <span><i style={{ background: '#a855f7' }} /> Case Link</span>
         </div>
         <div className="legend-tip">
-          💡 Click any node to spotlight its direct network · Click background to reset
+          Click any node to spotlight its direct network · Click background to reset
         </div>
       </div>
     </div>
