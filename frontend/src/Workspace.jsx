@@ -1,7 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { createRoot } from 'react-dom/client';
-import { Network } from 'vis-network';
-import { DataSet } from 'vis-data';
+import React, { useEffect, useState, useRef, lazy, Suspense } from 'react';
+import { Link } from 'react-router-dom';
 import GraphView from './components/GraphView';
 import JudgmentReview from './components/JudgmentReview';
 import LeadsPanel from './components/LeadsPanel';
@@ -14,6 +12,8 @@ import BenchmarksTab from './components/BenchmarksTab';
 import EvidenceDrawer from './components/EvidenceDrawer';
 import GraphExplorerTab from './components/GraphExplorerTab';
 import './style.css';
+
+const HeroScene = lazy(() => import('./components/three/HeroScene'));
 
 const colors = {
   Person: '#d29b4e',
@@ -29,7 +29,8 @@ function Graph({ graph, onSelect, darkMode = false, height = '520px' }) {
   return <GraphView graph={graph} onSelect={onSelect} darkMode={darkMode} height={height} />;
 }
 
-function App() {
+// userSlot: account controls from the auth layer (Clerk UserButton), shown in the sidebar.
+export default function App({ userSlot = null }) {
   const [token, setToken] = useState('');
   const [input, setInput] = useState('');
   const [me, setMe] = useState(null);
@@ -401,8 +402,14 @@ function App() {
 
   if (!me)
     return (
+      <div className="login-stage">
+      <div className="login-stage-bg" aria-hidden="true">
+        <Suspense fallback={null}><HeroScene dim /></Suspense>
+      </div>
       <main className={`login ${darkMode ? 'dark-theme' : ''}`}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <Link to="/" className="login-back">← Home</Link>
+          {userSlot && <div className="clerk-user-slot">{userSlot}</div>}
           <button
             type="button"
             className="theme-toggle-btn"
@@ -461,6 +468,7 @@ function App() {
           Synthetic demonstration · Decision support, never a verdict
         </small>
       </main>
+      </div>
     );
 
   const activeStatus = casesList.find(c => c.case_id === activeCase) || {
@@ -536,6 +544,7 @@ function App() {
           >
             {darkMode ? 'Light mode' : 'Dark mode'}
           </button>
+          {userSlot && <div className="clerk-user-slot">{userSlot}</div>}
           <span className="dot" /> Local workspace
           <p>
             {me.name} · {casesList.length} cases
@@ -1538,5 +1547,3 @@ function App() {
     </div>
   );
 }
-
-createRoot(document.getElementById('root')).render(<App />);
