@@ -19,7 +19,12 @@ export const clerkAppearance = {
     fontFamily: 'Inter, system-ui, sans-serif'
   },
   elements: {
-    card: { boxShadow: '0 30px 80px -20px rgba(0,0,0,.7)', border: '1px solid rgba(148,163,184,.14)' }
+    card: { boxShadow: '0 30px 80px -20px rgba(0,0,0,.7)', border: '1px solid rgba(148,163,184,.14)' },
+    // Clerk's default social button text is dark; make it readable on the dark card.
+    socialButtonsBlockButton: { backgroundColor: '#0f172a', border: '1px solid rgba(148,163,184,.25)', color: '#e2e8f0' },
+    socialButtonsBlockButtonText: { color: '#e2e8f0', fontWeight: 500 },
+    dividerLine: { backgroundColor: 'rgba(148,163,184,.2)' },
+    dividerText: { color: '#94a3b8' }
   }
 };
 

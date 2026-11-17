@@ -101,7 +101,7 @@
 .auth-page { position: relative; display: flex; flex-direction: column; }
 .auth-bg { position: fixed; inset: 0; opacity: 0.85; }
 .auth-center { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 110px 16px 48px; gap: 18px; }
-.auth-note { font-size: 13px; color: var(--lp-muted); text-align: center; max-width: 380px; }
+.auth-note { font-size: 13px; color: #cbd5e1; text-align: center; max-width: 400px; padding: 8px 14px; border-radius: 10px; background: rgba(5, 8, 15, 0.75); backdrop-filter: blur(6px); }
 
 /* Shared splash (also used before the workspace loads) */
 .auth-splash { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 12px; background: #05080f; color: #94a3b8; font-family: var(--font-body, sans-serif); font-size: 14px; }
