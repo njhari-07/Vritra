@@ -1,0 +1,1064 @@
+[
+  {
+    "id": "IN-RAHIL",
+    "case_id": "IN-RAHIL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2014/20937/20937_2014_13_101_62212_Judgement_25-Jun-2025.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-CONSPIRACY-APPEAL",
+    "case_id": "IN-CONSPIRACY-APPEAL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2020/15273/15273_2020_15_1501_71630_Judgement_27-May-2026.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-CBI-APPEAL",
+    "case_id": "IN-CBI-APPEAL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2022/33180/33180_2022_3_8_65702_Judgement_11-Nov-2025.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-IDFC-ED",
+    "case_id": "IN-IDFC",
+    "kind": "agency_report",
+    "publisher": "Directorate of Enforcement",
+    "url": "https://enforcementdirectorate.gov.in/media/press-release-documents/0bdb85d2-c6f6-46ba-9c7f-0f896f8f2985_Press%20release%20Naresh%20Kumar%20Arrest-1.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-MALEGAON-ED",
+    "case_id": "IN-MALEGAON",
+    "kind": "agency_report",
+    "publisher": "Directorate of Enforcement",
+    "url": "https://enforcementdirectorate.gov.in/sites/default/files/latestnews/Press%20Release-Malegaon%20NAMCO%20Bank-%2006-12-2024%204.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-PPP-EDNC",
+    "case_id": "US-PPP-EDNC",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-ednc/pr/ringleaders-national-covid-19-fraud-scheme-sentenced-204-months-federal-prison",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-STAR-BURST",
+    "case_id": "US-STAR-BURST",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/mn/starburstsentencings.html",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-BANK-FRAUD-WAW",
+    "case_id": "US-BANK-FRAUD-WAW",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/waw/press/2005/apr/williams.html",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-IDENTITY-SDGA",
+    "case_id": "US-IDENTITY-SDGA",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-sdga/pr/leader-multi-state-identity-fraud-ring-sentenced-federal-prison",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-TELEMARKETING-RI",
+    "case_id": "US-TELEMARKETING-RI",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-ri/pr/two-individuals-sentenced-their-roles-transnational-fraud-scheme-targeting-elderly",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-CHECK-SDNY",
+    "case_id": "US-CHECK-SDNY",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-sdny/pr/leader-55-million-check-fraud-ring-sentenced-eight-years-prison",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "FIC-HOLMES-1661",
+    "case_id": "FIC-HOLMES-1661",
+    "kind": "fiction",
+    "publisher": "Project Gutenberg",
+    "url": "https://www.gutenberg.org/ebooks/1661.txt.utf-8",
+    "format": "txt",
+    "use": "gutenberg_us_public_domain"
+  },
+  {
+    "id": "FIC-HOLMES-244",
+    "case_id": "FIC-HOLMES-244",
+    "kind": "fiction",
+    "publisher": "Project Gutenberg",
+    "url": "https://www.gutenberg.org/ebooks/244.txt.utf-8",
+    "format": "txt",
+    "use": "gutenberg_us_public_domain"
+  },
+  {
+    "id": "US-KENT",
+    "case_id": "US-KENT",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Second Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca2-14-02082/pdf/USCOURTS-ca2-14-02082-0.pdf",
+    "format": "pdf",
+    "use": "published_court_opinion"
+  },
+  {
+    "id": "US-MORTGAGE-ILN",
+    "case_id": "US-MORTGAGE-ILN",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/iln/rockford/2005/pr0826_01.pdf",
+    "format": "pdf",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-INVOICE-SDNY",
+    "case_id": "US-INVOICE-SDNY",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/nys/pressreleases/July09/Schlussel%2CMichaelSentencingPR.pdf",
+    "format": "pdf",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-BANK-FRAUD-SDNY",
+    "case_id": "US-BANK-FRAUD-SDNY",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/nys/pressreleases/March15/ZamanMahabubuzSentencingPR.php",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-IDENTITY-MD",
+    "case_id": "US-IDENTITY-MD",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/md/news/archive/RingLeaderSentencedto6YearsinPrisoninBankFraudandIdentityTheftScheme.html",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-ROLE-RI",
+    "case_id": "US-ROLE-RI",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-ri/media/1410126/dl?inline=",
+    "format": "pdf",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "US-MGBODILE",
+    "case_id": "US-MGBODILE",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Eleventh Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca11-21-14176/pdf/USCOURTS-ca11-21-14176-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-ACURE",
+    "case_id": "US-ACURE",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Sixth Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca6-13-02598/pdf/USCOURTS-ca6-13-02598-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-CARD-APPEAL",
+    "case_id": "US-CARD-APPEAL",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Tenth Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca10-09-01416/pdf/USCOURTS-ca10-09-01416-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-COAL-APPEAL",
+    "case_id": "IN-COAL-APPEAL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2022/23381/23381_2022_9_1501_55018_Judgement_23-Aug-2024.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-DISCHARGE-APPEAL",
+    "case_id": "IN-DISCHARGE-APPEAL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2021/2840/2840_2021_6_1501_55871_Judgement_20-Sep-2024.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-CRAIG-BENNETT",
+    "case_id": "US-CRAIG-BENNETT",
+    "kind": "judgment",
+    "publisher": "U.S. District Court for the District of Minnesota",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-mnd-0_10-cr-00061/pdf/USCOURTS-mnd-0_10-cr-00061-4.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-ALLEN-SYLVESTER",
+    "case_id": "US-ALLEN-SYLVESTER",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Eighth Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca8-05-03799/pdf/USCOURTS-ca8-05-03799-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-BANK-LEADERS-MD",
+    "case_id": "US-BANK-LEADERS-MD",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/md/news/2012/Leadersof2.5MillionBankFraudConspiracySentencedtoPrison.html",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-DANSKE-PLEA",
+    "case_id": "US-DANSKE",
+    "kind": "plea_material",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/d9/press-releases/attachments/2022/12/13/attachments_0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-DANSKE-DOJ",
+    "case_id": "US-DANSKE",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archives/opa/pr/danske-bank-pleads-guilty-fraud-us-banks-multi-billion-dollar-scheme-access-us-financial",
+    "format": "html",
+    "use": "publisher_public_domain_policy"
+  },
+  {
+    "id": "FIC-MOONSTONE",
+    "case_id": "FIC-MOONSTONE",
+    "kind": "fiction",
+    "publisher": "Project Gutenberg",
+    "url": "https://www.gutenberg.org/ebooks/155.txt.utf-8",
+    "format": "txt",
+    "use": "gutenberg_us_public_domain"
+  },
+  {
+    "id": "US-WARREN",
+    "case_id": "US-WARREN",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca6-22-03323/pdf/USCOURTS-ca6-22-03323-0.pdf",
+    "format": "pdf",
+    "use": "published_court_opinion"
+  },
+  {
+    "id": "US-TAT",
+    "case_id": "US-TAT",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca9-22-50240/pdf/USCOURTS-ca9-22-50240-0.pdf",
+    "format": "pdf",
+    "use": "published_court_opinion"
+  },
+  {
+    "id": "US-MBENGA-ORDER",
+    "case_id": "US-IDENTITY-MD",
+    "kind": "judgment",
+    "publisher": "U.S. District Court for the District of Maryland",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-mdd-1_09-cr-00548/pdf/USCOURTS-mdd-1_09-cr-00548-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-BALDWIN",
+    "case_id": "US-BALDWIN",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the District of Columbia Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-caDC-05-03174/pdf/USCOURTS-caDC-05-03174-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-BINDRANAUTH",
+    "case_id": "US-BINDRANAUTH",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Eleventh Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca11-22-10944/pdf/USCOURTS-ca11-22-10944-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-PMLA-BAIL-2025",
+    "case_id": "IN-PMLA-BAIL-2025",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2024/47098/47098_2024_9_13_59015_Order_28-Jan-2025.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-GREEN",
+    "case_id": "US-GREEN",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Eleventh Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca11-23-10944/pdf/USCOURTS-ca11-23-10944-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-WALKER",
+    "case_id": "US-WALKER",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Tenth Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca10-07-04283/pdf/USCOURTS-ca10-07-04283-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-VERMA-BAIL",
+    "case_id": "IN-VERMA-BAIL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2024/4913/4913_2024_13_10_53528_Order_08-Jul-2024.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-DEPOSITORS-BAIL",
+    "case_id": "IN-DEPOSITORS-BAIL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2022/4542/4542_2022_6_1501_55092_Judgement_28-Aug-2024.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-MADOFF-FBI",
+    "case_id": "US-MADOFF",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://www.fbi.gov/history/cases-and-criminals/bernie-madoff",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-STANFORD-FBI",
+    "case_id": "US-STANFORD",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/houston/press-releases/2012/allen-stanford-convicted-in-houston-for-orchestrating-7-billion-investment-fraud-scheme",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-STINSON-FBI",
+    "case_id": "US-STINSON",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/philadelphia/press-releases/2012/pennsylvania-man-sentenced-to-more-than-33-years-in-prison-for-multi-million-dollar-ponzi-scheme",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-SULLIVAN-FBI",
+    "case_id": "US-SULLIVAN",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/columbia/press-releases/2010/co041410.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-SHAPIRO-CHARGES",
+    "case_id": "US-SHAPIRO",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/news/stories/2010/may/ponzi_050310",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-HUBER",
+    "case_id": "US-HUBER",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Seventh Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca7-10-03922/pdf/USCOURTS-ca7-10-03922-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-VACCARELLI",
+    "case_id": "US-VACCARELLI",
+    "kind": "judgment",
+    "publisher": "U.S. District Court for the District of Connecticut",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ctd-3_17-cv-01471/pdf/USCOURTS-ctd-3_17-cv-01471-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-3030-CLUB-FBI",
+    "case_id": "US-3030-CLUB",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/richmond/press-releases/2012/defendants-in-30-30-club-investment-scheme-sentenced",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-LAURETI",
+    "case_id": "US-LAURETI",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Eleventh Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca11-20-12102/pdf/USCOURTS-ca11-20-12102-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-CHUGAY",
+    "case_id": "US-CHUGAY",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Eleventh Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca11-22-12984/pdf/USCOURTS-ca11-22-12984-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-WILMORE",
+    "case_id": "US-WILMORE",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Eleventh Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca11-14-13194/pdf/USCOURTS-ca11-14-13194-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-YANES",
+    "case_id": "US-YANES",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Eleventh Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca11-12-16339/pdf/USCOURTS-ca11-12-16339-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-NGUYEN-DOJ",
+    "case_id": "US-NGUYEN-INSURANCE",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/txn/PressRel07/nguyen_accident_ple_pr.html",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-AVES-DOJ",
+    "case_id": "US-AVES",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archives/opa/pr/former-army-national-guard-soldier-sentenced-57-months-prison-lead-role-fraudulent-military",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-NBA-WILLIAMS-DOJ",
+    "case_id": "US-NBA-HEALTH",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-sdny/pr/former-nba-player-terrence-williams-sentenced-10-years-prison-defrauding-nba-players",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-NBA-DOOLING-ANDERSON-DOJ",
+    "case_id": "US-NBA-HEALTH",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-sdny/pr/former-nba-players-keyon-dooling-and-alan-anderson-sentenced-30-and-24-months-prison",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-IERVASI-ASIC",
+    "case_id": "AU-IERVASI",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-193mr-former-courtenay-house-director-sentenced-to-11-years-imprisonment",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-SILVER-ASIC",
+    "case_id": "AU-SILVER",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2019-releases/19-243mr-gold-coast-director-and-property-developer-sentenced-to-eight-years-imprisonment",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-ALI-ASIC",
+    "case_id": "AU-ALI",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-112mr-danfx-trade-former-director-daniel-ali-jailed-for-fraud",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-SIPINA-ASIC",
+    "case_id": "AU-IERVASI",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-288mr-third-person-sentenced-for-courtenay-house-misconduct",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-HOY-ASIC",
+    "case_id": "AU-HOY",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2011-releases/11-55ad-chartwell-director-graeme-hoy-sentenced-to-jail-for-13-years-nine-months-for-one-of-australias-largest-ponzi-schemes",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-JOHNSTON-VERDICT-ASIC",
+    "case_id": "AU-JOHNSTON",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2019-releases/19-107mr-douglas-johnston-found-guilty-of-defrauding-investors-over-800-000",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-JOHNSTON-CHARGES-ASIC",
+    "case_id": "AU-JOHNSTON",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2015-releases/15-397mr-carrum-downs-couple-committed-for-trial-over-15-million-fraud",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-CRANDELL-FBI",
+    "case_id": "US-CRANDELL",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/phoenix/press-releases/2010/px032910.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-GIGAPIX-FBI",
+    "case_id": "US-GIGAPIX",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://www.fbi.gov/contact-us/field-offices/losangeles/news/press-releases/two-men-who-orchestrated-21-million-movie-investment-scheme-sentenced-to-federal-prison-for-defrauding-hundreds-of-investors",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-VAHORA",
+    "case_id": "US-VAHORA",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Fifth Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca5-24-20538/pdf/USCOURTS-ca5-24-20538-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-MALFITANO",
+    "case_id": "US-MALFITANO",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Fifth Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca5-16-20126/pdf/USCOURTS-ca5-16-20126-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-ARANDEZ",
+    "case_id": "AU-ARANDEZ",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2026-releases/26-096mr-former-financial-services-director-ashley-arandez-sentenced-to-more-than-5-years-imprisonment",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-ASX-RIGGING",
+    "case_id": "AU-ASX-RIGGING",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-315mr-market-riggers-sentenced-in-asx-pump-and-dump-case",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-MILLER",
+    "case_id": "AU-MILLER",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2020-releases/20-177mr-former-financial-adviser-sentenced-to-six-years-imprisonment-for-dishonest-conduct",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-SOMOZA",
+    "case_id": "US-SOMOZA",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/losangeles/press-releases/2009/la110309.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-DEVITO",
+    "case_id": "US-DEVITO",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/newyork/press-releases/2009/nyfo051909a.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-GORDON",
+    "case_id": "US-GORDON",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/seattle/press-releases/2009/se082009.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-MANCUSO-CHARGES",
+    "case_id": "US-MANCUSO-CHARGES",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/newark/press-releases/2013/two-men-charged-in-real-estate-investment-fraud-scheme",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-PMLA-GDR-BAIL",
+    "case_id": "IN-PMLA-GDR-BAIL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2023/3115/3115_2023_14_1501_43637_Judgement_20-Apr-2023.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "IN-JERANG-BAIL",
+    "case_id": "IN-JERANG-BAIL",
+    "kind": "judgment",
+    "publisher": "Supreme Court of India",
+    "url": "https://api.sci.gov.in/supremecourt/2023/27357/27357_2023_4_5_48222_Order_10-Nov-2023.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-STAL",
+    "case_id": "US-STAL",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/baltimore/press-releases/2012/final-defendants-sentenced-in-scheme-to-sell-20-million-worth-of-stolen-merchandise",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-BHATIA",
+    "case_id": "US-BHATIA",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/sanfrancisco/press-releases/2011/defendants-in-multi-million-dollar-investment-fraud-scheme-sentenced-to-prison",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-MAZAHERI",
+    "case_id": "US-MAZAHERI",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Fifth Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca5-16-50278/pdf/USCOURTS-ca5-16-50278-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-SALAS",
+    "case_id": "US-SALAS",
+    "kind": "judgment",
+    "publisher": "U.S. Court of Appeals for the Fifth Circuit",
+    "url": "https://www.govinfo.gov/content/pkg/USCOURTS-ca5-11-41392/pdf/USCOURTS-ca5-11-41392-0.pdf",
+    "format": "pdf",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-GATES-MILLS",
+    "case_id": "US-GATES-MILLS",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/cleveland/press-releases/2011/leader-of-6.7-million-mortgage-fraud-scheme-sentenced",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-SOBOL",
+    "case_id": "US-SOBOL",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/seattle/press-releases/2009/se121809.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-ABRAMS",
+    "case_id": "US-ABRAMS",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/losangeles/press-releases/2010/la082710-1.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-PARK-IDENTITY",
+    "case_id": "US-PARK-IDENTITY",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/newark/press-releases/2014/leader-of-large-scale-identity-theft-ring-sentenced-to-12-years-in-prison-for-his-role-in-fraud-enterprise",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-TARACENA",
+    "case_id": "US-TARACENA",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/losangeles/press-releases/2012/third-brother-sentenced-to-over-four-years-in-prison-in-plot-that-stole-over-500-000-designated-for-low-income-disabled-residents",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-ROJAS",
+    "case_id": "US-ROJAS",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/washingtondc/press-releases/2010/wfo050710.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-LOCKARD",
+    "case_id": "US-LOCKARD",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/anchorage/press-releases/2009/ak082409.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-ROMANIAN-TAX",
+    "case_id": "US-ROMANIAN-TAX",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/chicago/press-releases/2013/chicago-leader-of-romanian-based-conspiracy-that-obtained-1.6-million-in-false-tax-refunds-sentenced-to-85-months-in-prison",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-BERNADEL",
+    "case_id": "US-BERNADEL",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/phoenix/press-releases/2010/px031510.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-NORIEGA",
+    "case_id": "US-NORIEGA",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/houston/press-releases/2011/ho030711.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-PINTER",
+    "case_id": "US-PINTER",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/newyork/press-releases/2009/nyfo031909a.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-MIAMI-PARTICIPANT",
+    "case_id": "US-MIAMI-PARTICIPANT",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/miami/press-releases/2009/mm022009.htm",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-COPPENGER",
+    "case_id": "US-COPPENGER",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/cleveland/press-releases/2013/akron-man-sentenced-to-10-years-in-prison-for-leading-mortgage-fraud-scheme-that-resulted-in-36-million-loss",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-GUZMAN",
+    "case_id": "US-GUZMAN",
+    "kind": "agency_report",
+    "publisher": "Federal Bureau of Investigation",
+    "url": "https://archives.fbi.gov/archives/newhaven/press-releases/2013/waterford-man-sentenced-to-51-months-in-prison-for-leading-extensive-mortgage-fraud-scheme",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-BUCELLO",
+    "case_id": "AU-BUCELLO",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2011-releases/11-15ad-ponzi-scheme-operator-sentenced-on-asic-charges",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-SAAD",
+    "case_id": "AU-SAAD",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2021-releases/21-314mr-former-victorian-financial-adviser-sentenced-to-jail-for-obtaining-financial-advantage-by-deception",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-ROSS",
+    "case_id": "AU-ROSS",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2017-releases/17-128mr-victorian-man-convicted-over-unlicensed-financial-services",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-YUEN",
+    "case_id": "AU-YUEN",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-183mr-former-bby-employee-sentenced-for-aiding-and-abetting",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-KIRKPATRICK",
+    "case_id": "AU-KIRKPATRICK",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2017-releases/17-018mr-waratah-resources-former-executive-chairman-convicted-and-sentenced-for-misleading-the-market",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "AU-MARCO",
+    "case_id": "AU-MARCO",
+    "kind": "agency_report",
+    "publisher": "Australian Securities and Investments Commission",
+    "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-255mr-perth-fraudster-chris-marco-sentenced-to-14-years-imprisonment",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "HIST-STOKER-IMPOSTORS",
+    "case_id": "HIST-STOKER-IMPOSTORS",
+    "kind": "historical_narrative",
+    "publisher": "Project Gutenberg",
+    "url": "https://gutenberg.pglaf.org/cache/epub/51391/pg51391.txt",
+    "format": "txt",
+    "use": "gutenberg_us_public_domain",
+    "text_units": "paragraph",
+    "catalog_url": "https://www.gutenberg.org/ebooks/51391"
+  },
+  {
+    "id": "HIST-HAWKINS-MEMOIR",
+    "case_id": "HIST-HAWKINS-MEMOIR",
+    "kind": "historical_narrative",
+    "publisher": "Project Gutenberg",
+    "url": "https://gutenberg.pglaf.org/cache/epub/10392/pg10392.txt",
+    "format": "txt",
+    "use": "gutenberg_us_public_domain",
+    "text_units": "paragraph",
+    "catalog_url": "https://www.gutenberg.org/ebooks/10392"
+  },
+  {
+    "id": "HIST-PINKERTON-MOLLY",
+    "case_id": "HIST-MOLLY-MAGUIRES",
+    "kind": "historical_narrative",
+    "publisher": "Project Gutenberg",
+    "url": "https://gutenberg.pglaf.org/cache/epub/76641/pg76641.txt",
+    "format": "txt",
+    "use": "gutenberg_us_public_domain",
+    "text_units": "paragraph",
+    "catalog_url": "https://www.gutenberg.org/ebooks/76641"
+  },
+  {
+    "id": "FIC-RAILROAD-DETECTIVE",
+    "case_id": "FIC-RAILROAD-DETECTIVE",
+    "kind": "fiction",
+    "publisher": "Project Gutenberg",
+    "url": "https://gutenberg.pglaf.org/cache/epub/5901/pg5901.txt",
+    "format": "txt",
+    "use": "gutenberg_us_public_domain",
+    "text_units": "paragraph",
+    "catalog_url": "https://www.gutenberg.org/ebooks/5901"
+  },
+  {
+    "id": "NEWS-MADOFF-ARREST",
+    "case_id": "US-MADOFF",
+    "kind": "news",
+    "publisher": "Wikinews",
+    "url": "https://en.wikinews.org/w/index.php?title=Market_maker_Bernard_L._Madoff_arrested_in_%2450B_%27giant_Ponzi_scheme%27&oldid=4821734",
+    "format": "html",
+    "revision": 4821734,
+    "published": "2008-12-12",
+    "use": "CC-BY-2.5"
+  },
+  {
+    "id": "NEWS-MADOFF-PLEA",
+    "case_id": "US-MADOFF",
+    "kind": "news",
+    "publisher": "Wikinews",
+    "url": "https://en.wikinews.org/w/index.php?title=Madoff_jailed_after_pleading_guilty_to_%2450_billion_fraud_scheme&oldid=4821453",
+    "format": "html",
+    "revision": 4821453,
+    "published": "2009-03-12",
+    "use": "CC-BY-2.5"
+  },
+  {
+    "id": "NEWS-ENRON-VERDICT",
+    "case_id": "US-ENRON",
+    "kind": "news",
+    "publisher": "Wikinews",
+    "url": "https://en.wikinews.org/w/index.php?title=Enron_executives_Kenneth_Lay_and_Jeffrey_Skilling_found_guilty&oldid=565664",
+    "format": "html",
+    "revision": 565664,
+    "published": "2006-05-25",
+    "use": "CC-BY-2.5"
+  },
+  {
+    "id": "NEWS-WORLDCOM",
+    "case_id": "US-WORLDCOM",
+    "kind": "news",
+    "publisher": "Wikinews",
+    "url": "https://en.wikinews.org/w/index.php?title=Former_WorldCom_CEO_Ebbers_sentenced_to_25_years&oldid=4811018",
+    "format": "html",
+    "revision": 4811018,
+    "published": "2005-07-13",
+    "use": "wikinews_public_domain"
+  },
+  {
+    "id": "NEWS-LIVENT",
+    "case_id": "CA-LIVENT",
+    "kind": "news",
+    "publisher": "Wikinews",
+    "url": "https://en.wikinews.org/w/index.php?title=Canadian_theatre_producers_sentenced_for_fraud&oldid=4815532",
+    "format": "html",
+    "revision": 4815532,
+    "published": "2009-08-05",
+    "use": "CC-BY-2.5"
+  },
+  {
+    "id": "US-ROMAN-PLEA",
+    "case_id": "US-ROMAN",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-ks/pr/tennessee-man-pleads-guilty-fraudulent-investment-scheme",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-RAMIREZ-SENTENCE",
+    "case_id": "US-RAMIREZ",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-sdca/pr/man-who-plundered-investors-money-81-million-ponzi-scheme-sentenced-90-months-prison",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-LEAKE-SENTENCE",
+    "case_id": "US-LEAKE",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/usao-cdca/pr/former-nfl-player-sentenced-2-12-years-prison-real-estate-and-gold-mine-ponzi-scheme",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-VALENCIA-SENTENCE",
+    "case_id": "US-VALENCIA",
+    "kind": "agency_report",
+    "publisher": "U.S. Department of Justice",
+    "url": "https://www.justice.gov/archive/usao/cac/Pressroom/pr2011/153.html",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-PETTIBONE",
+    "case_id": "US-PETTIBONE",
+    "kind": "agency_report",
+    "publisher": "U.S. Attorney\u2019s Office via FBI archives",
+    "url": "https://archives.fbi.gov/archives/washingtondc/press-releases/2012/former-alexandria-businessman-pleads-guilty-to-1.5-million-ponzi-scheme-and-sentenced-to-36-months",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-HECKMANN",
+    "case_id": "US-HECKMANN",
+    "kind": "agency_report",
+    "publisher": "U.S. Attorney\u2019s Office via FBI archives",
+    "url": "https://archives.fbi.gov/archives/honolulu/press-releases/2013/peter-heckmann-pleads-guilty-to-operating-ponzi-scheme",
+    "format": "html",
+    "use": "local_research_review"
+  },
+  {
+    "id": "US-HAWKINS-MORTGAGE",
+    "case_id": "US-HAWKINS-MORTGAGE",
+    "kind": "agency_report",
+    "publisher": "U.S. Attorney\u2019s Office via FBI archives",
+    "url": "https://archives.fbi.gov/archives/houston/press-releases/2010/ho120110.htm",
+    "format": "html",
+    "use": "local_research_review"
+  }
+]

@@ -12,12 +12,14 @@ from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from .store import Store, now, uid
 from .limits import ResourceLimitError
 from .graph import snapshot, synchronize_projection
 from .analytics import analyze, fund_flow
 from .nlp import candidates
 from .judgments import judgment_records
+from .document_intake import extract_document, render_source_page
 from .judgment_review import ReviewConflict, load_review, save_review
 from .suspects import compute_suspect_dossiers
 from .ingestion import ibm_records, narrative_records, cdr_records, pdf_records, history_records
@@ -83,7 +85,6 @@ def create_app(store=None):
         finally:
             stop.set()
             if worker:
-                from starlette.concurrency import run_in_threadpool
                 await run_in_threadpool(worker.join, 2)
 
     app=FastAPI(title='MAHA · Evidence workspace',version='0.1.0',lifespan=lifespan)
@@ -323,6 +324,11 @@ def create_app(store=None):
         return {'query':body.query,'summary':f'{len(dossiers)} matching person dossiers.',
                 'findings':findings,'suspects':dossiers[:3]}
 
+    @app.get('/api/evidence/audit')
+    def get_evidence_audit(case:str|None=None,u=Depends(user)):
+        from .audit_evidence import audit_evidence_correctness
+        return audit_evidence_correctness(ledger, cases=case_scope(u, case))
+
     @app.get('/api/evidence/{eid}')
     def evidence(eid:str,u=Depends(user)):
         try:ev=ledger.evidence(eid,u['cases'])
@@ -348,6 +354,22 @@ def create_app(store=None):
             raise HTTPException(409, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @app.get('/api/evidence/{eid}/source-page')
+    def document_source_page(eid:str,u=Depends(user)):
+        try:
+            item = ledger.evidence(eid, u['cases'])
+            locator = item['source_locator']
+            if not locator.get('text_method'):
+                raise KeyError(eid)
+            _, content = ledger.source(item['source_id'], u['cases'])
+            image = render_source_page(content, locator['page'])
+        except KeyError as exc:
+            raise HTTPException(404, 'Source page unavailable') from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        ledger.audit(u['name'], 'source_page_view', item['case_ids'][0], eid)
+        return Response(image, media_type='image/png')
 
     @app.get('/api/source/{source_id}')
     def source(source_id:str,u=Depends(user)):
@@ -422,13 +444,6 @@ def create_app(store=None):
     def retired_adjudication(u=Depends(user)):
         raise HTTPException(410,'Lead precision requires independent human labels. Automated adjudication is retired.')
 
-    @app.get('/api/evidence/audit')
-    def get_evidence_audit(u=Depends(user)):
-        path=Path('artifacts/evaluation/evidence-audit.json')
-        if path.exists():
-            return json.loads(path.read_text())
-        from .audit_evidence import run_and_save_evidence_audit
-        return run_and_save_evidence_audit(ledger)
     @app.get('/api/timeline')
     def timeline(case:str|None=None,u=Depends(user)):
         g=graph(u,case);names={n['id']:n['label'] for n in g['nodes']}
@@ -441,7 +456,7 @@ def create_app(store=None):
         if start not in ids or (end and end not in ids):raise HTTPException(404,'Entity unavailable')
         return fund_flow(g,start,end)
     @app.post('/api/import/{kind}/{case_id}')
-    async def upload(kind:Literal['ibm','narrative','cdr','pdf','history','judgment'],case_id:str,request:Request,u=Depends(user)):
+    async def upload(kind:Literal['ibm','narrative','cdr','pdf','history','judgment','judgment-document','fir-document'],case_id:str,request:Request,u=Depends(user)):
         if case_id not in u['cases']:raise HTTPException(403,'Case access required')
         # Raw request streaming bounds memory before parsing. Filename/path supplied by client is ignored.
         chunks=[];size=0
@@ -451,33 +466,47 @@ def create_app(store=None):
             chunks.append(chunk)
         content=b''.join(chunks)
         del chunks
-        if kind == 'judgment':
-            from starlette.concurrency import run_in_threadpool
-
-            def import_judgment():
-                records = list(judgment_records(content))
-                return ledger.import_records('court-judgment.txt', content, 'court-judgment',
+        if kind in {'judgment', 'judgment-document', 'fir-document'}:
+            def import_document():
+                judgment = kind != 'fir-document'
+                dataset = 'court-judgment' if judgment else 'police_fir'
+                if kind == 'judgment':
+                    extension, records = 'txt', list(judgment_records(content))
+                else:
+                    extension, records = extract_document(content, judgment=judgment)
+                return ledger.import_records(f'{dataset}.{extension}', content, dataset,
                                              False, case_id, records, u['name'])
 
             try:
-                return await run_in_threadpool(import_judgment)
+                return await run_in_threadpool(import_document)
             except FileNotFoundError as exc:
                 raise HTTPException(503, str(exc)) from exc
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from exc
-        adapter={'ibm':ibm_records,'narrative':narrative_records,'cdr':cdr_records,'pdf':pdf_records,'history':lambda data:history_records(data,case_id)}[kind]
+        def import_structured(data):
+            adapter = {
+                'ibm': ibm_records, 'narrative': narrative_records, 'cdr': cdr_records,
+                'pdf': pdf_records, 'history': lambda body: history_records(body, case_id),
+            }[kind]
+            if kind == 'narrative':
+                docs = json.loads(data)
+                if not isinstance(docs, list) or any(not isinstance(doc, dict) for doc in docs):
+                    raise ValueError('Narratives must be a JSON array of objects')
+                if any(doc.get('case_id') and doc['case_id'] not in (case_id, 'DEMO-C01') for doc in docs):
+                    raise ValueError('Document case does not match selected case')
+                for doc in docs:
+                    doc['case_id'] = case_id
+                data = json.dumps(docs).encode('utf-8')
+            dataset = 'ibm-hi-small' if kind == 'ibm' else 'team-authored'
+            return ledger.import_records(f'upload-{kind}', data, dataset, True,
+                                         case_id, adapter(data), u['name'])
+
         try:
-            if kind=='narrative':
-                docs=json.loads(content)
-                if not isinstance(docs,list) or any(not isinstance(d,dict) for d in docs):raise ValueError('Narratives must be a JSON array of objects')
-                if any(d.get('case_id') and d.get('case_id') not in (case_id,'DEMO-C01') for d in docs):raise ValueError('Document case does not match selected case')
-                for d in docs:d['case_id']=case_id
-                content=json.dumps(docs).encode('utf-8')
-            result=ledger.import_records(f'upload-{kind}',content,'ibm-hi-small' if kind=='ibm' else 'team-authored',True,case_id,adapter(content),u['name'])
+            return await run_in_threadpool(import_structured, content)
         except (ValueError,UnicodeError,csv.Error,TypeError,KeyError) as e:
-            ledger.audit(u['name'],'import_failed',case_id,uid(kind,hashlib.sha256(content).hexdigest()))
-            raise HTTPException(422,str(e))
-        return result
+            reference = uid(kind, hashlib.sha256(content).hexdigest())
+            await run_in_threadpool(ledger.audit, u['name'], 'import_failed', case_id, reference)
+            raise HTTPException(422, str(e)) from e
     @app.get('/api/report')
     def report(case:str|None=None,u=Depends(user)):
         cases=case_scope(u,case)
@@ -486,10 +515,6 @@ def create_app(store=None):
         data={'title':'Investigator review report','generated_at':now(),'case_ids':cases,'notice':'Decision support only. Synthetic demo results do not establish guilt. Structural context is separate from flagged behavior.','analysis':result,'evidence':[ledger.evidence(e,cases) for e in eids]}
         ledger.audit(u['name'],'report_export',cases[0] if cases else '')
         return Response(json.dumps(data,indent=2),media_type='application/json',headers={'Content-Disposition':'attachment; filename="investigator-review.json"'})
-
-    @app.get('/api/health')
-    def health():
-        return {'status': 'healthy', 'version': '0.1.0'}
 
     dist_candidates = [
         Path(__file__).resolve().parents[1] / 'frontend/dist',

@@ -1,0 +1,5 @@
+[
+  {"source_id":"NEWS-WORLDCOM","split":"held_out","unit":5,"start":"Jones believed Ebbers deserved a harsh sentence","end":"Ebbers was the instigator of the fraud.","actors":["Ebbers"],"basis":"news_report_of_judicial_attribution"},
+  {"source_id":"NEWS-ENRON-VERDICT","split":"held_out","unit":2,"start":"A jury in Houston found","end":"Both men now face many years in prison.","actors":[],"basis":"news_report_of_verdict_without_organizer_attribution"},
+  {"source_id":"NEWS-LIVENT","split":"held_out","unit":2,"start":"Garth Drabinsky and Myron Gottlieb","end":"Gottlieb got four years and six years on two counts of fraud.","actors":[],"basis":"news_report_of_sentencing_without_organizer_attribution"}
+]

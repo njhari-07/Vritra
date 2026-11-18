@@ -120,6 +120,7 @@ def main():
         res = run_and_save_evidence_audit(store)
         print(json.dumps({
             'total_audited': res['total_audited'],
+            'unverified_records': res['unverified_records'],
             'overall_correctness_rate': res['overall_correctness_rate'],
             'by_modality': res['by_modality'],
             'discrepancies': res['discrepancies']

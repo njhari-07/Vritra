@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
 import GraphView from './components/GraphView';
 import JudgmentReview from './components/JudgmentReview';
+import SourcePage from './components/SourcePage';
 import LeadsPanel from './components/LeadsPanel';
 import ResolutionTab from './components/ResolutionTab';
 import TimelineTab from './components/TimelineTab';
@@ -61,6 +62,10 @@ function App() {
   const [search, setSearch] = useState('');
   const [list, setList] = useState([]);
   const [notice, setNotice] = useState('');
+  const sessionToken = useRef('');
+  const caseRequest = useRef(null);
+  const evidenceRequest = useRef(null);
+  const drawerClose = useRef(null);
 
   // AI Copilot
   const [copilotQuery, setCopilotQuery] = useState('');
@@ -100,35 +105,71 @@ function App() {
   };
 
   const load = async targetCase => {
+    if (!token || token !== sessionToken.current) return;
+    caseRequest.current?.abort();
+    const controller = new AbortController();
+    caseRequest.current = controller;
+    const options = { signal: controller.signal };
     setBusy(true);
     setError('');
     try {
-      const m = await api('/me');
+      const [m, cList] = await Promise.all([api('/me', options), api('/cases', options)]);
+      if (controller.signal.aborted) return;
       setMe(m);
-      const cList = await api('/cases');
       setCasesList(cList);
-      const selCase = targetCase || activeCase || (cList[0] ? cList[0].case_id : m.cases[0] || 'DEMO-C01');
+      const preferred = targetCase || activeCase;
+      const selCase = cList.find(item => item.case_id === preferred)?.case_id || cList[0]?.case_id || '';
       setActiveCase(selCase);
+      if (selCase !== activeCase || !selCase) {
+        setGraph(null);
+        setAnalysis(null);
+      }
+      if (!selCase) return;
       const [g, a] = await Promise.all([
-        api('/graph?case=' + encodeURIComponent(selCase)),
-        api('/analysis?case=' + encodeURIComponent(selCase))
+        api('/graph?case=' + encodeURIComponent(selCase), options),
+        api('/analysis?case=' + encodeURIComponent(selCase), options)
       ]);
+      if (controller.signal.aborted) return;
       setGraph(g);
       setAnalysis(a);
     } catch (e) {
-      setError(e.message);
+      if (!controller.signal.aborted) setError(e.message);
     } finally {
-      setBusy(false);
+      if (!controller.signal.aborted) setBusy(false);
     }
   };
+
+  const selectItem = useCallback(item => {
+    evidenceRequest.current?.abort();
+    setEv(null);
+    setSelected(item);
+  }, []);
+
+  const drawerOpen = Boolean(selected);
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const opener = document.activeElement;
+    const close = drawerClose.current;
+    close?.focus();
+    const onKeyDown = event => {
+      if (event.key === 'Escape' && close?.parentElement?.contains(document.activeElement)) {
+        event.preventDefault();
+        close?.click();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (close?.dataset.restoreFocus === 'true' && opener?.isConnected) opener.focus();
+    };
+  }, [drawerOpen]);
 
   useEffect(() => {
     if (token) load();
   }, [token]);
 
   useEffect(() => {
-    setSelected(null);
-    setEv(null);
+    selectItem(null);
     setList([]);
     if (!me || !activeCase) return;
     let current = true;
@@ -145,6 +186,7 @@ function App() {
   }, [tab, me, activeCase]);
 
   const changeCase = cId => {
+    selectItem(null);
     setGraph(null);
     setAnalysis(null);
     setActiveCase(cId);
@@ -283,11 +325,33 @@ function App() {
     setNotice(`Downloaded template: ${filename}`);
   };
 
-  const evidence = async id => {
+  const downloadOriginal = async source => {
     try {
-      setEv(await api('/evidence/' + id));
+      const response = await fetch('/api/source/' + encodeURIComponent(source.source_id), {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      if (!response.ok) throw Error('Original source is unavailable for this account.');
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = source.source;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const evidence = async id => {
+    evidenceRequest.current?.abort();
+    const controller = new AbortController();
+    evidenceRequest.current = controller;
+    setEv(null);
+    try {
+      const item = await api('/evidence/' + encodeURIComponent(id), { signal: controller.signal });
+      if (!controller.signal.aborted) setEv(item);
     } catch (e) {
-      setError(e.message);
+      if (!controller.signal.aborted) setError(e.message);
     }
   };
 
@@ -396,7 +460,7 @@ function App() {
     setTab('Graph explorer');
     setSearch(s.name);
     const n = graph?.nodes?.find(n => n.id === s.id);
-    if (n) setSelected(n);
+    if (n) selectItem(n);
   };
 
   if (!me)
@@ -436,6 +500,7 @@ function App() {
         <form
           onSubmit={e => {
             e.preventDefault();
+            sessionToken.current = input;
             if (input === token) load();
             else setToken(input);
           }}
@@ -470,7 +535,7 @@ function App() {
   };
 
   const isTrained = Boolean(activeStatus.is_trained);
-  const caseStatus = isTrained ? "Analysis complete" : activeStatus.facts_count ? "Ready to analyze" : "No graph evidence yet";
+  const caseStatus = !activeCase ? "Create a case to begin" : isTrained ? "Analysis complete" : activeStatus.facts_count ? "Ready to analyze" : "No graph evidence yet";
   const connections = analysis?.leads?.filter(l => l.category === 'connection') || [];
   const behavior = analysis?.leads?.filter(l => l.category === 'flagged_behavior') || [];
   const suspects = analysis?.suspects || [];
@@ -543,11 +608,22 @@ function App() {
           <button
             onClick={() => {
               localStorage.removeItem('maha_token');
+              sessionToken.current = '';
+              caseRequest.current?.abort();
+              selectItem(null);
               setMe(null);
               setToken('');
               setInput('');
               setGraph(null);
               setAnalysis(null);
+              setActiveCase('');
+              setCasesList([]);
+              setBusy(false);
+              setError('');
+              setNotice('');
+              setRawText('');
+              setCopilotQuery('');
+              setCopilotResult(null);
             }}
           >
             Lock workspace ↗
@@ -570,7 +646,7 @@ function App() {
               {darkMode ? 'Light mode' : 'Dark mode'}
             </button>
             <span className="badge">{tab === 'Benchmarks' ? 'BENCHMARKS' : 'LOCAL WORKSPACE'}</span>
-            <button className="quiet" onClick={exportReport}>
+            <button className="quiet" onClick={exportReport} disabled={!activeCase || busy}>
               Export report ↗
             </button>
           </div>
@@ -585,8 +661,9 @@ function App() {
               value={activeCase}
               onChange={e => changeCase(e.target.value)}
               aria-label="Active Case"
-              disabled={busy}
+              disabled={!activeCase || busy}
             >
+              {!activeCase && <option value="">No cases assigned</option>}
               {casesList.map(c => (
                 <option key={c.case_id} value={c.case_id}>
                   {c.case_id} · {c.facts_count} facts
@@ -603,13 +680,13 @@ function App() {
             <button className="btn-new-case" onClick={() => setShowNewCaseModal(true)}>
               + New Case
             </button>
-            <button className="btn-reset-case" onClick={handleResetCase}>
+            <button className="btn-reset-case" onClick={handleResetCase} disabled={!activeCase || busy}>
               ↺ Reset Case
             </button>
-            <button className="btn-tmpl" onClick={openTemplateModal}>
+            <button className="btn-tmpl" onClick={openTemplateModal} disabled={!activeCase || busy}>
               Data Templates
             </button>
-            <button className="btn-train-primary" onClick={() => setTab('Import records')}>
+            <button className="btn-train-primary" onClick={() => setTab('Import records')} disabled={!activeCase || busy}>
               Add evidence
             </button>
           </div>
@@ -711,7 +788,7 @@ function App() {
                     Explore ↗
                   </button>
                 </div>
-                <Graph graph={graph} onSelect={setSelected} darkMode={darkMode} height="500px" />
+                <Graph graph={graph} onSelect={selectItem} darkMode={darkMode} height="500px" />
                 <div className="legend">
                   {Object.entries(colors).map(([k, v]) => (
                     <span key={k}>
@@ -729,7 +806,7 @@ function App() {
                   <>
                     <p>People with source references in the selected case.</p>
                     {suspects.slice(0, 3).map(s => (
-                      <button className="mini-lead" key={s.id} onClick={() => { setTab('Dossiers'); setSelected(s); }}>
+                      <button className="mini-lead" key={s.id} onClick={() => { setTab('Dossiers'); selectItem(s); }}>
 
                         <div>
                           <strong>{s.title}: {s.name}</strong>
@@ -1109,13 +1186,13 @@ function App() {
                                 <h4>{category === 'connection' ? 'Connections' : 'Transaction findings'}</h4>
                                 <ul>{findings.map(finding => (
                                   <li key={finding.id}><button className="quiet"
-                                    onClick={() => { setEv(null); setSelected(finding); }}>{finding.reason}</button></li>
+                                    onClick={() => { selectItem(finding); }}>{finding.reason}</button></li>
                                 ))}</ul>
                               </div>
                             );
                           })}
                           <div className="case-actions">
-                            <button className="quiet" onClick={() => { setEv(null); setSelected(dossier); }}>Inspect sources ({dossier.evidence_ids.length})</button>
+                            <button className="quiet" onClick={() => { selectItem(dossier); }}>Inspect sources ({dossier.evidence_ids.length})</button>
                             <button className="quiet" onClick={() => isolateInGraph(dossier)}>Focus in graph</button>
                             <button className="quiet" onClick={() => downloadDossier(dossier)}>Download evidence dossier</button>
                           </div>
@@ -1152,7 +1229,7 @@ function App() {
                     {l.evidence_ids.length} source references · {l.review_state}
                   </small>
                 </div>
-                <button className="quiet" onClick={() => setSelected(l)}>
+                <button className="quiet" onClick={() => selectItem(l)}>
                   Review evidence →
                 </button>
               </article>
@@ -1167,7 +1244,7 @@ function App() {
             activeCase={activeCase}
             search={search}
             setSearch={setSearch}
-            setSelected={setSelected}
+            setSelected={selectItem}
             darkMode={darkMode}
           />
         )}
@@ -1188,7 +1265,7 @@ function App() {
                     Name similarity {(c.similarity * 100).toFixed(1)}% · {c.state}
                   </p>
                   <small>Similarity does not establish identity.</small>
-                  <button className="quiet" onClick={() => setSelected(c)}>
+                  <button className="quiet" onClick={() => selectItem(c)}>
                     Source evidence
                   </button>
                 </div>
@@ -1219,7 +1296,7 @@ function App() {
               <article className="lead" key={n.id}>
                 <time>{new Date(n.event_time).toLocaleString()}</time>
                 <strong>{n.label}</strong>
-                <button className="quiet" onClick={() => setSelected(n)}>
+                <button className="quiet" onClick={() => selectItem(n)}>
                   View source →
                 </button>
               </article>
@@ -1230,11 +1307,11 @@ function App() {
         {tab === 'Import records' && (
           <section className="panel import-panel">
             <h2>Add evidence to a case</h2>
-            <p>Demo formats are for synthetic records. Court judgment text is stored as reviewable mentions. Maximum file size: 25 MiB.</p>
+            <p>Upload English FIRs and judgments as PDF or images. Scanned pages use local OCR. Demo formats are for synthetic records. Maximum file size: 25 MiB.</p>
             <form onSubmit={upload}>
               <label>
                 Authorized case
-                <select name="case" defaultValue={activeCase}>
+                <select key={activeCase} name="case" aria-label="Authorized case" defaultValue={activeCase}>
                   {casesList.map(c => (
                     <option key={c.case_id} value={c.case_id}>
                       {c.case_id}
@@ -1244,10 +1321,12 @@ function App() {
               </label>
               <label>
                 Record format
-                <select name="kind">
+                <select name="kind" aria-label="Record format">
                   <option value="ibm">IBM HI-Small CSV</option>
                   <option value="narrative">Synthetic narrative JSON</option>
                   <option value="judgment">English Indian court judgment (.txt)</option>
+                  <option value="judgment-document">English Indian court judgment (PDF or image)</option>
+                  <option value="fir-document">English police FIR (PDF or image)</option>
                   <option value="cdr">Synthetic CDR CSV</option>
                   <option value="history">Synthetic case-history CSV</option>
                   <option value="pdf">MAHA fixed-layout PDF v1</option>
@@ -1255,9 +1334,9 @@ function App() {
               </label>
               <label>
                 Source file
-                <input name="file" type="file" accept=".csv,.json,.pdf,.txt" required />
+                <input name="file" type="file" accept=".csv,.json,.pdf,.txt,.png,.jpeg,.jpg" required />
               </label>
-              <button disabled={busy}>Validate and import →</button>
+              <button disabled={!activeCase || busy}>Validate and import →</button>
             </form>
           </section>
         )}
@@ -1281,8 +1360,7 @@ function App() {
                       <summary>{r.summary.legal_mentions.length} legal mentions to review</summary>
                       {r.summary.legal_mentions.map(({ evidence_id, label }) => (
                         <button key={evidence_id} className="source-button" onClick={() => {
-                          setEv(null);
-                          setSelected({ label, reason: 'Original model extraction from this judgment' });
+                          selectItem({ label, reason: 'Original model extraction from this judgment' });
                           evidence(evidence_id);
                         }}>{label} ↗</button>
                       ))}
@@ -1293,8 +1371,7 @@ function App() {
                       <summary>{r.summary.text_mentions.length} text observations</summary>
                       {r.summary.text_mentions.map(({ evidence_id, label }) => (
                         <button key={evidence_id} className="source-button" onClick={() => {
-                          setEv(null);
-                          setSelected({ label, reason: 'Source observation from pasted text' });
+                          selectItem({ label, reason: 'Source observation from pasted text' });
                           evidence(evidence_id);
                         }}>{label} ↗</button>
                       ))}
@@ -1398,12 +1475,13 @@ function App() {
 
       {/* Detail Drawer */}
       {selected && (
-        <div className="drawer">
+        <aside className="drawer" aria-label="Evidence detail">
           <button
             className="close"
+            ref={drawerClose}
             onClick={() => {
-              setSelected(null);
-              setEv(null);
+              drawerClose.current.dataset.restoreFocus = 'true';
+              selectItem(null);
             }}
             aria-label="Close evidence panel"
           >
@@ -1436,7 +1514,17 @@ function App() {
             <div className="evidence">
               <span className="tag">{ev.synthetic ? 'SYNTHETIC' : ev.dataset_id === 'court-judgment' ? 'LEGAL MENTION' : 'SOURCE EVIDENCE'}</span>
               <h3>{ev.source}</h3>
-              <p>{JSON.stringify(ev.source_locator)}</p>
+              {ev.source_locator?.text_method && (
+                <p>Page {ev.source_locator.page} · {ev.source_locator.text_method === 'pdf-text' ? 'Embedded PDF text' : 'Local OCR'}
+                  {' · '}Characters {ev.source_locator.char_start}–{ev.source_locator.char_end}</p>
+              )}
+              {!ev.source_locator?.text_method && <p>{JSON.stringify(ev.source_locator)}</p>}
+              {ev.source_locator?.text_method && (
+                <div className="document-source-actions">
+                  <SourcePage key={ev.id} evidence={ev} token={token} />
+                  <button className="quiet" onClick={() => downloadOriginal(ev)}>Download original document</button>
+                </div>
+              )}
               <blockquote>{ev.passage}</blockquote>
               <small>
                 {ev.extraction_method} · v{ev.extraction_version}
@@ -1447,7 +1535,7 @@ function App() {
               </small>
             </div>
           )}
-          {ev?.dataset_id === 'court-judgment' && (
+          {ev?.dataset_id === 'court-judgment' && ev.extraction_method === 'en_legal_ner_sm' && (
             <JudgmentReview key={ev.id} evidenceId={ev.id} api={api} />
           )}
           {selected.category && (
@@ -1462,7 +1550,7 @@ function App() {
               </button>
             </div>
           )}
-        </div>
+        </aside>
       )}
 
       {/* Create New Case Modal */}

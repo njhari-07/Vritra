@@ -1,0 +1,20 @@
+[
+  {
+    "source_id": "US-VALENCIA-SENTENCE",
+    "split": "held_out",
+    "unit": 9,
+    "start": "Valencia has been in custody",
+    "end": "two counts of tax fraud.",
+    "actors": [],
+    "basis": "guilty_plea_without_stated_organizer_role"
+  },
+  {
+    "source_id": "US-VALENCIA-SENTENCE",
+    "split": "held_out",
+    "unit": 10,
+    "start": "Valencia ran her scheme",
+    "end": "R.E. Equity Group, Inc.",
+    "actors": ["Valencia"],
+    "basis": "agency_attribution"
+  }
+]

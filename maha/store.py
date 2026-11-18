@@ -178,7 +178,9 @@ class Store:
             row = db.execute("SELECT * FROM evidence WHERE id=?", (evidence_id,)).fetchone()
         if not row or row["case_id"] not in cases:
             raise KeyError(evidence_id)
-        return json.loads(row["data"])
+        data = json.loads(row["data"])
+        data.pop("review_excerpt", None)
+        return data
 
     def graph_revision(self, db=None):
         if db is None:
@@ -251,6 +253,8 @@ class Store:
                           confidence=record.get("confidence", 1.0), event_time=record.get("event_time"),
                           time_basis=record.get("time_basis", "not_supplied"), ingestion_time=now(),
                           dataset_id=dataset, synthetic=synthetic, case_ids=[case_id], passage=record.get("passage", ""))
+                if 'review_excerpt' in record:
+                    ev['review_excerpt'] = record['review_excerpt']
                 ev['confidence_basis']=record.get('confidence_basis','deterministic extraction agreement, not source truth')
                 db.execute("INSERT INTO evidence VALUES(?,?,?,?)", (evidence_id, source_id, case_id, json.dumps(ev)))
                 if ev['extraction_method']=='csv-positional':

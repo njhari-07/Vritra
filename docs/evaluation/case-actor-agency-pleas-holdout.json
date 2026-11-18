@@ -1,0 +1,8 @@
+[
+  {"source_id":"US-PETTIBONE","split":"held_out","unit":2,"start":"Richard Pettibone","end":"three years of supervised release.","actors":["Richard Pettibone"],"basis":"agency_account_of_admission"},
+  {"source_id":"US-PETTIBONE","split":"held_out","unit":3,"start":"Neil H. MacBride","end":"United States District Judge James Cacheris.","actors":[],"basis":"agency_announcement_and_plea_acceptance"},
+  {"source_id":"US-HECKMANN","split":"held_out","unit":2,"start":"This morning in Honolulu","end":"Hawaiian Island of Kauai.","actors":["Peter Heckmann"],"basis":"agency_account_of_admission"},
+  {"source_id":"US-HECKMANN","split":"held_out","unit":3,"start":"Heckmann will remain","end":"at 2:15 p.m.","actors":[],"basis":"custody_and_scheduled_sentencing"},
+  {"source_id":"US-HAWKINS-MORTGAGE","split":"held_out","unit":3,"start":"Hawkins, a licensed loan officer","end":"leader of this fraud scheme.","actors":["Hawkins"],"basis":"agency_account_of_prior_finding"},
+  {"source_id":"US-HAWKINS-MORTGAGE","split":"held_out","unit":4,"start":"Also sentenced were","end":"while Vasser received 87 months in prison.","actors":[],"basis":"agency_account_of_conviction_and_sentencing"}
+]

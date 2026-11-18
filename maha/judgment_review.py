@@ -29,12 +29,17 @@ def _review_context(db, evidence_id, cases):
     source = db.execute('SELECT content FROM sources WHERE id=?', (row['source_id'],)).fetchone()
     if not source:
         raise KeyError(evidence_id)
-    text = source['content'].decode('utf-8-sig')
     locator = evidence['source_locator']
     start, end = locator['char_start'], locator['char_end']
-    if not 0 <= start < end <= len(text) or text[start:end] != evidence['passage']:
+    excerpt = evidence.get('review_excerpt')
+    if excerpt:
+        left, context = excerpt['start'], excerpt['text']
+    else:
+        text = source['content'].decode('utf-8-sig')
+        left = max(0, start - 180)
+        context = text[left:end + 180]
+    if not left <= start < end <= left + len(context) or context[start-left:end-left] != evidence['passage']:
         raise ReviewConflict('Stored mention does not match its source offsets')
-    left, right = max(0, start - 180), min(len(text), end + 180)
     history = [
         {'id': event['id'], **json.loads(event['data'])}
         for event in db.execute(
@@ -42,7 +47,7 @@ def _review_context(db, evidence_id, cases):
             (evidence_id,))
     ]
     return row['case_id'], {
-        'evidence_id': evidence_id, 'context': text[left:right], 'context_start': left,
+        'evidence_id': evidence_id, 'context': context, 'context_start': left,
         'original': {'start': start, 'end': end, 'label': locator['legal_label'],
                      'passage': evidence['passage']},
         'labels': list(LEGAL_LABELS), 'history': history,
