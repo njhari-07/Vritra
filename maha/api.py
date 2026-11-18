@@ -529,6 +529,10 @@ def create_app(store=None):
         @app.get('/')
         def index():
             return FileResponse(dist / 'index.html')
+
+        for route in ('/app', '/sign-in', '/sign-up'):
+            app.add_api_route(route, index, methods=['GET'], include_in_schema=False)
+            app.add_api_route(f'{route}/{{rest:path}}', index, methods=['GET'], include_in_schema=False)
     return app
 
 
