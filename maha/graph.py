@@ -1,5 +1,8 @@
 """Neo4j stores evidence-scoped graph assertions; SQLite is the import/audit ledger."""
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Windows has no fcntl; the sync lock is skipped there (single local process).
+    fcntl = None
 import json
 import logging
 import os
@@ -25,7 +28,8 @@ class NeoGraph:
     def sync(self, store):
         """Publish the committed ledger revision atomically with its graph."""
         with (store.root / 'graph-sync.lock').open('a') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            if fcntl:
+                fcntl.flock(lock, fcntl.LOCK_EX)
             if self.revision() == store.graph_revision():
                 return False
             revision, facts, evidence = store.graph_export()
