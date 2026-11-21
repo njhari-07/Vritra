@@ -9,17 +9,28 @@ export const clerkEnabled = /^pk_(test|live)_/.test(CLERK_KEY);
 
 export const clerkAppearance = {
   variables: {
-    colorPrimary: '#38bdf8',
-    colorBackground: '#0b1220',
-    colorForeground: '#e2e8f0',
-    colorMutedForeground: '#94a3b8',
-    colorInput: '#0f172a',
-    colorInputForeground: '#f8fafc',
+    // "Case File Night": gold for the primary action, navy surfaces, blue focus.
+    colorPrimary: '#F2B544',
+    colorPrimaryForeground: '#0A1020',
+    colorBackground: '#131E35',
+    colorForeground: '#EDF2FA',
+    colorMutedForeground: '#A59FC4',
+    colorInput: '#0A1020',
+    colorInputForeground: '#EDF2FA',
+    colorRing: '#5AA9FF',
+    colorDanger: '#FF6B5B',
+    colorSuccess: '#3DD6B5',
     borderRadius: '10px',
     fontFamily: 'Inter, system-ui, sans-serif'
   },
   elements: {
-    card: { boxShadow: '0 30px 80px -20px rgba(0,0,0,.7)', border: '1px solid rgba(148,163,184,.14)' }
+    card: { boxShadow: '0 30px 80px -20px rgba(0,0,0,.7)', border: '1px solid #233350' },
+    headerTitle: { fontFamily: "'Space Grotesk', Inter, sans-serif", letterSpacing: '-0.02em' },
+    // Clerk's default social button text is dark; make it readable on the dark card.
+    socialButtonsBlockButton: { backgroundColor: '#0A1020', border: '1px solid #233350', color: '#EDF2FA' },
+    socialButtonsBlockButtonText: { color: '#EDF2FA', fontWeight: 500 },
+    dividerLine: { backgroundColor: '#233350' },
+    dividerText: { color: '#A59FC4' }
   }
 };
 
