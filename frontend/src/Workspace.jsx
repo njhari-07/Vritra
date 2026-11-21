@@ -16,13 +16,13 @@ import './style.css';
 const HeroScene = lazy(() => import('./components/three/HeroScene'));
 
 const colors = {
-  Person: '#d29b4e',
-  Account: '#5d8999',
-  Transaction: '#95aaa1',
-  Case: '#344c49',
-  Location: '#b28094',
-  Organization: '#8b88a8',
-  Document: '#b5b2a6'
+  Person: '#5AA9FF',
+  Account: '#F2B544',
+  Transaction: '#8D87B3',
+  Case: '#EDF2FA',
+  Location: '#A98BFF',
+  Organization: '#C9C3E8',
+  Document: '#4A5B7C'
 };
 
 function Graph({ graph, onSelect, darkMode = false, height = '520px' }) {
