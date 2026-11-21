@@ -151,6 +151,26 @@ def test_narrative_case_spoof_is_rejected(store):
     assert r.status_code==422 and not store.history('imports',['C1'])
 
 
+def test_structured_upload_parses_in_worker_thread(store, monkeypatch):
+    import asyncio
+    import maha.api as api
+
+    def checked_records(content):
+        with pytest.raises(RuntimeError, match='no running event loop'):
+            asyncio.get_running_loop()
+        yield from ibm_records(content)
+
+    monkeypatch.setattr(api, 'ibm_records', checked_records)
+    token = store.create_user('importer', ['C1'])
+    with TestClient(api.create_app(store)) as client:
+        response = client.post('/api/import/ibm/C1', content=csv_bytes([row()]),
+                               headers={'Authorization': f'Bearer {token}'})
+        assert client.get('/api/health').json()['status'] == 'ok'
+    assert response.status_code == 200, response.text
+    assert response.json()['rows_seen'] == 1
+    assert any(item['type'] == 'Transaction' for item in snapshot(store, ['C1'])['nodes'])
+
+
 def test_history_status_is_sourced_not_inferred(store):
     from maha.ingestion import HISTORY_HEADER,history_records
     out=io.StringIO();w=csv.writer(out);w.writerow(HISTORY_HEADER);w.writerow(['h1','P001','C1','2022-09-01','witness_reference','Synthetic statement','true'])
@@ -264,6 +284,25 @@ def test_evidence_correctness_audit(store):
     assert res["total_audited"] >= 1
     assert res["overall_correctness_rate"] == 1.0
     assert res["discrepancies"]["missing_locators"] == 0
+
+
+def test_evidence_audit_checks_multiline_csv_and_marks_unknown_methods(store):
+    from maha.audit_evidence import audit_evidence_correctness
+    from maha.ingestion import HISTORY_HEADER, history_records
+
+    source = io.StringIO()
+    writer = csv.writer(source)
+    writer.writerow(HISTORY_HEADER)
+    writer.writerow(['h1', 'P001', 'C1', '2022-09-01', 'witness_reference', 'First\nsecond', 'true'])
+    raw = source.getvalue().encode()
+    store.import_records('history.csv', raw, 'team-authored', True, 'C1', history_records(raw, 'C1'))
+    store.import_records('unmapped', b'unmapped', 'team-authored', True, 'C1', [
+        {'locator': {'row': 1}, 'method': 'unmapped', 'passage': 'irrelevant', 'facts': []}
+    ])
+    result = audit_evidence_correctness(store)
+    assert result['correct_records'] == 1
+    assert result['unverified_records'] == 1
+    assert result['by_modality']['unmapped']['fidelity'] is None
 
 
 def test_doctor_diagnostics(store):
@@ -402,3 +441,65 @@ def test_pasted_text_routes_to_document_extractor(store, monkeypatch):
     assert client.post(url, json={**payload, 'source_type': 'unknown'}, headers=headers).status_code == 422
     assert client.post('/api/import/raw-text/C2', json=payload, headers=headers).status_code == 403
     assert not store.facts(['C1'])
+
+
+def test_document_intake_routes_pdf_text_and_image_to_review(store, monkeypatch):
+    from io import BytesIO
+    from PIL import Image
+    from reportlab.pdfgen.canvas import Canvas
+    from maha import document_intake
+    from maha.api import create_app
+
+    text = 'Justice Rao heard the petition.'
+    pdf = BytesIO()
+    canvas = Canvas(pdf)
+    canvas.drawString(40, 750, text)
+    canvas.save()
+    image = BytesIO()
+    Image.new('RGB', (30, 30), 'white').save(image, format='PNG')
+
+    def legal_records(content):
+        assert content.decode().strip() == text
+        yield {'locator': {'char_start': 0, 'char_end': 11, 'legal_label': 'JUDGE'},
+               'method': 'en_legal_ner_sm', 'passage': 'Justice Rao', 'facts': []}
+
+    monkeypatch.setattr(document_intake, 'judgment_records', legal_records)
+    monkeypatch.setattr(document_intake, '_ocr', lambda *_: text)
+    token = store.create_user('reviewer', ['C1'])
+    headers = {'Authorization': 'Bearer ' + token}
+    client = TestClient(create_app(store))
+    url = '/api/import/judgment-document/C1'
+    evidence_ids = []
+    for raw, method in ((pdf.getvalue(), 'pdf-text'), (image.getvalue(), 'tesseract-eng')):
+        response = client.post(url, headers=headers, content=raw)
+        assert response.status_code == 200
+        eid = response.json()['legal_mentions'][0]['evidence_id']
+        evidence_ids.append(eid)
+        ev = client.get('/api/evidence/' + eid, headers=headers).json()
+        assert ev['source_locator']['page'] == 1
+        assert ev['source_locator']['text_method'] == method
+        assert 'review_excerpt' not in ev
+        assert client.get('/api/source/' + ev['source_id'], headers=headers).content == raw
+        preview = client.get('/api/evidence/' + eid + '/source-page', headers=headers)
+        assert preview.status_code == 200 and preview.content.startswith(b'\x89PNG')
+        assert client.get('/api/evidence/' + eid + '/source-page').status_code == 401
+        review = client.get('/api/evidence/' + eid + '/judgment-review', headers=headers)
+        assert review.json()['context'].strip() == text
+        assert client.post(url, headers=headers, content=raw).json()['recognized_repeat'] == 1
+    assert client.post(url, headers=headers, content=b'not a document').status_code == 422
+    assert not store.facts(['C1'])
+    store.import_records('private', b'private', 'team-authored', True, 'C2', [
+        {'locator': {'row': 1}, 'method': 'unmapped', 'passage': 'private', 'facts': []}
+    ])
+    audit_url = '/api/evidence/audit'
+    assert client.get(audit_url, headers=headers, params={'case': 'C2'}).status_code == 404
+    audit = client.get(audit_url, headers=headers)
+    assert audit.status_code == 200
+    assert audit.json()['total_audited'] == audit.json()['correct_records'] == 2
+
+    with store.db() as db:
+        db.execute("UPDATE evidence SET data=json_set(data, '$.passage', 'different') WHERE id=?",
+                   (evidence_ids[0],))
+    audit = client.get(audit_url, headers=headers, params={'case': 'C1'}).json()
+    assert audit['correct_records'] == 1
+    assert audit['discrepancies']['passage_mismatches'] == 1

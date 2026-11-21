@@ -1,0 +1,12 @@
+[
+  {"source_id":"US-VAHORA","split":"held_out","unit":3,"start":"His assertions to the contrary notwithstanding","end":"leader.","actors":["Vahora"],"basis":"appellate_finding"},
+  {"source_id":"US-MALFITANO","split":"held_out","unit":2,"start":"Further, even if, as Malfitano suggests","end":"was not clearly erroneous.","actors":["Malfitano"],"basis":"appellate_finding_with_alternative_role_argument"},
+  {"source_id":"AU-ARANDEZ","split":"held_out","unit":4,"start":"Between September 2017 and April 2021","end":"after three years.","actors":["Arandez"],"basis":"agency_account_of_operation_after_guilty_plea"},
+  {"source_id":"AU-ASX-RIGGING","split":"held_out","unit":2,"start":"The four ringleaders","end":"(25-098MR).","actors":[],"basis":"agency_account_of_unnamed_organizers"},
+  {"source_id":"AU-MILLER","split":"held_out","unit":4,"start":"In sentencing Mr Miller","end":"leading to financial disaster”.","actors":["Miller"],"basis":"agency_reporting_judicial_characterization"},
+  {"source_id":"US-DEVITO","split":"held_out","unit":4,"start":"From January 2002 through November 2004","end":"information to banks and other lenders.","actors":["Devito"],"basis":"agency_account_of_admission"},
+  {"source_id":"US-GORDON","split":"held_out","unit":2,"start":"The leader of the scheme","end":"in restitution.","actors":["Leslie Y. Gordon"],"basis":"agency_attribution"},
+  {"source_id":"US-MANCUSO-CHARGES","split":"held_out","unit":5,"start":"From 2009 through the present","end":"working with Mancuso on various purported projects.","actors":[],"basis":"legal_allegations_under_preceding_complaint_attribution"},
+  {"source_id":"IN-PMLA-GDR-BAIL","split":"held_out","unit":6,"start":"However, it is contended by Shri S.V. Raju","end":"prescribed in Section 45 of PMLA.","actors":[],"basis":"government_argument_in_bail_proceeding"},
+  {"source_id":"IN-JERANG-BAIL","split":"held_out","unit":2,"start":"Heard Mr. Arvind Minocha","end":"the allegations are similar.","actors":[],"basis":"government_argument_in_bail_proceeding"}
+]

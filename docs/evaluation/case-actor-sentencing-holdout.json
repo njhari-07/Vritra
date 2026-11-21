@@ -1,0 +1,8 @@
+[
+  {"source_id":"US-BERNADEL","split":"held_out","unit":2,"start":"Mario G. Bernadel, 51","end":"that cost banks over $9 million.","actors":["Mario G. Bernadel"],"basis":"agency_attribution"},
+  {"source_id":"US-NORIEGA","split":"held_out","unit":2,"start":"Alberto Noriega, of Miami","end":"José Angel Moreno announced today.","actors":["Alberto Noriega"],"basis":"agency_attribution"},
+  {"source_id":"US-PINTER","split":"held_out","unit":2,"start":"announced that Leib Pinter","end":"but were refinanced through Olympia.","actors":["Leib Pinter"],"basis":"agency_attribution"},
+  {"source_id":"US-MIAMI-PARTICIPANT","split":"held_out","unit":2,"start":"announced that defendant Samuel Morejon","end":"for his participation in a mortgage fraud scheme.","actors":[],"basis":"agency_account_of_participation"},
+  {"source_id":"US-COPPENGER","split":"held_out","unit":2,"start":"An Akron man was sentenced to 10 years","end":"United States Attorney for the Northern District of Ohio.","actors":["Coppenger"],"basis":"agency_attribution","identity":{"unit":6,"anchor":"Coppenger"}},
+  {"source_id":"US-GUZMAN","split":"held_out","unit":2,"start":"announced that Jose Guzman","end":"fraud scheme in eastern Connecticut.","actors":["Jose Guzman"],"basis":"agency_attribution"}
+]

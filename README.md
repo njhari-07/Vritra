@@ -140,3 +140,19 @@ The original [v2 handoff](docs/reference/project-handoff-v2.md) is preserved. Se
 
 See [local resource budgets](docs/resource-management.md) for memory limits,
 compressed dataset handling, and the verified cleanup record.
+
+### FIR and judgment document intake
+
+In **Import records**, choose an English FIR or Indian court judgment and upload
+a PDF, JPEG, or PNG. MAHA reads usable embedded PDF text and runs local English
+Tesseract on scanned pages. Install Tesseract and the English language data for
+scan support. On this local Ubuntu installation, the private
+`data/private/ocr-runtime/` directory provides the fallback runtime.
+
+Use **Quality** to open an extracted observation, see its page and text source,
+preview the original page, or download the file. Judgment mentions enter the existing review panel.
+Document offsets refer to extracted page text. The importer preserves originals
+and leaves NLP output as review evidence. Current limits are 25 MiB per upload,
+20 PDF pages, 20 megapixels per OCR image, and 100,000 extracted characters.
+This document adapter handles printed English prose. CDR and statement tables
+still use their existing structured adapters.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 // Textareas normalize CRLF and use UTF-16 offsets. The ledger uses code points.
 function sourceOffset(text, selectionOffset) {

@@ -1,198 +1,197 @@
-"""Evidence Correctness and Locator Integrity Audit Engine.
-Implements the required protocol from docs/design/04-evaluation.md:
-  - Verifies locator presence and validity across all ingestion modalities
-  - Validates source-to-field comparisons against raw retained source blobs in SQLite
-  - Measures wrong/missing locators, field fidelity, and passage boundary integrity
-  - Quantifies evidence correctness independently of link resolvability
-"""
+"""Check sampled evidence locators against the retained source."""
+from collections import Counter, defaultdict
 import csv
+import hashlib
 import io
 import json
-import hashlib
 from pathlib import Path
+from time import monotonic
+
+from pdfminer.pdfdocument import PDFPasswordIncorrect
+from pdfminer.pdfparser import PDFSyntaxError
+
+from .document_intake import replay_document_pages
+from .ingestion import pdf_records
+from .limits import ResourceLimitError
 from .store import Store
 
 
-def audit_evidence_correctness(ledger: Store, sample_limit: int = 500):
-    total_audited = 0
-    correct_count = 0
-    missing_locator_count = 0
-    invalid_locator_count = 0
-    passage_mismatch_count = 0
-    blob_missing_count = 0
+CSV_METHODS = {'csv-positional', 'synthetic-history-csv'}
+TEXT_METHODS = {
+    'explicit-identifier-rule', 'spacy-en_core_web_sm', 'document-metadata',
+    'raw-text-source', 'en_legal_ner_sm',
+}
 
-    by_modality = {}
-    audit_records = []
+
+def audit_source(blob, records, deadline):
+    same_source = [(data['source_locator'], data['extraction_method']) for data in records]
+    wanted_pages = {locator.get('page') for locator, _ in same_source
+                    if locator.get('text_method') and type(locator.get('page')) is int}
+    pages, pdf_rows, raw_text, csv_lines, narratives = {}, {}, None, None, None
+    page_error = None
+    if wanted_pages:
+        try:
+            pages = replay_document_pages(blob, deadline, wanted_pages)
+        except (FileNotFoundError, ResourceLimitError) as exc:
+            page_error = ('unverified', str(exc))
+        except (ValueError, OSError, PDFPasswordIncorrect, PDFSyntaxError):
+            page_error = ('passage_mismatches', 'Source pages could not be extracted')
+    if any(method == 'pdfplumber-fixed-v1' for _, method in same_source):
+        try:
+            pdf_rows = {(item['locator']['page'], item['locator']['row']): item
+                        for item in pdf_records(blob) if 'passage' in item}
+        except (ValueError, OSError, PDFPasswordIncorrect, PDFSyntaxError):
+            pass
+    if any(method in CSV_METHODS | TEXT_METHODS and not locator.get('text_method')
+           for locator, method in same_source):
+        try:
+            raw_text = blob.decode('utf-8-sig')
+            if any(method in CSV_METHODS for _, method in same_source):
+                csv_lines = io.StringIO(raw_text, newline='').readlines()
+            if any('document_ordinal' in locator for locator, _ in same_source):
+                narratives = json.loads(raw_text)
+        except ValueError:
+            pass
+    return pages, page_error, pdf_rows, raw_text, csv_lines, narratives
+
+
+def check_span(text, locator, passage):
+    start, end = locator.get('char_start'), locator.get('char_end')
+    if not isinstance(text, str):
+        return 'passage_mismatches', 'Source text could not be read'
+    if type(start) is not int or type(end) is not int or not 0 <= start < end <= len(text):
+        return 'invalid_locators', 'Character span falls outside source text'
+    if text[start:end] != passage:
+        return 'passage_mismatches', 'Passage differs from source text at the recorded span'
+    return None
+
+
+def check_record(data, source):
+    pages, page_error, pdf_rows, raw_text, csv_lines, narratives = source
+    locator, passage = data['source_locator'], data['passage']
+    method = data['extraction_method']
+    if not locator:
+        return 'missing_locators', 'Missing source locator'
+    if text_method := locator.get('text_method'):
+        number = locator.get('page')
+        if type(number) is not int or number < 1:
+            return 'invalid_locators', 'Invalid document page number'
+        if page_error:
+            return page_error
+        if number not in pages:
+            return 'invalid_locators', 'Document page is unavailable'
+        text, observed_method = pages[number]
+        if (text_method != observed_method
+                or locator.get('page_text_sha256') != hashlib.sha256(text.encode()).hexdigest()):
+            return 'passage_mismatches', 'Reproduced page text or extraction method differs'
+        return check_span(text, locator, passage)
+    if method in CSV_METHODS:
+        first = locator.get('line_start')
+        last = locator.get('line_end', first)
+        if csv_lines is None:
+            return 'passage_mismatches', 'CSV source could not be decoded'
+        if type(first) is not int or type(last) is not int or not 1 <= first <= last <= len(csv_lines):
+            return 'invalid_locators', 'CSV locator falls outside source lines'
+        try:
+            data = json.loads(passage)
+            rows = list(csv.reader(csv_lines[first - 1:last], strict=True))
+        except (csv.Error, TypeError, ValueError):
+            return 'passage_mismatches', 'CSV passage or source row could not be parsed'
+        if rows != [data]:
+            return 'passage_mismatches', 'CSV fields differ from the recorded source rows'
+        return None
+    if method in TEXT_METHODS:
+        if 'document_ordinal' in locator:
+            ordinal = locator['document_ordinal']
+            if (not isinstance(narratives, list) or type(ordinal) is not int
+                    or not 1 <= ordinal <= len(narratives) or not isinstance(narratives[ordinal - 1], dict)):
+                return 'invalid_locators', 'Invalid narrative document ordinal'
+            raw_text = narratives[ordinal - 1].get('text')
+        return check_span(raw_text, locator, passage)
+    if method == 'pdfplumber-fixed-v1':
+        page, row = locator.get('page'), locator.get('row')
+        expected = pdf_rows.get((page, row)) if type(page) is int and type(row) is int else None
+        if expected is None or locator != expected['locator']:
+            return 'invalid_locators', 'Fixed-layout PDF row locator could not be reproduced'
+        if passage != expected['passage']:
+            return 'passage_mismatches', 'PDF fields differ from the recorded row'
+        return None
+    return 'unverified', 'Extraction method has no source comparison'
+
+
+def audit_evidence_correctness(ledger: Store, sample_limit: int = 500, *, cases=None):
+    """Sample cases before loading any blobs and check one source at a time."""
+    if sample_limit < 1:
+        raise ValueError('Audit sample size must be positive')
+    by_source = defaultdict(list)
+    discrepancies = Counter(dict.fromkeys((
+        'missing_locators', 'invalid_locators', 'passage_mismatches', 'source_blob_missing', 'source_blob_mismatch',
+    ), 0))
+    modalities = defaultdict(Counter)
+    statuses = Counter()
+    samples = []
+    deadline = monotonic() + 30
 
     with ledger.db() as db:
-        rows = db.execute("SELECT id, source_id, case_id, data FROM evidence LIMIT ?", (sample_limit,)).fetchall()
-        # Pre-cache sources for speed
-        sources = {r[0]: r[1] for r in db.execute("SELECT id, content FROM sources").fetchall()}
-
-    for row in rows:
-        eid = row["id"]
-        sid = row["source_id"]
-        cid = row["case_id"]
-        data = json.loads(row["data"])
-
-        method = data.get("extraction_method", "unknown")
-        locator = data.get("source_locator", {})
-        passage = data.get("passage", "")
-        dataset = data.get("dataset_id", "")
-
-        if method not in by_modality:
-            by_modality[method] = {"total": 0, "correct": 0, "errors": []}
-
-        by_modality[method]["total"] += 1
-        total_audited += 1
-
-        is_correct = True
-        error_reasons = []
-
-        # 1. Check Locator Presence
-        if not locator:
-            missing_locator_count += 1
-            is_correct = False
-            error_reasons.append("Missing source_locator metadata")
-
-        # 2. Check Raw Source Blob Retrieval
-        blob = sources.get(sid)
-        if not blob:
-            blob_missing_count += 1
-            is_correct = False
-            error_reasons.append(f"Source blob {sid} not found in store")
+        if cases is None:
+            rows = db.execute('SELECT * FROM evidence ORDER BY id LIMIT ?', (sample_limit,))
+        elif cases:
+            places = ','.join('?' for _ in cases)
+            rows = db.execute(f'SELECT * FROM evidence WHERE case_id IN ({places}) ORDER BY id LIMIT ?',
+                              (*cases, sample_limit))
         else:
-            # 3. Method-specific source-to-passage verification
-            if method == "csv-positional":
-                line_no = locator.get("line_start")
-                if not line_no:
-                    invalid_locator_count += 1
-                    is_correct = False
-                    error_reasons.append("Missing line_start in CSV locator")
-                else:
-                    try:
-                        raw_lines = blob.decode("utf-8", errors="replace").splitlines()
-                        if 1 <= line_no <= len(raw_lines):
-                            target_line = raw_lines[line_no - 1]
-                            parsed_target = next(csv.reader([target_line]))
-                            # passage is JSON array of fields or raw text
-                            try:
-                                parsed_passage = json.loads(passage) if passage.startswith("[") else passage
-                            except Exception:
-                                parsed_passage = passage
+            rows = ()
+        for row in rows:
+            by_source[row['source_id']].append((row['id'], row['case_id'], json.loads(row['data'])))
+        for source_id, records in by_source.items():
+            stored = db.execute('SELECT content FROM sources WHERE id=?', (source_id,)).fetchone()
+            blob = stored['content'] if stored else None
+            error = None
+            if blob is None:
+                error = ('source_blob_missing', 'Source blob is unavailable')
+            elif hashlib.sha256(blob).hexdigest() != source_id:
+                error = ('source_blob_mismatch', 'Source blob checksum differs from its identifier')
+            else:
+                source = audit_source(blob, [data for _, _, data in records], deadline)
+            for eid, cid, data in records:
+                outcome = error or check_record(data, source)
+                status = 'correct'
+                if outcome:
+                    category, _ = outcome
+                    status = 'unverified' if category == 'unverified' else 'failed'
+                    if status == 'failed':
+                        discrepancies[category] += 1
+                method = data['extraction_method']
+                modalities[method][status] += 1
+                statuses[status] += 1
+                if len(samples) < 15:
+                    samples.append({'evidence_id': eid, 'case_id': cid, 'method': method,
+                                    'status': status, 'errors': [outcome[1]] if outcome else []})
 
-                            if isinstance(parsed_passage, list):
-                                if parsed_passage != parsed_target:
-                                    passage_mismatch_count += 1
-                                    is_correct = False
-                                    error_reasons.append(f"Parsed CSV mismatch at line {line_no}")
-                            elif passage.strip() != target_line.strip():
-                                passage_mismatch_count += 1
-                                is_correct = False
-                                error_reasons.append(f"CSV line mismatch at line {line_no}")
-                        else:
-                            invalid_locator_count += 1
-                            is_correct = False
-                            error_reasons.append(f"Line {line_no} out of bounds (1..{len(raw_lines)})")
-                    except Exception as ex:
-                        is_correct = False
-                        error_reasons.append(f"CSV audit exception: {str(ex)}")
+    def fidelity(counts):
+        verified = counts['correct'] + counts['failed']
+        return round(counts['correct'] / verified, 4) if verified else None
 
-            elif method in ("explicit-identifier-rule", "spacy-en_core_web_sm", "document-metadata"):
-                c_start = locator.get("char_start")
-                c_end = locator.get("char_end")
-                doc_ord = locator.get("document_ordinal", 1)
-
-                if c_start is None or c_end is None:
-                    invalid_locator_count += 1
-                    is_correct = False
-                    error_reasons.append("Narrative locator missing char_start/char_end offsets")
-                else:
-                    try:
-                        raw_str = blob.decode("utf-8", errors="replace")
-                        if raw_str.strip().startswith("["):
-                            docs = json.loads(raw_str)
-                            if 1 <= doc_ord <= len(docs):
-                                doc_text = docs[doc_ord - 1].get("text", "")
-                                span_text = doc_text[c_start:c_end]
-                                if passage != span_text:
-                                    passage_mismatch_count += 1
-                                    is_correct = False
-                                    error_reasons.append(f"Narrative span mismatch: extracted '{passage}' != source '{span_text}'")
-                            else:
-                                invalid_locator_count += 1
-                                is_correct = False
-                                error_reasons.append(f"Doc ordinal {doc_ord} exceeds doc count {len(docs)}")
-                        else:
-                            span_text = raw_str[c_start:c_end]
-                            if passage != span_text:
-                                passage_mismatch_count += 1
-                                is_correct = False
-                                error_reasons.append(f"Text span mismatch: extracted '{passage}' != source '{span_text}'")
-                    except Exception as ex:
-                        is_correct = False
-                        error_reasons.append(f"Narrative audit exception: {str(ex)}")
-
-            elif method == "pdf-table":
-                page = locator.get("page")
-                row_idx = locator.get("row")
-                bbox = locator.get("bbox")
-                if page is None or row_idx is None:
-                    invalid_locator_count += 1
-                    is_correct = False
-                    error_reasons.append("PDF locator missing page or row index")
-
-        if is_correct:
-            correct_count += 1
-            by_modality[method]["correct"] += 1
-        else:
-            by_modality[method]["errors"].append({
-                "evidence_id": eid,
-                "reasons": error_reasons
-            })
-
-        audit_records.append({
-            "evidence_id": eid,
-            "case_id": cid,
-            "method": method,
-            "status": "correct" if is_correct else "failed",
-            "errors": error_reasons
-        })
-
-    fidelity_rate = round(correct_count / total_audited, 4) if total_audited > 0 else 1.0
-
-    modality_summary = {}
-    for mod, val in by_modality.items():
-        if val["total"] > 0:
-            modality_summary[mod] = {
-                "total": val["total"],
-                "correct": val["correct"],
-                "fidelity": round(val["correct"] / val["total"], 4),
-                "error_count": len(val["errors"])
-            }
-
-    result = {
-        "protocol": "docs/design/04-evaluation.md § Evidence Correctness Audit Protocol",
-        "total_audited": total_audited,
-        "correct_records": correct_count,
-        "overall_correctness_rate": fidelity_rate,
-        "discrepancies": {
-            "missing_locators": missing_locator_count,
-            "invalid_locators": invalid_locator_count,
-            "passage_mismatches": passage_mismatch_count,
-            "source_blob_missing": blob_missing_count
-        },
-        "by_modality": modality_summary,
-        "sample_size": total_audited,
-        "standard": "Exact locator fidelity against immutable raw source blobs",
-        "audit_sample_records": audit_records[:15]
+    return {
+        'protocol': 'docs/design/04-evaluation.md § Evidence Correctness Audit Protocol',
+        'total_audited': statuses.total(),
+        'correct_records': statuses['correct'],
+        'unverified_records': statuses['unverified'],
+        'overall_correctness_rate': fidelity(statuses),
+        'discrepancies': dict(discrepancies),
+        'by_modality': {method: {'total': counts.total(), 'correct': counts['correct'],
+                                'fidelity': fidelity(counts), 'error_count': counts['failed'],
+                                'unverified': counts['unverified']}
+                        for method, counts in modalities.items()},
+        'sample_size': statuses.total(),
+        'standard': 'Exact passage fidelity against retained source blobs and reproducible extracted text',
+        'audit_sample_records': samples,
     }
-    return result
 
 
-def run_and_save_evidence_audit(ledger: Store, output_path: str = "artifacts/evaluation/evidence-audit.json"):
-    res = audit_evidence_correctness(ledger)
+def run_and_save_evidence_audit(ledger: Store, output_path: str = 'artifacts/evaluation/evidence-audit.json'):
+    result = audit_evidence_correctness(ledger)
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(res, indent=2) + "\n")
-    return res
+    out.write_text(json.dumps(result, indent=2) + '\n')
+    return result

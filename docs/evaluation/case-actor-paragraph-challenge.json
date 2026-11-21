@@ -1,0 +1,7 @@
+[
+  {"source_id":"US-SOMOZA","split":"held_out","unit":2,"start":"A Los Angeles County man who was the leader","end":"300 months in federal prison.","actors":["Curtis D. Somoza"],"basis":"agency_attribution","identity":{"unit":3,"anchor":"Curtis D. Somoza"}},
+  {"source_id":"US-GATES-MILLS","split":"held_out","unit":2,"start":"The leader of a $6.7 million mortgage fraud scheme","end":"more than 12 years in prison","actors":["Louis Amir"],"basis":"agency_attribution","identity":{"unit":4,"anchor":"Louis Amir"}},
+  {"source_id":"US-ABRAMS","split":"held_out","unit":2,"start":"A former mortgage broker who helped orchestrate","end":"78 months in federal prison.","actors":["Mark Alan Abrams"],"basis":"agency_attribution","identity":{"unit":3,"anchor":"Mark Alan Abrams"}},
+  {"source_id":"US-STAL","split":"held_out","unit":2,"start":"Judge Benson E. Legg sentenced Jared Baraloto","end":"transport stolen goods.","actors":[],"basis":"agency_account_of_participation"},
+  {"source_id":"US-STAL","split":"held_out","unit":3,"start":"Judge Legg sentenced the leader of the scheme","end":"three years of supervised release.","actors":["Jerome Stal"],"basis":"agency_attribution","review_only":true}
+]

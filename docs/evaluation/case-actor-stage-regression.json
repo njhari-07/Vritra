@@ -1,0 +1,6 @@
+[
+  {"source_id":"NEWS-MADOFF-ARREST","split":"held_out","unit":2,"start":"Top broker and Wall Street adviser","end":"up to $5 million.","actors":[],"basis":"news_report_of_arrest_and_allegations"},
+  {"source_id":"NEWS-MADOFF-ARREST","split":"held_out","unit":5,"start":"Dan Horwitz, counsel of Mr. Madoff","end":"get through this unfortunate event.","actors":[],"basis":"defense_counsel_quote_about_industry_leadership"},
+  {"source_id":"NEWS-MADOFF-PLEA","split":"held_out","unit":2,"start":"US financier Bernard Madoff","end":"US$50 billion Ponzi scheme.","actors":[],"basis":"news_report_of_plea_without_explicit_organizer_attribution"},
+  {"source_id":"US-MADOFF-FBI","split":"held_out","unit":5,"start":"Madoff—a financial investor","end":"biggest Ponzi scheme.","actors":["Madoff"],"basis":"agency_historical_account"}
+]

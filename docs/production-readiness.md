@@ -58,3 +58,36 @@ timestamp. The original extraction stays intact. Concurrent edits are
 rejected until the reviewer reloads the latest decision. Decisions stay
 in the evidence ledger for review and do not create graph assertions.
 The review panel displays the 50 latest decisions per mention.
+
+## Module verification checkpoint
+
+The backend suite passed 35 tests against a temporary ledger. Its coverage
+includes access and case scoping, imports and provenance, judgment review,
+identity decisions, financial paths, evidence audits, dossier export, and
+projection recovery after a simulated failure.
+
+Structured uploads now parse and write on a worker thread. The regression
+test calls the normal IBM upload endpoint, checks the worker context, and
+verifies the resulting transaction in the case graph. The health route has
+one definition with the existing status response.
+
+The frontend production build succeeded. In headless Chrome with a
+temporary ledger, an account with no cases could create its first one
+without requesting an unassigned case. The browser exported a report
+scoped to that case and verified lock and re-login with a different
+account. A deliberately delayed evidence response did not replace the
+newer selection. Switching cases cleared the drawer and loaded the
+selected case's import records. The browser also verified that the
+import form follows the active case, a born-digital FIR PDF can be
+imported and previewed, and its original download matches the input
+bytes. The evidence drawer takes focus on open, closes with Escape when
+focused, and restores focus to the opener. A judgment text import reached
+the legal mention panel and saved an approval. Headless Chrome opened
+all sidebar tabs without a runtime exception on the test ledger.
+Scanned-document OCR and populated analytics views still need broader
+end-to-end coverage.
+The graph library chunk is 536 kB minified, or 163 kB gzipped.
+The two live Neo4j tests were skipped. Docker Desktop's selected daemon was
+offline, and the system daemon was inaccessible to the current user.
+Live parity, transaction rollback, and recovery still require an isolated
+Neo4j instance.

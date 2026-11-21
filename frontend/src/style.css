@@ -1885,6 +1885,17 @@ button, input:not([type='range']), select { min-height: 36px; }
 .judgment-review textarea { resize: vertical; }
 .judgment-review time { color: var(--text-muted); font-size: 12px; }
 
+.document-source-actions { display: grid; gap: 8px; justify-items: start; }
+.source-page-preview {
+  display: block;
+  width: 100%;
+  max-height: 64vh;
+  object-fit: contain;
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-app);
+}
+
 /* ==========================================================================
    UI upgrade: auth slot, token screen stage, graph view switch, 3D graph
    ========================================================================== */

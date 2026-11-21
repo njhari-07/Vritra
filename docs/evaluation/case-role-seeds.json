@@ -1,0 +1,625 @@
+[
+  {
+    "source_id": "US-MGBODILE",
+    "split": "development",
+    "disposition": "leadership enhancement affirmed",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Mgbodile"
+        ],
+        "unit": 7,
+        "anchor": "did not clearly err in increasing Mgbodile"
+      }
+    ]
+  },
+  {
+    "source_id": "US-CARD-APPEAL",
+    "split": "development",
+    "disposition": "sentence and restitution affirmed",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Meredith"
+        ],
+        "unit": 5,
+        "anchor": "ample evidence to support its finding"
+      },
+      {
+        "role": "sentence_affirmed",
+        "basis": "appellate_disposition",
+        "actors": [
+          "Meredith"
+        ],
+        "unit": 9,
+        "anchor": "we AFFIRM Mr. Meredith"
+      }
+    ]
+  },
+  {
+    "source_id": "US-ALLEN-SYLVESTER",
+    "split": "development",
+    "disposition": "leadership challenges rejected for both defendants",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Allen",
+          "Sylvester"
+        ],
+        "unit": 3,
+        "anchor": "both Allen and Sylvester were organizers"
+      }
+    ]
+  },
+  {
+    "source_id": "US-BANK-FRAUD-SDNY",
+    "split": "development",
+    "disposition": "agency report of sentencing",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "agency_attribution",
+        "actors": [
+          "Zaman"
+        ],
+        "unit": 8,
+        "anchor": "ZAMAN was one of the leaders"
+      }
+    ]
+  },
+  {
+    "source_id": "US-BANK-FRAUD-WAW",
+    "split": "development",
+    "disposition": "agency reports judge resolved disputed leadership at sentencing",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "agency_reporting_judicial_finding",
+        "actors": [
+          "Williams"
+        ],
+        "unit": 2,
+        "anchor": "Judge Lasnik ruled that WILLIAMS"
+      }
+    ]
+  },
+  {
+    "source_id": "US-ROLE-RI",
+    "split": "development",
+    "disposition": "prosecution sentencing submission; no judicial disposition established by this document",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "prosecution_argument",
+        "actors": [
+          "Mansaray"
+        ],
+        "unit": 7,
+        "anchor": "The defendant was unquestionably a leader"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-IDFC-ED",
+    "split": "development",
+    "disposition": "agency announcement during ongoing investigation",
+    "claims": [
+      {
+        "role": "main_accused",
+        "basis": "agency_allegation",
+        "actors": [
+          "Vikram Wadhwa"
+        ],
+        "unit": 1,
+        "anchor": "Vikram Wadhwa is one of the main accused"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-CONSPIRACY-APPEAL",
+    "split": "development",
+    "disposition": "appeals dismissed; acquittals undisturbed",
+    "claims": [
+      {
+        "role": "acquittal_undisturbed",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 24,
+        "anchor": "acquitting the respondents does not warrant interference"
+      }
+    ]
+  },
+  {
+    "source_id": "US-CRAIG-BENNETT",
+    "split": "held_out",
+    "disposition": "court expressly found two organizers in the charged schemes",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "sentencing_court_finding",
+        "actors": [
+          "Craig",
+          "Bennett"
+        ],
+        "unit": 9,
+        "anchor": "The Court has no doubt that both Craig and Bennett were organizers"
+      }
+    ]
+  },
+  {
+    "source_id": "US-ACURE",
+    "split": "held_out",
+    "disposition": "appellate court upheld the trial court's role finding",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Javidan"
+        ],
+        "unit": 23,
+        "anchor": "clear error in finding her as leader/organizer"
+      }
+    ]
+  },
+  {
+    "source_id": "US-BANK-LEADERS-MD",
+    "split": "held_out",
+    "disposition": "agency describes three sentenced leaders",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "agency_attribution",
+        "actors": [
+          "Moadian Elam Bratton-Bey",
+          "Ehizele Aydo Seignious",
+          "Boaz Bratton-Bey"
+        ],
+        "unit": 2,
+        "anchor": "sentenced the three leaders in the scheme"
+      }
+    ]
+  },
+  {
+    "source_id": "US-KENT",
+    "split": "held_out",
+    "disposition": "leadership discussed separately from sentence vacatur and remand",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Kent"
+        ],
+        "unit": 17,
+        "anchor": "Here, Kent was a leader of a scheme"
+      },
+      {
+        "role": "sentence_vacated",
+        "basis": "appellate_disposition",
+        "actors": [
+          "Kent"
+        ],
+        "unit": 21,
+        "anchor": "Kent’s sentence is VACATED"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-RAHIL",
+    "split": "held_out",
+    "disposition": "convictions of appellants set aside",
+    "claims": [
+      {
+        "role": "conviction_set_aside",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 21,
+        "anchor": "to the extent that it convicts the appellants"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-DISCHARGE-APPEAL",
+    "split": "held_out",
+    "disposition": "discharge upheld for the respondent in scope",
+    "claims": [
+      {
+        "role": "discharge_undisturbed",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 8,
+        "anchor": "we find no error in the view taken"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-CBI-APPEAL",
+    "split": "held_out",
+    "disposition": "proceedings restored; procedural ruling",
+    "claims": [
+      {
+        "role": "proceedings_restored",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 28,
+        "anchor": "restore the proceedings arising out of the chargesheet"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC141",
+    "split": "development",
+    "disposition": "ED appeal dismissed; bail order left in place.",
+    "claims": [
+      {
+        "role": "bail_order_undisturbed",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 4,
+        "anchor": "we find no error in the impugned order"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC402",
+    "split": "development",
+    "disposition": "Proceedings on the specified count may continue; appellate order is not a conviction.",
+    "claims": [
+      {
+        "role": "proceedings_partly_restored",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 9,
+        "anchor": "The learned trial court would proceed further in accordance with law"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC618",
+    "split": "development",
+    "disposition": "Conviction and sentence set aside.",
+    "claims": [
+      {
+        "role": "conviction_set_aside",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 36,
+        "anchor": "The conviction and sentence of the accused, as awarded"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC655",
+    "split": "held_out",
+    "disposition": "Conviction and sentence set aside; benefit of doubt.",
+    "claims": [
+      {
+        "role": "conviction_set_aside",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 12,
+        "anchor": "The conviction and sentence awarded to the Appellant is set aside"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC760",
+    "split": "held_out",
+    "disposition": "Appeal allowed in part on procedural grounds; court expressly leaves merits open.",
+    "claims": [
+      {
+        "role": "merits_not_decided",
+        "basis": "appellate_scope",
+        "actors": [],
+        "unit": 5,
+        "anchor": "we have not expressed any opinion on the merits of the complaint"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC787",
+    "split": "development",
+    "disposition": "Proceedings quashed as to the appellants after settlement.",
+    "claims": [
+      {
+        "role": "proceedings_quashed",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 6,
+        "anchor": "we find it appropriate to quash the proceedings pending"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC868",
+    "split": "development",
+    "disposition": "High Court judgment set aside and appellant acquitted.",
+    "claims": [
+      {
+        "role": "acquittal",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 25,
+        "anchor": "The appellant is acquitted of all charges relating to this case"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC967",
+    "split": "held_out",
+    "disposition": "A-1 conviction confirmed with reduced sentence; A-2 conviction set aside.",
+    "claims": [
+      {
+        "role": "split_disposition",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 7,
+        "anchor": "insofar they convict A-2 are set aside"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC1090",
+    "split": "held_out",
+    "disposition": "Acquittals apply to the connected appeals identified in the order, not all defendants.",
+    "claims": [
+      {
+        "role": "acquittal_in_connected_appeals",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 30,
+        "anchor": "The appellants are acquitted of all the charges framed against them"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC229",
+    "split": "development",
+    "disposition": "FIR restored; procedural ruling.",
+    "claims": [
+      {
+        "role": "fir_restored",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 32,
+        "anchor": "restore the FIR in Crime No. 56 of 2003"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC397",
+    "split": "development",
+    "disposition": "Trial restored to the stage where it was interrupted.",
+    "claims": [
+      {
+        "role": "trial_restored",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 15,
+        "anchor": "we restore C.C. No. 30/2013 to the record"
+      }
+    ]
+  },
+  {
+    "source_id": "IN-ARCHIVE-2025INSC674",
+    "split": "development",
+    "disposition": "Conviction left undisturbed; appeal dismissed.",
+    "claims": [
+      {
+        "role": "conviction_undisturbed",
+        "basis": "appellate_disposition",
+        "actors": [],
+        "unit": 10,
+        "anchor": "The appeal is accordingly dismissed"
+      }
+    ]
+  },
+  {
+    "source_id": "US-WARREN",
+    "split": "held_out",
+    "disposition": "Appellate majority affirmed the role enhancement; dissent disagreed.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Warren"
+        ],
+        "unit": 1,
+        "anchor": "a fair basis to conclude that she played a leadership role"
+      }
+    ]
+  },
+  {
+    "source_id": "US-TAT",
+    "split": "held_out",
+    "disposition": "Appellate court found error in the organizer enhancement and ordered resentencing.",
+    "claims": [
+      {
+        "role": "leadership_enhancement_rejected",
+        "basis": "appellate_finding",
+        "actors": [
+          "Tat"
+        ],
+        "unit": 14,
+        "anchor": "Ms. Tat’s status as a mere member of the criminal enterprise"
+      },
+      {
+        "role": "sentence_vacated",
+        "basis": "appellate_disposition",
+        "actors": [
+          "Tat"
+        ],
+        "unit": 18,
+        "anchor": "we VACATE Ms. Tat’s sentence and REMAND"
+      }
+    ]
+  },
+  {
+    "source_id": "US-MBENGA-ORDER",
+    "split": "development",
+    "disposition": "Petition denied; order recounts the court's prior sentencing finding.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "sentencing_court_finding",
+        "actors": [
+          "Mbenga"
+        ],
+        "unit": 2,
+        "anchor": "Petitioner was a leader and organizer of the scheme."
+      }
+    ]
+  },
+  {
+    "source_id": "US-BALDWIN",
+    "split": "development",
+    "disposition": "Appellate court upheld the leadership determination and separately considered restitution.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Baldwin"
+        ],
+        "unit": 3,
+        "anchor": "Whether she was a leader or organizer of the scheme"
+      }
+    ]
+  },
+  {
+    "source_id": "US-GREEN",
+    "split": "held_out",
+    "disposition": "Sentence affirmed, including the challenged organizer-or-leader enhancement.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Green"
+        ],
+        "unit": 5,
+        "anchor": "Green was an organizer or leader of the conspiracy"
+      }
+    ]
+  },
+  {
+    "source_id": "US-BINDRANAUTH",
+    "split": "held_out",
+    "disposition": "Appellate court affirmed application of the leadership enhancement.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_finding",
+        "actors": [
+          "Bindranauth"
+        ],
+        "unit": 26,
+        "anchor": "We thus affirm its application of the enhancement."
+      }
+    ]
+  },
+  {
+    "source_id": "US-WALKER",
+    "split": "held_out",
+    "disposition": "Appellate court rejected the leadership enhancement.",
+    "claims": [
+      {
+        "role": "leadership_enhancement_rejected",
+        "basis": "appellate_finding",
+        "actors": [
+          "Walker"
+        ],
+        "unit": 24,
+        "anchor": "we conclude that Mr. Walker was not a leader or organizer"
+      }
+    ]
+  },
+  {
+    "source_id": "US-STANFORD-FBI",
+    "split": "development",
+    "disposition": "FBI account of the jury conviction.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "agency_report_of_conviction",
+        "actors": [
+          "Robert Allen Stanford"
+        ],
+        "unit": 2,
+        "anchor": "for orchestrating a 20-year investment fraud scheme"
+      }
+    ]
+  },
+  {
+    "source_id": "US-MADOFF-FBI",
+    "split": "held_out",
+    "disposition": "FBI historical account of the scheme and conviction.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "agency_historical_account",
+        "actors": [
+          "Madoff"
+        ],
+        "unit": 5,
+        "anchor": "Madoff was running what turned out to be"
+      }
+    ]
+  },
+  {
+    "source_id": "US-STINSON-FBI",
+    "split": "development",
+    "disposition": "Agency report of sentence.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "agency_historical_account",
+        "actors": [
+          "Stinson"
+        ],
+        "unit": 3,
+        "anchor": "Stinson ran an elaborate Ponzi scheme"
+      }
+    ]
+  },
+  {
+    "source_id": "US-SULLIVAN-FBI",
+    "split": "development",
+    "disposition": "Agency report of sentence.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "agency_historical_account",
+        "actors": [
+          "Sullivan"
+        ],
+        "unit": 3,
+        "anchor": "Sullivan ran a Ponzi scheme"
+      }
+    ]
+  },
+  {
+    "source_id": "US-HUBER",
+    "split": "held_out",
+    "disposition": "The appellate court affirmed the sentence after a guilty plea.",
+    "claims": [
+      {
+        "role": "organizer_or_leader",
+        "basis": "appellate_case_background_with_guilty_plea",
+        "actors": [
+          "William Huber"
+        ],
+        "unit": 1,
+        "anchor": "William Huber ran a Ponzi scheme"
+      }
+    ]
+  }
+]
