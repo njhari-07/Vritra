@@ -2,26 +2,28 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
 
+// "Case File Night" entity colours, shared with the 3D views.
 const NODE_THEMES = {
-  Person: { bg: '#f59e0b', border: '#b45309', highlight: '#fbbf24', shape: 'dot', size: 22 },
-  Account: { bg: '#0284c7', border: '#0369a1', highlight: '#38bdf8', shape: 'box', size: 14 },
-  Transaction: { bg: '#64748b', border: '#334155', highlight: '#94a3b8', shape: 'dot', size: 8 },
-  Case: { bg: '#10b981', border: '#047857', highlight: '#34d399', shape: 'diamond', size: 26 },
-  Location: { bg: '#ec4899', border: '#be185d', highlight: '#f472b6', shape: 'dot', size: 16 },
-  Organization: { bg: '#8b5cf6', border: '#6d28d9', highlight: '#a78bfa', shape: 'square', size: 18 },
-  Document: { bg: '#475569', border: '#1e293b', highlight: '#94a3b8', shape: 'box', size: 12 }
+  Person: { bg: '#5AA9FF', border: '#2F7FD6', highlight: '#8EC5FF', shape: 'dot', size: 22 },
+  Account: { bg: '#F2B544', border: '#C88E1F', highlight: '#F8CF7E', shape: 'box', size: 14 },
+  Phone: { bg: '#3DD6B5', border: '#22A88B', highlight: '#7FF0D6', shape: 'dot', size: 14 },
+  Transaction: { bg: '#8D87B3', border: '#5E5986', highlight: '#A59FC4', shape: 'dot', size: 8 },
+  Case: { bg: '#EDF2FA', border: '#A59FC4', highlight: '#FFFFFF', shape: 'diamond', size: 26 },
+  Location: { bg: '#A98BFF', border: '#7A5CE0', highlight: '#C7B4FF', shape: 'dot', size: 16 },
+  Organization: { bg: '#C9C3E8', border: '#8D87B3', highlight: '#E3DFF5', shape: 'square', size: 18 },
+  Document: { bg: '#4A5B7C', border: '#233350', highlight: '#6B7DA0', shape: 'box', size: 12 }
 };
 
 const EDGE_STYLES = {
-  TRANSACTED_WITH: { color: '#38bdf8', width: 1.8, dashes: false, arrow: true },
-  SENT_FROM: { color: '#0ea5e9', width: 1, dashes: false, arrow: true },
-  SENT_TO: { color: '#0284c7', width: 1, dashes: false, arrow: true },
-  OWNS_ACCOUNT: { color: '#10b981', width: 2.2, dashes: false, arrow: true },
-  COMMUNICATED_WITH: { color: '#f59e0b', width: 2, dashes: [5, 4], arrow: false },
-  INVOLVED_IN_CASE: { color: '#a855f7', width: 1.6, dashes: [4, 4], arrow: true },
-  LOCATED_AT: { color: '#ec4899', width: 1.2, dashes: false, arrow: true },
-  MENTIONED_IN: { color: '#64748b', width: 0.8, dashes: [2, 3], arrow: false },
-  FILED_UNDER: { color: '#64748b', width: 0.8, dashes: [2, 3], arrow: false }
+  TRANSACTED_WITH: { color: '#F2B544', width: 1.8, dashes: false, arrow: true },
+  SENT_FROM: { color: '#C88E1F', width: 1, dashes: false, arrow: true },
+  SENT_TO: { color: '#C88E1F', width: 1, dashes: false, arrow: true },
+  OWNS_ACCOUNT: { color: '#5AA9FF', width: 2.2, dashes: false, arrow: true },
+  COMMUNICATED_WITH: { color: '#3DD6B5', width: 2, dashes: [5, 4], arrow: false },
+  INVOLVED_IN_CASE: { color: '#C9C3E8', width: 1.6, dashes: [4, 4], arrow: true },
+  LOCATED_AT: { color: '#A98BFF', width: 1.2, dashes: false, arrow: true },
+  MENTIONED_IN: { color: '#3A4D72', width: 0.8, dashes: [2, 3], arrow: false },
+  FILED_UNDER: { color: '#3A4D72', width: 0.8, dashes: [2, 3], arrow: false }
 };
 
 export default function GraphView({ graph, onSelect, darkMode = false, height = '560px' }) {
