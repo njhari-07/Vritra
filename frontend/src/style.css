@@ -1998,3 +1998,44 @@ h1, h2, h3, .wordmark { letter-spacing: -0.03em; }
 .view-switch button.active { color: #F2B544; }
 .dark-theme .btn-tmpl { background: transparent; color: #EDF2FA; border: 1px solid #233350; }
 .dark-theme .btn-tmpl:hover { border-color: #5AA9FF; }
+
+/* ==========================================================================
+   "Case File Night" light counterpart. Same meanings as the dark theme, with
+   accents darkened so text meets 4.5:1 on white: gold #9A6400 (evidence
+   text; gold fills keep #F2B544 with navy text), blue #1F64C8, coral #C8372A
+   (money loops only), teal #0B7F69, violet #6A47D1.
+   ========================================================================== */
+:root {
+  --bg-app: #F3F5FA;
+  --bg-surface: #FFFFFF;
+  --bg-surface-elevated: #FFFFFF;
+  --bg-subtle: #E9EDF5;
+  --bg-card: #FFFFFF;
+  --border-subtle: #D6DCE8;
+  --border-strong: #B9C2D4;
+  --border-focus: #1F64C8;
+  --text-primary: #0A1020;
+  --text-secondary: #3A4566;
+  --text-muted: #5D6787;
+  --text-inverted: #FFFFFF;
+  --accent-cyan: #1F64C8;
+  --accent-blue: #1F64C8;
+  --accent-emerald: #0B7F69;
+  --accent-amber: #9A6400;
+  --accent-rose: #C8372A;
+  --accent-purple: #6A47D1;
+  --shadow-glow: 0 0 20px -4px rgb(31 100 200 / 25%);
+}
+.shell:not(.dark-theme) .btn-train-primary,
+.login:not(.dark-theme) form button { background: #F2B544; color: #0A1020; }
+.shell:not(.dark-theme) .btn-train-primary:hover,
+.login:not(.dark-theme) form button:hover { background: #E5A52E; }
+.shell:not(.dark-theme) header { background: rgb(243 245 250 / 88%); }
+.shell:not(.dark-theme) .sidebar nav button.active { background: rgb(31 100 200 / 9%); color: #0A1020; border-color: rgb(31 100 200 / 30%); }
+.shell:not(.dark-theme) .brand-mark, .login:not(.dark-theme) .brand-mark { stroke: #9A6400; }
+.shell:not(.dark-theme) .brand-mark circle, .login:not(.dark-theme) .brand-mark circle { fill: #9A6400; }
+.shell:not(.dark-theme) .btn-tmpl { background: transparent; color: #0A1020; border: 1px solid #D6DCE8; }
+.shell:not(.dark-theme) .btn-tmpl:hover { border-color: #1F64C8; }
+.shell:not(.dark-theme) .view-switch button.active { color: #9A6400; }
+.shell:not(.dark-theme) .dev-auth-chip { color: #9A6400; }
+.login-stage .login:not(.dark-theme) { background: rgb(255 255 255 / 92%); border-color: #D6DCE8; }
