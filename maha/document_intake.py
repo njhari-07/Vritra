@@ -1,7 +1,8 @@
 """Local document extraction for FIRs and judgments."""
+import csv
 from hashlib import sha256
 from contextlib import closing
-from io import BytesIO
+from io import BytesIO, StringIO
 import os
 import re
 from pathlib import Path
@@ -14,6 +15,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 import pdfplumber
 from pdfminer.pdfdocument import PDFPasswordIncorrect
 from pdfminer.pdfparser import PDFSyntaxError
+from pdfplumber.utils.exceptions import MalformedPDFException
 
 from .judgments import judgment_records
 from .limits import ResourceLimitError
@@ -25,7 +27,7 @@ MAX_CHARACTERS = 100_000
 _slots = BoundedSemaphore(1)
 
 
-def _ocr(image, deadline):
+def _ocr(image, deadline, *, words=False):
     root = Path(__file__).resolve().parents[1] / 'data/private/ocr-runtime'
     bundled = root / 'usr/bin/tesseract'
     binary = shutil.which('tesseract')
@@ -46,7 +48,8 @@ def _ocr(image, deadline):
         image.save(pixels, format='PNG')
         try:
             result = subprocess.run(
-                [binary, 'stdin', 'stdout', '-l', 'eng'], input=pixels.getvalue(),
+                [binary, 'stdin', 'stdout', '-l', 'eng', *(['--psm', '11', 'tsv'] if words else [])],
+                input=pixels.getvalue(),
                 capture_output=True, timeout=min(20, remaining), env=environment,
             )
         except subprocess.TimeoutExpired as exc:
@@ -54,6 +57,42 @@ def _ocr(image, deadline):
     if result.returncode:
         raise FileNotFoundError('Local OCR could not run. Check Tesseract and its English language data.')
     return result.stdout.decode('utf-8')
+
+
+def ocr_pdf_word_band(page, top, bottom, deadline):
+    """Recover positioned words from a small region of an already-open PDF page."""
+    resolution = 200
+    width = page.width * resolution / 72
+    height = page.height * resolution / 72
+    if min(width, height) <= 0 or width * height > MAX_PIXELS:
+        raise ResourceLimitError('Statement page exceeds the OCR size limit')
+    if not _slots.acquire(blocking=False):
+        raise ResourceLimitError('Local OCR is busy. Retry the statement upload.')
+    try:
+        try:
+            raster = page.to_image(resolution=resolution, antialias=True)
+        except MalformedPDFException as exc:
+            raise ValueError('The statement header could not be rendered for OCR') from exc
+        origin_x, origin_y = raster.bbox[:2]
+        scale = raster.scale
+        with raster.original as image:
+            start = max(0, round((top - origin_y) * scale))
+            end = min(image.height, round((bottom - origin_y) * scale))
+            if start >= end:
+                return []
+            with image.crop((0, start, image.width, end)) as band:
+                data = _ocr(band, deadline, words=True)
+    finally:
+        _slots.release()
+    words = []
+    for item in csv.DictReader(StringIO(data), delimiter='\t'):
+        if item['level'] != '5' or not item['text'] or not item['text'].strip():
+            continue
+        x, y = int(item['left']), int(item['top'])
+        w, h = int(item['width']), int(item['height'])
+        words.append({'text': item['text'], 'x0': origin_x + x / scale, 'x1': origin_x + (x + w) / scale,
+                      'top': origin_y + (start + y) / scale, 'bottom': origin_y + (start + y + h) / scale})
+    return words
 
 
 def _usable(text):

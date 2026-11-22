@@ -1,13 +1,17 @@
 from hashlib import sha256
 from io import BytesIO
 import json
+from pathlib import Path
+import shutil
 
 from fastapi.testclient import TestClient
 import msoffcrypto
 from openpyxl import Workbook
+import pdfplumber
 import pytest
 from reportlab.lib import colors
 from reportlab.lib.pdfencrypt import StandardEncryption
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import Table
 
@@ -124,7 +128,11 @@ def test_long_statement_ranges_preserve_page_locators_and_respect_case_limit(tmp
     monkeypatch.setenv('MAHA_MAX_GRAPH_NODES', '2')
     store = Store(tmp_path / 'ledger')
     headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
-    original = make_encrypted_pdf(117, ROWS[:2])
+    rows = [
+        ['Value Date', 'Post Date', 'Details', 'Reference', 'Debit', 'Credit', 'Balance'],
+        ['12/11/2026', '13/11/2026', 'Test transfer', '000123', '1,25,000.00', '', '20,000.00'],
+    ]
+    original = make_encrypted_pdf(117, rows)
 
     with TestClient(create_app(store)) as client:
         def upload(pages):
@@ -152,6 +160,10 @@ def test_long_statement_ranges_preserve_page_locators_and_respect_case_limit(tmp
         assert response.status_code == 200, response.text
         assert response.json()['locator']['page'] == 117
         assert response.json()['matches_ingested']
+        assert response.json()['cells'] == rows[1]
+        evidence = client.get(f'/api/evidence/{eid}', headers=headers).json()
+        assert evidence['event_time'] == '2026-11-13T00:00:00+00:00'
+        assert evidence['time_basis'] == 'date_only'
         assert upload('117').json()['recognized_repeat'] == 1
 
         monkeypatch.setenv('MAHA_MAX_GRAPH_NODES', '2000')
@@ -164,7 +176,8 @@ def test_bank_pdf_can_read_aligned_text_without_table_lines():
     pdf = BytesIO()
     canvas = Canvas(pdf)
     canvas.setFont('Helvetica', 10)
-    for index, row in enumerate(ROWS[:4]):
+    rows = [['Value Date', *ROWS[0][1:]], *ROWS[1:4]]
+    for index, row in enumerate(rows):
         for x, cell in zip((35, 110, 310, 390, 465), row, strict=True):
             canvas.drawString(x, 720 - 20 * index, cell)
     canvas.save()
@@ -172,4 +185,174 @@ def test_bank_pdf_can_read_aligned_text_without_table_lines():
     records = statement_records(pdf.getvalue(), '', 'INR', 'DMY')
     assert len(records) == 3 and all('facts' in record for record in records)
     assert records[0]['locator']['layout'] == 'aligned-text'
+    assert records[0]['event_time'] == '2026-11-13T00:00:00+00:00'
     assert records[0]['facts'][0]['attrs']['amount_paid'] == '1200.00'
+
+
+def test_bank_pdf_accepts_extracted_rupee_codes_and_multiline_reference_header():
+    rows = [
+        ['Value Date', 'Post Date', 'Details', 'Ref No/\nCheque\nNo', '(cid:45) Debit', 'Rs. Credit', 'Balance'],
+        ['12/11/2026', '13/11/2026', 'Test debit', '000123', '1,25,000.00', '', '20,000.00'],
+        ['13/11/2026', '13/11/2026', 'Test credit', '000124', '', '15,000.00', '35,000.00'],
+    ]
+    records = statement_records(make_encrypted_pdf(11, rows), PASSWORD, 'INR', 'DMY', page_range=(2, 3))
+    assert [record['locator']['page'] for record in records] == [2, 2, 3, 3]
+    attrs = [record['facts'][0]['attrs'] for record in records]
+    assert [(a['direction'], a['amount_paid']) for a in attrs] == [('debit', '125000.00'), ('credit', '15000.00')] * 2
+    assert json.loads(records[0]['passage'])[1] == rows[1]
+
+
+def test_bank_pdf_can_join_two_lines_of_aligned_headers():
+    pdf = BytesIO()
+    canvas = Canvas(pdf, encrypt=StandardEncryption(PASSWORD, strength=128))
+    canvas.setFont('Helvetica', 10)
+    for y, cells in [
+        (720, ['Post', 'Details', 'Withdrawal', 'Deposit', 'Balance']),
+        (708, ['Date', '', 'Amount', 'Amount', '']),
+        (690, ['13/11/2026', 'Test debit', '100.00', '', '200.00']),
+    ]:
+        for x, cell in zip((35, 110, 310, 390, 465), cells, strict=True):
+            canvas.drawString(x, y, cell)
+    canvas.save()
+    records = statement_records(pdf.getvalue(), PASSWORD, 'INR', 'DMY')
+    assert len(records) == 1
+    assert records[0]['locator']['layout'] == 'aligned-text'
+    assert records[0]['locator']['row'] == 3
+    assert records[0]['facts'][0]['attrs']['amount_paid'] == '100.00'
+
+
+@pytest.mark.parametrize('has_text, error', [
+    (False, 'No usable text was found'),
+    (True, 'could not identify the transaction columns'),
+])
+def test_bank_pdf_distinguishes_missing_text_from_unknown_columns(has_text, error):
+    pdf = BytesIO()
+    canvas = Canvas(pdf)
+    canvas.rect(35, 690, 430, 30)
+    if has_text:
+        canvas.drawString(40, 700, 'Unrecognized layout')
+    canvas.save()
+    with pytest.raises(ValueError, match=error):
+        statement_records(pdf.getvalue(), '', 'INR', 'DMY')
+
+
+def test_bank_pdf_can_separate_tightly_spaced_date_headers():
+    pdf = BytesIO()
+    canvas = Canvas(pdf, encrypt=StandardEncryption(PASSWORD, strength=128))
+    canvas.setFont('Helvetica', 10)
+    second_date_x = 35 + canvas.stringWidth('Value Date', 'Helvetica', 10) + 4.5
+    for y, cells in [
+        (720, ['Value Date', 'Post Date', 'Details', 'Reference', 'Debit', 'Credit', 'Balance']),
+        (700, ['12/11/26', '13/11/26', 'Test debit', '000001', '100.00', '', '200.00']),
+    ]:
+        for x, cell in zip((35, second_date_x, 180, 290, 360, 430, 500), cells, strict=True):
+            canvas.drawString(x, y, cell)
+    canvas.save()
+    records = statement_records(pdf.getvalue(), PASSWORD, 'INR', 'DMY')
+    assert len(records) == 1
+    assert records[0]['locator']['layout'] == 'aligned-text-tight'
+    assert records[0]['event_time'] == '2026-11-13T00:00:00+00:00'
+    assert records[0]['facts'][0]['attrs']['amount_paid'] == '100.00'
+
+
+def test_bank_pdf_error_shows_possible_headings_without_echoing_statement_text():
+    pdf = BytesIO()
+    canvas = Canvas(pdf)
+    canvas.drawString(35, 700, 'Post Date     Details     Proprietary Name 1234567     Balance')
+    canvas.save()
+    with pytest.raises(ValueError, match='Possible headings on page 1: post date, details, balance') as failure:
+        statement_records(pdf.getvalue(), '', 'INR', 'DMY')
+    assert 'Proprietary Name' not in str(failure.value)
+    assert '1234567' not in str(failure.value)
+
+
+def test_rejects_false_layout_before_reading_statement_values(monkeypatch):
+    import maha.statements as statements
+    original = statements.pdf_table_rows
+
+    def false_first(page, encrypted, strategy, settings):
+        if strategy == 'ruled':
+            yield {'page': 1, 'row': 2}, ['Date', 'Amount'], ['Header fragment', '10'], {'date': 0, 'amount': 1}
+        else:
+            yield from original(page, encrypted, strategy, settings)
+
+    monkeypatch.setattr(statements, 'pdf_table_rows', false_first)
+    rows = [['Date', 'Debit', 'Credit'], ['21 / 11 / 2026', 'Rs. 1,25,000.00', '']]
+    result = statement_records(make_encrypted_pdf(1, rows), PASSWORD, 'INR', 'DMY')
+    assert result[0]['facts'][0]['attrs']['amount_paid'] == '125000.00'
+    with pytest.raises(ValueError, match='Amount currency differs from the selected statement currency'):
+        statement_records(make_encrypted_pdf(1, rows), PASSWORD, 'USD', 'DMY')
+
+
+@pytest.mark.parametrize('has_date_anchor', [True, False])
+def test_encrypted_pdf_with_image_headings_keeps_transaction_values_from_original_text(tmp_path, monkeypatch, has_date_anchor):
+    bundled_ocr = Path(__file__).resolve().parents[1] / 'data/private/ocr-runtime/usr/bin/tesseract'
+    if not shutil.which('tesseract') and not bundled_ocr.is_file():
+        pytest.skip('Local Tesseract runtime unavailable')
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    header = BytesIO()
+    widths = (65, 65, 150, 65, 65, 65, 65)
+    labels = ['Value Date', 'Post Date', 'Details', 'Ref No', 'Debit', 'Credit', 'Balance']
+    if not has_date_anchor:
+        widths = (28, *widths)
+        labels.insert(0, 'No.')
+    img_width = sum(widths)
+    raster_source = Canvas(header, pagesize=(img_width, 34))
+    raster_source.setFillColor(colors.HexColor('#494888'))
+    raster_source.rect(0, 0, img_width, 34, stroke=0, fill=1)
+    raster_source.setFillColor(colors.white)
+    raster_source.setFont('Helvetica-Bold', 11)
+    x = 0
+    for label, width in zip(labels, widths, strict=True):
+        raster_source.drawCentredString(x + width / 2, 14, label)
+        x += width
+    raster_source.save()
+
+    pdf = BytesIO()
+    canvas = Canvas(pdf, encrypt=StandardEncryption(PASSWORD, strength=128))
+    if not has_date_anchor:
+        for line_no in range(6):
+            canvas.drawString(35, 760 - 25 * line_no, f'Synthetic account information line {line_no + 1}')
+    table_top = 637 if has_date_anchor else 407
+    table_left = 25 if has_date_anchor else 15
+    with pdfplumber.open(header) as source, source.pages[0].to_image(resolution=200).original as image:
+        canvas.drawImage(ImageReader(image), table_left, table_top, img_width, 34)
+    canvas.setFont('Helvetica', 10)
+    body = [
+        ['12/11/26', '13/11/26', 'Test debit', '000001', '100.12', '', '299.88'],
+        ['13/11/26', '14/11/26', 'Test credit', '000002', '', '55.67', '355.55'],
+    ]
+    for line_no, row in enumerate(body, 1):
+        if not has_date_anchor:
+            row.insert(0, str(line_no))
+        y = table_top - 18 * line_no
+        x = table_left
+        for text, width in zip(row, widths, strict=True):
+            canvas.drawCentredString(x + width / 2, y, text)
+            x += width
+    canvas.save()
+
+    records = statement_records(pdf.getvalue(), PASSWORD, 'INR', 'DMY')
+    layout = 'ocr-header' if has_date_anchor else 'ocr-header-scan'
+    assert len(records) == 2 and all(record['locator']['layout'] == layout for record in records)
+    attrs = [record['facts'][0]['attrs'] for record in records]
+    assert [(row['direction'], row['amount_paid']) for row in attrs] == [('debit', '100.12'), ('credit', '55.67')]
+    headers, cells = json.loads(records[1]['passage'])
+    assert headers[-7:] == labels[-7:]
+    assert cells == body[1]
+    assert records[1]['event_time'] == '2026-11-14T00:00:00+00:00'
+
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+    original = pdf.getvalue()
+    with TestClient(create_app(store)) as client:
+        response = client.post('/api/import/bank-statement/C1', headers=headers,
+                               data={'password': PASSWORD, 'currency': 'INR', 'date_order': 'DMY'},
+                               files={'file': ('fixture.pdf', original, 'application/pdf')})
+        assert response.status_code == 200, response.text
+        summary = response.json()
+        assert summary['source_id'] == sha256(original).hexdigest()
+        eid = summary['statement_rows'][1]['evidence_id']
+        result = client.post(f'/api/evidence/{eid}/statement-row', headers=headers,
+                             files={'password': (None, PASSWORD)})
+        assert result.status_code == 200 and result.json()['matches_ingested']

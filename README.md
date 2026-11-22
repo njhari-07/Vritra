@@ -163,11 +163,19 @@ Create or select a case and open **Import records → Upload file**. Choose
 **Bank statement (PDF or Excel .xlsx)**, confirm the currency and numeric date
 order, attach your file, and enter its password if protected. The adapter
 supports text PDF tables and Excel .xlsx worksheets with a recognized date and
-debit/credit or amount header. In an amount column without a direction column,
+debit/credit or amount header. `Post Date` and `Value Date` are supported date
+headers. If those are the only two date columns, the importer uses `Post Date`
+for the timeline and preserves both source cells in the row evidence.
+If a PDF has selectable transaction rows but its headings are drawn into the
+page, local OCR can recover the debit and credit headings above the first row.
+Transaction values still come from the PDF text layer.
+In an amount column without a direction column,
 positive values are credits and negative values are debits. Image-only bank
 statement PDFs and legacy .xls files require a supported export format.
 
-A statement upload can read up to 200 PDF pages. Use **PDF pages** to select a
+A statement upload can read up to 200 PDF pages, separate from the 20-page
+document OCR limit. The default record limit is 5,000 per upload and the case
+graph has a separate default limit of 2,000 nodes. Use **PDF pages** to select a
 page or range such as `1-10` when testing a layout or importing a large file.
 Overlapping ranges of the same source count as repeats. Each import retains the
 full original file and uses its original page numbers in the evidence. If the
