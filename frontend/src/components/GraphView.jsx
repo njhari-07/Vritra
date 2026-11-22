@@ -128,7 +128,9 @@ export default function GraphView({ graph, onSelect, darkMode = false, height = 
 
     // Formatting Vis nodes
     const visNodes = candidateNodes.map(n => {
-      const theme = NODE_THEMES[n.type] || { bg: '#94a3b8', border: '#475569', shape: 'dot', size: 10 };
+      const base = NODE_THEMES[n.type] || { bg: '#8D87B3', border: '#5E5986', shape: 'dot', size: 10 };
+      // Case nodes are white on the dark canvas; on the light canvas they switch to navy to stay visible.
+      const theme = !darkMode && n.type === 'Case' ? { ...base, bg: '#0A1020', border: '#0A1020', highlight: '#233350' } : base;
       const isSelected = selectedNode && selectedNode.id === n.id;
       const isPerson = n.type === 'Person';
       const isCase = n.type === 'Case';
@@ -461,10 +463,10 @@ export default function GraphView({ graph, onSelect, darkMode = false, height = 
       {/* Footer Legend */}
       <div className="graph-footer-legend">
         <div className="legend-items">
-          <span><i style={{ background: '#38bdf8' }} /> Transacted With / Fund Flow</span>
-          <span><i style={{ background: '#10b981' }} /> Owns Account</span>
-          <span><i style={{ background: '#f59e0b', borderStyle: 'dashed' }} /> Call Intercept</span>
-          <span><i style={{ background: '#a855f7' }} /> Case Link</span>
+          <span><i style={{ background: '#F2B544' }} /> Transacted With / Fund Flow</span>
+          <span><i style={{ background: '#5AA9FF' }} /> Owns Account</span>
+          <span><i style={{ background: '#3DD6B5', borderStyle: 'dashed' }} /> Call Intercept</span>
+          <span><i style={{ background: '#C9C3E8' }} /> Case Link</span>
         </div>
         <div className="legend-tip">
           Click any node to spotlight its direct network · Click background to reset
