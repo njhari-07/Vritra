@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import GraphView from './components/GraphView';
 import JudgmentReview from './components/JudgmentReview';
 import SourcePage from './components/SourcePage';
+import RecordIntakeModes from './components/RecordIntakeModes';
+import RecordFilePicker from './components/RecordFilePicker';
+import StatementRowReview from './components/StatementRowReview';
 import LeadsPanel from './components/LeadsPanel';
 import ResolutionTab from './components/ResolutionTab';
 import TimelineTab from './components/TimelineTab';
@@ -13,6 +16,7 @@ import BenchmarksTab from './components/BenchmarksTab';
 import EvidenceDrawer from './components/EvidenceDrawer';
 import GraphExplorerTab from './components/GraphExplorerTab';
 import './style.css';
+import './record-intake.css';
 
 const HeroScene = lazy(() => import('./components/three/HeroScene'));
 
@@ -84,6 +88,9 @@ export default function App({ userSlot = null }) {
   const [rawTitle, setRawTitle] = useState('FIR-CRIME-REGISTRY-01');
   const [rawSourceType, setRawSourceType] = useState('police_fir');
   const [rawSynthetic, setRawSynthetic] = useState(false);
+  const [uploadKind, setUploadKind] = useState('ibm');
+  const [uploadFeedback, setUploadFeedback] = useState(null);
+  const uploading = uploadFeedback?.status === 'pending';
 
   // Feature 4: ML Tuning & Weights
 
@@ -406,21 +413,38 @@ export default function App({ userSlot = null }) {
 
   const upload = async e => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget),
+    if (uploading) return;
+    const form = e.currentTarget;
+    const f = new FormData(form),
       file = f.get('file');
-    if (!file?.size) return;
+    if (!file?.size) {
+      setUploadFeedback({ status: 'error', message: 'Choose a file that is not empty.' });
+      return;
+    }
+    const kind = f.get('kind'), caseId = f.get('case');
+    const statement = kind === 'bank-statement';
+    if (statement) {
+      form.elements.password.value = '';
+      f.delete('kind');
+      f.delete('case');
+    }
     setBusy(true);
+    setUploadFeedback({ status: 'pending', message: statement ? 'Reading statement rows… This may take a moment.' : 'Importing records…' });
     try {
-      const r = await api(`/import/${f.get('kind')}/${encodeURIComponent(f.get('case'))}`, {
+      const r = await api(`/import/${kind}/${encodeURIComponent(caseId)}`, {
         method: 'POST',
-        body: file
+        body: statement ? f : file
       });
-      setNotice(`${r.accepted_new} accepted · ${r.recognized_repeat} repeated · ${r.quarantined} quarantined`);
-      await load(f.get('case'));
+      if (token !== sessionToken.current) return;
+      setUploadFeedback({
+        status: 'success',
+        message: `${r.accepted_new} accepted · ${r.recognized_repeat} repeated · ${r.quarantined} quarantined${statement ? '. Open Quality to review statement rows.' : ''}`,
+      });
+      await load(caseId);
     } catch (e) {
-      setError(e.message);
+      if (token === sessionToken.current) setUploadFeedback({ status: 'error', message: e.message });
     } finally {
-      setBusy(false);
+      if (token === sessionToken.current) setBusy(false);
     }
   };
 
@@ -630,6 +654,7 @@ export default function App({ userSlot = null }) {
               setBusy(false);
               setError('');
               setNotice('');
+              setUploadFeedback(null);
               setRawText('');
               setCopilotQuery('');
               setCopilotResult(null);
@@ -720,6 +745,8 @@ export default function App({ userSlot = null }) {
                 ? isTrained && !showTrainingStudio
                   ? 'Synthesized across judicial proceedings, financial layering cycles, prior FIR records, and telecom communications.'
                   : 'Import structured evidence and run case analysis.'
+                : tab === 'Import records'
+                ? 'Add source evidence from a file or paste case text for extraction.'
                 : 'Findings are for investigator review. A connection does not establish wrongdoing.'}
             </p>
           </div>
@@ -873,269 +900,8 @@ export default function App({ userSlot = null }) {
                   </div>
                 </div>
 
-                {/* Feature 3: Paste case text */}
-                <div className="raw-text-panel">
-                  <h3>Paste case text</h3>
-                  <p>
-                    Choose the document type. Judgment text uses legal entity extraction. FIR and other text use general entity extraction. Review the results under Quality.
-                  </p>
-                  <div className="raw-text-presets">
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', alignSelf: 'center' }}>Sample Presets:</span>
-                    <button
-                      type="button"
-                      className="btn-preset"
-                      onClick={() => {
-                        setRawSynthetic(true);
-                        setRawSourceType('police_fir');
-                        setRawTitle('ED-PMLA-COMPLAINT-142');
-                        setRawText(`IN THE SPECIAL COURT FOR PMLA OFFENSES: Directorate of Enforcement vs. Vikram Singhania [ID:P001] & Ors.\nPrime Accused Vikram Singhania operates HDFC Bank account 001928374 for layering procurement fraud kickbacks of ₹14,200,000.\nCo-conspirator Rajesh Sharma operates ICICI Bank account 009847261 as hawala mule routing pass-through tranches.\nCharges registered under PMLA Section 3 & 4 and IPC Section 420 and 120B.\nNon-Bailable Warrant issued by EOW.`);
-                      }}
-                    >
-                      Preset 1: PMLA Procurement FIR
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-preset"
-                      onClick={() => {
-                        setRawSynthetic(true);
-                        setRawSourceType('police_fir');
-                        setRawTitle('CYBER-PS-FIR-204');
-                        setRawText(`CYBER CRIME POLICE STATION: State vs. Dev Shah [ID:P003] & Associates.\nAccused Dev Shah operates darknet crypto conversion infrastructure and Axis Bank account 005511223.\nMule coordinator Vikas Agarwal routed funds through Axis Bank and ICICI Bank.\nFIR No. 204/2023 under IT Act Section 66D and IPC Section 420. Look-Out Circular (LOC) active at international airports.`);
-                      }}
-                    >
-                      Preset 2: Cyber Financial Fraud FIR
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-preset"
-                      onClick={() => {
-                        setRawSynthetic(true);
-                        setRawSourceType('police_fir');
-                        setRawTitle(`EOW-FIR-144-${activeCase}`);
-                        setRawText(`POLICE STATION: Economic Offenses Wing (EOW), Mandir Marg, New Delhi\nFIR No: 144/2026 | Date: 12-03-2026\nActs & Sections: Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), read with Section 3 & 4 of Prevention of Money Laundering Act, 2002 (PMLA).\n(i) Accused Vikram Malhotra [ID:P101], Managing Director, Zenith Health Ventures Ltd. Role: Prime Syndicate Mastermind and beneficial owner of destination fund accounts.\n(ii) Accused Sanjay Agarwal [ID:P102], Financial Consultant & Hawala Remittance Mule Coordinator. Operates account ACC-AGARWAL-882 at Bank 010.\n(iii) Accused Karan Singhania [ID:P103], Dummy Director, Apex Logistics Front Corp. Operates account ACC-APEXSHELL-993 at Bank 010.\n(iv) Accused Rohit Verma [ID:P104], Operator of unauthorized digital escrow and crypto mixing channels, account ACC-VERMA-104 at Bank 010.\nAllegations: Accused Vikram Malhotra [ID:P101] utilized shell corporate vehicles to route approximately $750,000 USD of misappropriated funds through closed-loop layering transfers. Primary layering was executed through bank account 010 / ACC-MALHOTRA-771 into mule account 010 / ACC-AGARWAL-882, which was then layered into shell account 010 / ACC-APEXSHELL-993 before returning into primary beneficiary accounts under the guise of dividend reinvestment.`);
-                      }}
-                    >
-                      Preset 3: Zenith Healthcare Syndicate (P101/P102/P103)
-                    </button>
-                  </div>
-                  <div className="case-actions">
-                    <label>Document type
-                      <select value={rawSourceType} onChange={event => setRawSourceType(event.target.value)}>
-                        <option value="police_fir">Police FIR</option>
-                        <option value="court_judgment">English Indian court judgment</option>
-                        <option value="other">Other English text</option>
-                      </select>
-                    </label>
-                    <label>Source title
-                      <input value={rawTitle} maxLength={120} onChange={event => setRawTitle(event.target.value)} />
-                    </label>
-                    <label><input type="checkbox" checked={rawSynthetic}
-                      onChange={event => setRawSynthetic(event.target.checked)} /> Synthetic example</label>
-                  </div>
-                  <textarea
-                    className="raw-text-area"
-                    aria-label="Case text"
-                    maxLength={50000}
-                    placeholder="Paste raw police FIR, prosecution complaint, or interrogation transcript here..."
-                    value={rawText}
-                    onChange={e => setRawText(e.target.value)}
-                  />
-                  <div className="raw-text-footer">
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      Case Scope: <strong style={{ color: 'var(--text-primary)' }}>{activeCase}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      className="btn-parse-nlp"
-                      disabled={!rawText.trim() || busy}
-                      onClick={handleRawTextImport}
-                    >
-                      Extract mentions
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4 Modality Intake Cards */}
-                <div className="intake-grid">
-                  {/* 1. Court Cases */}
-                  <div className="intake-card">
-                    <div>
-                      <div className="intake-card-top">
-
-                        <div>
-                          <h3 className="intake-card-title">Court Proceedings</h3>
-                          <span className="intake-card-format">Legal Narrative JSON</span>
-                        </div>
-                      </div>
-                      <p className="intake-card-desc">
-                        Judicial orders, charge sheets, bail transcripts, and legal proceedings mentioning accused parties.
-                      </p>
-                    </div>
-                    <div>
-                      <span className="intake-card-count">Case Scope: {activeCase}</span>
-                      <div className="intake-card-actions">
-                        <label className="file-upload-btn">
-                          <span>↑ Upload JSON</span>
-                          <input
-                            type="file"
-                            accept=".json"
-                            onChange={e => {
-                              if (e.target.files[0]) handleDirectUpload('narrative', e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="btn-tmpl"
-                          onClick={() => {
-                            downloadFile(
-                              'court_cases_template.json',
-                              JSON.stringify([
-                                {
-                                  document_id: `COURT-${activeCase}-01`,
-                                  case_id: activeCase,
-                                  filed_date: '2026-03-15',
-                                  synthetic: true,
-                                  text: `In the Special Court for PMLA Offenses: Directorate of Enforcement vs. Vikram Singhania [ID:P001]. Accused P001 operated account DEMO/A as primary layering pool.`
-                                }
-                              ], null, 2),
-                              'json'
-                            );
-                          }}
-                        >
-                          Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. Financial Transactions */}
-                  <div className="intake-card">
-                    <div>
-                      <div className="intake-card-top">
-
-                        <div>
-                          <h3 className="intake-card-title">Financial Wires</h3>
-                          <span className="intake-card-format">Transactions CSV</span>
-                        </div>
-                      </div>
-                      <p className="intake-card-desc">
-                        High-velocity bank transfers, RTGS/NEFT wires, foreign remittances, and hawala smurfing logs.
-                      </p>
-                    </div>
-                    <div>
-                      <span className="intake-card-count">Case Scope: {activeCase}</span>
-                      <div className="intake-card-actions">
-                        <label className="file-upload-btn">
-                          <span>↑ Upload CSV</span>
-                          <input
-                            type="file"
-                            accept=".csv"
-                            onChange={e => {
-                              if (e.target.files[0]) handleDirectUpload('ibm', e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="btn-tmpl"
-                          onClick={() => {
-                            downloadFile(
-                              'transactions_template.csv',
-                              "Timestamp,From Bank,Account,To Bank,Account,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering\n2026/03/10 10:15,DEMO,A,DEMO,B,100000.00,US Dollar,100000.00,US Dollar,ACH,1\n2026/03/10 11:30,DEMO,B,DEMO,C,107000.00,US Dollar,107000.00,US Dollar,ACH,1\n2026/03/10 12:45,DEMO,C,DEMO,A,114000.00,US Dollar,114000.00,US Dollar,ACH,1\n",
-                              'csv'
-                            );
-                          }}
-                        >
-                          Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 3. Crime FIR History */}
-                  <div className="intake-card">
-                    <div>
-                      <div className="intake-card-top">
-
-                        <div>
-                          <h3 className="intake-card-title">Crime FIR Records</h3>
-                          <span className="intake-card-format">History Registry CSV</span>
-                        </div>
-                      </div>
-                      <p className="intake-card-desc">
-                        Police station FIRs, Look Out Circulars (LOC), prior arrest records, and CBI/ED charges.
-                      </p>
-                    </div>
-                    <div>
-                      <span className="intake-card-count">Case Scope: {activeCase}</span>
-                      <div className="intake-card-actions">
-                        <label className="file-upload-btn">
-                          <span>↑ Upload CSV</span>
-                          <input
-                            type="file"
-                            accept=".csv"
-                            onChange={e => {
-                              if (e.target.files[0]) handleDirectUpload('history', e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="btn-tmpl"
-                          onClick={() => {
-                            downloadFile(
-                              'crime_firs_template.csv',
-                              `record_id,person_id,case_id,record_date,record_status,text,synthetic\nFIR-01,P001,${activeCase},2026-01-14,Active Charge-Sheet,FIR No. 44/2026 under IPC 420/120B and PMLA Section 3 for syndicate fraud,true\nFIR-02,P002,${activeCase},2026-02-02,Look Out Circular,LOC Issued at International Airports for evasion of summons,true\n`,
-                              'csv'
-                            );
-                          }}
-                        >
-                          Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 4. Telecom CDR */}
-                  <div className="intake-card">
-                    <div>
-                      <div className="intake-card-top">
-
-                        <div>
-                          <h3 className="intake-card-title">Telecom CDR Calls</h3>
-                          <span className="intake-card-format">CDR Intercepts CSV</span>
-                        </div>
-                      </div>
-                      <p className="intake-card-desc">
-                        Encrypted burner phone call logs, durations, tower timestamps, and syndicate communications.
-                      </p>
-                    </div>
-                    <div>
-                      <span className="intake-card-count">Case Scope: {activeCase}</span>
-                      <div className="intake-card-actions">
-                        <label className="file-upload-btn">
-                          <span>↑ Upload CSV</span>
-                          <input
-                            type="file"
-                            accept=".csv"
-                            onChange={e => {
-                              if (e.target.files[0]) handleDirectUpload('cdr', e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="btn-tmpl"
-                          onClick={() => {
-                            downloadFile(
-                              'cdr_calls_template.csv',
-                              "record_id,caller_person_id,callee_person_id,start_time,duration_seconds,synthetic\nCALL-101,P001,P002,2026-03-10T09:45:00+00:00,420,true\nCALL-102,P002,P003,2026-03-10T12:10:00+00:00,185,true\nCALL-103,P003,P001,2026-03-10T15:00:00+00:00,310,true\n",
-                              'csv'
-                            );
-                          }}
-                        >
-                          Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                <div className="case-actions">
+                  <button className="quiet" onClick={() => setTab('Import records')}>Open Import records</button>
                 </div>
 
                 {/* Training Trigger Box */}
@@ -1303,7 +1069,7 @@ export default function App({ userSlot = null }) {
             </div>
             {list.map(n => (
               <article className="lead" key={n.id}>
-                <time>{new Date(n.event_time).toLocaleString()}</time>
+                <time>{n.time_basis === 'date_only' ? n.event_time.slice(0, 10) : new Date(n.event_time).toLocaleString()}</time>
                 <strong>{n.label}</strong>
                 <button className="quiet" onClick={() => selectItem(n)}>
                   View source →
@@ -1314,40 +1080,321 @@ export default function App({ userSlot = null }) {
         )}
 
         {tab === 'Import records' && (
-          <section className="panel import-panel">
-            <h2>Add evidence to a case</h2>
-            <p>Upload English FIRs and judgments as PDF or images. Scanned pages use local OCR. Demo formats are for synthetic records. Maximum file size: 25 MiB.</p>
-            <form onSubmit={upload}>
-              <label>
-                Authorized case
-                <select key={activeCase} name="case" aria-label="Authorized case" defaultValue={activeCase}>
-                  {casesList.map(c => (
-                    <option key={c.case_id} value={c.case_id}>
-                      {c.case_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Record format
-                <select name="kind" aria-label="Record format">
-                  <option value="ibm">IBM HI-Small CSV</option>
-                  <option value="narrative">Synthetic narrative JSON</option>
-                  <option value="judgment">English Indian court judgment (.txt)</option>
-                  <option value="judgment-document">English Indian court judgment (PDF or image)</option>
-                  <option value="fir-document">English police FIR (PDF or image)</option>
-                  <option value="cdr">Synthetic CDR CSV</option>
-                  <option value="history">Synthetic case-history CSV</option>
-                  <option value="pdf">MAHA fixed-layout PDF v1</option>
-                </select>
-              </label>
-              <label>
-                Source file
-                <input name="file" type="file" accept=".csv,.json,.pdf,.txt,.png,.jpeg,.jpg" required />
-              </label>
-              <button disabled={!activeCase || busy}>Validate and import →</button>
-            </form>
-          </section>
+          <div className="record-intake tw:grid tw:min-w-0 tw:items-start tw:gap-5 tw:min-[1160px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <RecordIntakeModes>
+              <section className="record-card record-paste" aria-labelledby="record-paste-title">
+                <h2 id="record-paste-title">Paste case text</h2>
+                <p>
+                  Extract mentions from English case text and review them in Quality.
+                </p>
+                <div className="record-presets tw:flex tw:flex-wrap tw:items-center tw:gap-1.5">
+                  <span>Try an example</span>
+                  <button
+                    type="button"
+                    className="record-chip"
+                    onClick={() => {
+                      setRawSynthetic(true);
+                      setRawSourceType('police_fir');
+                      setRawTitle('ED-PMLA-COMPLAINT-142');
+                      setRawText(`IN THE SPECIAL COURT FOR PMLA OFFENSES: Directorate of Enforcement vs. Vikram Singhania [ID:P001] & Ors.\nPrime Accused Vikram Singhania operates HDFC Bank account 001928374 for layering procurement fraud kickbacks of ₹14,200,000.\nCo-conspirator Rajesh Sharma operates ICICI Bank account 009847261 as hawala mule routing pass-through tranches.\nCharges registered under PMLA Section 3 & 4 and IPC Section 420 and 120B.\nNon-Bailable Warrant issued by EOW.`);
+                    }}
+                  >
+                    Procurement FIR
+                  </button>
+                  <button
+                    type="button"
+                    className="record-chip"
+                    onClick={() => {
+                      setRawSynthetic(true);
+                      setRawSourceType('police_fir');
+                      setRawTitle('CYBER-PS-FIR-204');
+                      setRawText(`CYBER CRIME POLICE STATION: State vs. Dev Shah [ID:P003] & Associates.\nAccused Dev Shah operates darknet crypto conversion infrastructure and Axis Bank account 005511223.\nMule coordinator Vikas Agarwal routed funds through Axis Bank and ICICI Bank.\nFIR No. 204/2023 under IT Act Section 66D and IPC Section 420. Look-Out Circular (LOC) active at international airports.`);
+                    }}
+                  >
+                    Cyber fraud FIR
+                  </button>
+                  <button
+                    type="button"
+                    className="record-chip"
+                    onClick={() => {
+                      setRawSynthetic(true);
+                      setRawSourceType('police_fir');
+                      setRawTitle(`EOW-FIR-144-${activeCase}`);
+                      setRawText(`POLICE STATION: Economic Offenses Wing (EOW), Mandir Marg, New Delhi\nFIR No: 144/2026 | Date: 12-03-2026\nActs & Sections: Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), read with Section 3 & 4 of Prevention of Money Laundering Act, 2002 (PMLA).\n(i) Accused Vikram Malhotra [ID:P101], Managing Director, Zenith Health Ventures Ltd. Role: Prime Syndicate Mastermind and beneficial owner of destination fund accounts.\n(ii) Accused Sanjay Agarwal [ID:P102], Financial Consultant & Hawala Remittance Mule Coordinator. Operates account ACC-AGARWAL-882 at Bank 010.\n(iii) Accused Karan Singhania [ID:P103], Dummy Director, Apex Logistics Front Corp. Operates account ACC-APEXSHELL-993 at Bank 010.\n(iv) Accused Rohit Verma [ID:P104], Operator of unauthorized digital escrow and crypto mixing channels, account ACC-VERMA-104 at Bank 010.\nAllegations: Accused Vikram Malhotra [ID:P101] utilized shell corporate vehicles to route approximately $750,000 USD of misappropriated funds through closed-loop layering transfers. Primary layering was executed through bank account 010 / ACC-MALHOTRA-771 into mule account 010 / ACC-AGARWAL-882, which was then layered into shell account 010 / ACC-APEXSHELL-993 before returning into primary beneficiary accounts under the guise of dividend reinvestment.`);
+                    }}
+                  >
+                    Zenith healthcare FIR
+                  </button>
+                </div>
+                <div className="record-fields tw:grid tw:gap-3 tw:sm:grid-cols-2">
+                  <label>Document type
+                    <select value={rawSourceType} onChange={event => setRawSourceType(event.target.value)}>
+                      <option value="police_fir">Police FIR</option>
+                      <option value="court_judgment">English Indian court judgment</option>
+                      <option value="other">Other English text</option>
+                    </select>
+                  </label>
+                  <label>Source title
+                    <input value={rawTitle} maxLength={120} onChange={event => setRawTitle(event.target.value)} />
+                  </label>
+                  <label className="record-check tw:col-span-full tw:flex tw:items-center tw:gap-2"><input type="checkbox" checked={rawSynthetic}
+                    onChange={event => setRawSynthetic(event.target.checked)} /> Synthetic example</label>
+                </div>
+                <div className="record-text-meta tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-x-3">
+                  <label htmlFor="import-case-text">Case text</label>
+                  <span>{rawText.length.toLocaleString()} / 50,000 characters</span>
+                </div>
+                <textarea
+                  id="import-case-text"
+                  className="record-textarea tw:block tw:min-h-[238px] tw:w-full tw:resize-y"
+                  maxLength={50000}
+                  placeholder="Paste an FIR, judgment, or other case text here…"
+                  value={rawText}
+                  onChange={e => setRawText(e.target.value)}
+                />
+                <div className="record-actions tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+                  <span className="record-scope">Active case <strong>{activeCase || 'No case selected'}</strong></span>
+                  <button
+                    type="button"
+                    className="record-primary"
+                    disabled={!rawText.trim() || busy}
+                    onClick={handleRawTextImport}
+                  >
+                    Extract mentions
+                  </button>
+                </div>
+              </section>
+              <section className="record-card record-upload" aria-labelledby="record-upload-title">
+                <h2 id="record-upload-title">Upload a file</h2>
+                <p>Select the case and format before uploading. Scanned English FIRs and judgments use local OCR.</p>
+                <form className="tw:grid tw:gap-4" onSubmit={upload}
+                  onChange={() => { if (!uploading) setUploadFeedback(null); }}>
+                  <label>
+                    Authorized case
+                    <select key={activeCase} name="case" aria-label="Authorized case" defaultValue={activeCase}>
+                      {casesList.map(c => (
+                        <option key={c.case_id} value={c.case_id}>
+                          {c.case_id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Record format
+                    <select name="kind" aria-label="Record format" value={uploadKind}
+                      onChange={event => setUploadKind(event.target.value)}>
+                      <option value="ibm">IBM HI-Small CSV</option>
+                      <option value="bank-statement">Bank statement (PDF or Excel .xlsx)</option>
+                      <option value="narrative">Synthetic narrative JSON</option>
+                      <option value="judgment">English Indian court judgment (.txt)</option>
+                      <option value="judgment-document">English Indian court judgment (PDF or image)</option>
+                      <option value="fir-document">English police FIR (PDF or image)</option>
+                      <option value="cdr">Synthetic CDR CSV</option>
+                      <option value="history">Synthetic case-history CSV</option>
+                      <option value="pdf">MAHA fixed-layout PDF v1</option>
+                    </select>
+                  </label>
+                  {uploadKind === 'bank-statement' && (
+                    <>
+                      <div className="record-fields tw:grid tw:gap-3 tw:sm:grid-cols-2">
+                        <label>Statement currency
+                          <select name="currency" defaultValue="INR">
+                            {['INR', 'USD', 'GBP', 'EUR', 'AUD', 'CAD', 'SGD', 'AED', 'JPY', 'CHF']
+                              .map(code => <option key={code}>{code}</option>)}
+                          </select>
+                        </label>
+                        <label>Numeric date order
+                          <select name="date_order" defaultValue="DMY">
+                            <option value="DMY">Day / month / year</option>
+                            <option value="MDY">Month / day / year</option>
+                          </select>
+                        </label>
+                      </div>
+                      <label>PDF pages (optional)
+                        <input type="text" name="pdf_pages" placeholder="e.g. 1-10" maxLength={32}
+                          aria-describedby="statement-pages-hint" />
+                        <small id="statement-pages-hint">Leave blank to read the whole file. For PDFs, enter a page or range to import only those pages.</small>
+                      </label>
+                      <label>File password (if protected)
+                        <input type="password" name="password" autoComplete="off" maxLength={1024}
+                          aria-describedby="statement-password-hint" />
+                        <small id="statement-password-hint">Used for one upload. Re-enter it before retrying a protected file.</small>
+                      </label>
+                    </>
+                  )}
+                  <RecordFilePicker name="file"
+                    accept={uploadKind === 'bank-statement' ? '.pdf,.xlsx' : '.csv,.json,.pdf,.txt,.png,.jpeg,.jpg'}
+                    label="Source file" required />
+                  <button className="record-primary" disabled={!activeCase || busy || uploading}>
+                    {uploading ? 'Importing…' : 'Validate and import'}
+                  </button>
+                  {uploadFeedback && (
+                    <div className="record-upload-feedback" data-status={uploadFeedback.status}
+                      role={uploadFeedback.status === 'error' ? 'alert' : 'status'}>
+                      {uploadFeedback.message}
+                    </div>
+                  )}
+                </form>
+              </section>
+            </RecordIntakeModes>
+            <section className="record-shortcuts tw:min-w-0" aria-labelledby="record-quick-title">
+              <h2 id="record-quick-title">Structured imports</h2>
+              <p>Files selected here import directly into the active case. Download a template for the format you need.</p>
+              <div className="tw:grid tw:grid-cols-1 tw:gap-3 tw:sm:grid-cols-2">
+                {/* 1. Court Cases */}
+                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
+                  <div>
+                    <div className="record-quick-heading">
+
+                      <div>
+                        <h3>Court proceedings</h3>
+                        <span className="record-format">Synthetic narrative</span>
+                      </div>
+                    </div>
+                    <p>
+                      Legal narratives in the synthetic case format.
+                    </p>
+                  </div>
+                  <div>
+
+                    <div className="tw:grid tw:min-w-0 tw:gap-2">
+                      <RecordFilePicker accept=".json" label="Upload court proceedings JSON"
+                        onPick={file => handleDirectUpload('narrative', file)} />
+                      <button
+                        type="button"
+                        className="record-secondary"
+                        onClick={() => {
+                          downloadFile(
+                            'court_cases_template.json',
+                            JSON.stringify([
+                              {
+                                document_id: `COURT-${activeCase}-01`,
+                                case_id: activeCase,
+                                filed_date: '2026-03-15',
+                                synthetic: true,
+                                text: `In the Special Court for PMLA Offenses: Directorate of Enforcement vs. Vikram Singhania [ID:P001]. Accused P001 operated account DEMO/A as primary layering pool.`
+                              }
+                            ], null, 2),
+                            'json'
+                          );
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Financial Transactions */}
+                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
+                  <div>
+                    <div className="record-quick-heading">
+
+                      <div>
+                        <h3>Financial wires</h3>
+                        <span className="record-format">IBM HI-Small</span>
+                      </div>
+                    </div>
+                    <p>
+                      Transactions in the IBM HI-Small CSV layout.
+                    </p>
+                  </div>
+                  <div>
+
+                    <div className="tw:grid tw:min-w-0 tw:gap-2">
+                      <RecordFilePicker accept=".csv" label="Upload financial wires CSV"
+                        onPick={file => handleDirectUpload('ibm', file)} />
+                      <button
+                        type="button"
+                        className="record-secondary"
+                        onClick={() => {
+                          downloadFile(
+                            'transactions_template.csv',
+                            "Timestamp,From Bank,Account,To Bank,Account,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering\n2026/03/10 10:15,DEMO,A,DEMO,B,100000.00,US Dollar,100000.00,US Dollar,ACH,1\n2026/03/10 11:30,DEMO,B,DEMO,C,107000.00,US Dollar,107000.00,US Dollar,ACH,1\n2026/03/10 12:45,DEMO,C,DEMO,A,114000.00,US Dollar,114000.00,US Dollar,ACH,1\n",
+                            'csv'
+                          );
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Crime FIR History */}
+                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
+                  <div>
+                    <div className="record-quick-heading">
+
+                      <div>
+                        <h3>FIR history</h3>
+                        <span className="record-format">History Registry CSV</span>
+                      </div>
+                    </div>
+                    <p>
+                      Structured prior records with a status and date.
+                    </p>
+                  </div>
+                  <div>
+
+                    <div className="tw:grid tw:min-w-0 tw:gap-2">
+                      <RecordFilePicker accept=".csv" label="Upload FIR history CSV"
+                        onPick={file => handleDirectUpload('history', file)} />
+                      <button
+                        type="button"
+                        className="record-secondary"
+                        onClick={() => {
+                          downloadFile(
+                            'crime_firs_template.csv',
+                            `record_id,person_id,case_id,record_date,record_status,text,synthetic\nFIR-01,P001,${activeCase},2026-01-14,Active Charge-Sheet,FIR No. 44/2026 under IPC 420/120B and PMLA Section 3 for syndicate fraud,true\nFIR-02,P002,${activeCase},2026-02-02,Look Out Circular,LOC Issued at International Airports for evasion of summons,true\n`,
+                            'csv'
+                          );
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Telecom CDR */}
+                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
+                  <div>
+                    <div className="record-quick-heading">
+
+                      <div>
+                        <h3>Telecom calls</h3>
+                        <span className="record-format">Synthetic CDR</span>
+                      </div>
+                    </div>
+                    <p>
+                      Caller, callee, timestamp, and call duration.
+                    </p>
+                  </div>
+                  <div>
+
+                    <div className="tw:grid tw:min-w-0 tw:gap-2">
+                      <RecordFilePicker accept=".csv" label="Upload telecom CDR CSV"
+                        onPick={file => handleDirectUpload('cdr', file)} />
+                      <button
+                        type="button"
+                        className="record-secondary"
+                        onClick={() => {
+                          downloadFile(
+                            'cdr_calls_template.csv',
+                            "record_id,caller_person_id,callee_person_id,start_time,duration_seconds,synthetic\nCALL-101,P001,P002,2026-03-10T09:45:00+00:00,420,true\nCALL-102,P002,P003,2026-03-10T12:10:00+00:00,185,true\nCALL-103,P003,P001,2026-03-10T15:00:00+00:00,310,true\n",
+                            'csv'
+                          );
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
         )}
 
         {tab === 'Quality' && (
@@ -1383,6 +1430,17 @@ export default function App({ userSlot = null }) {
                           selectItem({ label, reason: 'Source observation from pasted text' });
                           evidence(evidence_id);
                         }}>{label} ↗</button>
+                      ))}
+                    </details>
+                  )}
+                  {r.summary.statement_rows?.length > 0 && (
+                    <details>
+                      <summary>Bank statement · {r.summary.statement_settings.currency} · Review first {r.summary.statement_rows.length} rows</summary>
+                      {r.summary.statement_rows.map(({ evidence_id, label }) => (
+                        <button key={evidence_id} className="source-button" onClick={() => {
+                          selectItem({ label, reason: 'Bank statement transaction as recorded in the source' });
+                          evidence(evidence_id);
+                        }}>{label}</button>
                       ))}
                     </details>
                   )}
@@ -1534,11 +1592,16 @@ export default function App({ userSlot = null }) {
                   <button className="quiet" onClick={() => downloadOriginal(ev)}>Download original document</button>
                 </div>
               )}
-              <blockquote>{ev.passage}</blockquote>
+              {ev.extraction_method === 'bank-statement-row' ? (
+                <>
+                  <button className="quiet" onClick={() => downloadOriginal(ev)}>Download original statement</button>
+                  <StatementRowReview key={ev.id} evidence={ev} api={api} />
+                </>
+              ) : <blockquote>{ev.passage}</blockquote>}
               <small>
                 {ev.extraction_method} · v{ev.extraction_version}
                 <br />
-                Event: {ev.event_time || 'Not supplied'}
+                Event: {ev.time_basis === 'date_only' ? ev.event_time.slice(0, 10) + ' (date only)' : ev.event_time || 'Not supplied'}
                 <br />
                 Imported: {ev.ingestion_time}
               </small>

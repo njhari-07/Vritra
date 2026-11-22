@@ -1,10 +1,11 @@
 import csv
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 import hashlib
 import io
 import json
 import os
 from pathlib import Path
+import re
 from threading import Event, Thread
 from typing import Literal
 from fastapi import FastAPI, Depends, HTTPException, Request
@@ -12,8 +13,11 @@ from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from python_multipart.exceptions import MultipartParseError
 from starlette.concurrency import run_in_threadpool
-from .store import Store, now, uid
+from starlette.datastructures import UploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
+from .store import ImportSettingsConflict, Store, now, uid
 from .limits import ResourceLimitError
 from .graph import snapshot, synchronize_projection
 from .analytics import analyze, fund_flow
@@ -22,7 +26,71 @@ from .judgments import judgment_records
 from .document_intake import extract_document, render_source_page
 from .judgment_review import ReviewConflict, load_review, save_review
 from .suspects import compute_suspect_dossiers
-from .ingestion import ibm_records, narrative_records, cdr_records, pdf_records, history_records
+from .ingestion import ibm_records, narrative_records, cdr_records, pdf_records, history_records, json_row
+from .statements import CURRENCIES, MAX_BYTES, METHOD as STATEMENT_METHOD, STATEMENT_DATASET, statement_records, statement_rows
+
+
+class StatementRequestTooLarge(MultiPartException):
+    pass
+
+
+async def read_statement_form(request, *, with_file):
+    limit = MAX_BYTES + 16 * 1024 if with_file else 16 * 1024
+
+    async def bounded_stream():
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > limit:
+                raise StatementRequestTooLarge('Statement request exceeds the upload limit')
+            yield chunk
+
+    if request.headers.get('content-type', '').split(';', 1)[0].lower() != 'multipart/form-data':
+        raise HTTPException(422, 'Submit the statement as a multipart form')
+    try:
+        form = await MultiPartParser(
+            request.headers, bounded_stream(), max_files=int(with_file),
+            max_fields=4 if with_file else 1, max_part_size=4096,
+        ).parse()
+    except StatementRequestTooLarge as exc:
+        raise HTTPException(413, exc.message) from None
+    except (MultiPartException, MultipartParseError):
+        raise HTTPException(422, 'Invalid statement upload form') from None
+    try:
+        password = form.get('password', '')
+        if not isinstance(password, str) or len(password) > 1024:
+            raise HTTPException(422, 'Invalid password field')
+        if not with_file:
+            return password
+        source = form.get('file')
+        currency, date_order = form.get('currency'), form.get('date_order')
+        if not isinstance(source, UploadFile):
+            raise HTTPException(422, 'Choose a statement file')
+        if not isinstance(currency, str) or currency not in CURRENCIES or date_order not in ('DMY', 'MDY'):
+            raise HTTPException(422, 'Choose a statement currency and date order')
+        pages = form.get('pdf_pages', '')
+        if not isinstance(pages, str) or len(pages) > 32:
+            raise HTTPException(422, 'Enter a PDF page or range such as 1 or 1-10')
+        page_range = None
+        if pages.strip():
+            match = re.fullmatch(r'\s*([0-9]+)(?:\s*[-–]\s*([0-9]+))?\s*', pages)
+            if match is None:
+                raise HTTPException(422, 'Enter a PDF page or range such as 1 or 1-10')
+            start = int(match[1])
+            end = int(match[2] or match[1])
+            if not 1 <= start <= end:
+                raise HTTPException(422, 'PDF page numbers must start at 1 or later and be in ascending order')
+            page_range = (start, end)
+        content = await source.read(MAX_BYTES + 1)
+        if len(content) > MAX_BYTES:
+            raise HTTPException(413, '25 MiB upload limit exceeded')
+        filename = Path((source.filename or '').replace('\\', '/')).name
+        extension = '.pdf' if content.startswith(b'%PDF-') else '.xlsx'
+        if Path(filename).suffix.lower() != extension or len(filename) > 120:
+            filename = 'bank-statement' + extension
+        return content, filename, password, currency, date_order, page_range
+    finally:
+        await form.close()
 
 
 class JudgmentReview(BaseModel):
@@ -377,6 +445,45 @@ def create_app(store=None):
         except KeyError:raise HTTPException(404,'Source unavailable')
         ledger.audit(u['name'],'source_read',u['cases'][0],source_id)
         return Response(content,media_type='application/octet-stream',headers={'Content-Disposition':f'attachment; filename="source-{source_id[:12]}"'})
+
+    @app.post('/api/evidence/{eid}/statement-row')
+    async def verify_statement_row(eid: str, request: Request, u=Depends(user)):
+        def read_original():
+            item = ledger.evidence(eid, u['cases'])
+            if item['extraction_method'] != STATEMENT_METHOD:
+                raise KeyError(eid)
+            _, content = ledger.source(item['source_id'], u['cases'])
+            if hashlib.sha256(content).hexdigest() != item['source_id']:
+                raise HTTPException(409, 'The retained original no longer matches its evidence hash')
+            return item, content
+
+        try:
+            item, content = await run_in_threadpool(read_original)
+        except KeyError:
+            raise HTTPException(404, 'Statement source unavailable') from None
+        password = await read_statement_form(request, with_file=False)
+
+        def verify():
+            source_locator = item['source_locator']
+            page = source_locator.get('page')
+            page_range = (page, page) if source_locator['format'] == 'pdf' else None
+            with closing(statement_rows(content, password, page_range=page_range)) as rows:
+                for locator, headers, cells, _ in rows:
+                    if locator == source_locator:
+                        ledger.audit(u['name'], 'statement_row_verified', item['case_ids'][0], eid)
+                        return {
+                            'locator': locator, 'headers': headers, 'cells': cells,
+                            'matches_ingested': json_row([headers, cells]) == item['passage'],
+                        }
+            raise HTTPException(409, 'The source row could not be reproduced')
+
+        try:
+            return await run_in_threadpool(verify)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        finally:
+            del password
+
     @app.get('/api/candidates')
     def get_candidates(u=Depends(user)):
         raw=snapshot(ledger,u['cases'],resolve=False)
@@ -447,7 +554,9 @@ def create_app(store=None):
     @app.get('/api/timeline')
     def timeline(case:str|None=None,u=Depends(user)):
         g=graph(u,case);names={n['id']:n['label'] for n in g['nodes']}
-        events=[{'id':n['id'],'label':n['label'],'event_time':n['attrs']['event_time'],'evidence_ids':n['evidence_ids']} for n in g['nodes'] if n['attrs'].get('event_time')]
+        events=[{'id':n['id'],'label':n['label'],'event_time':n['attrs']['event_time'],
+                 'time_basis':n['attrs'].get('time_basis'),'evidence_ids':n['evidence_ids']}
+                for n in g['nodes'] if n['attrs'].get('event_time')]
         events += [{'id':e['id'],'label':f"Call: {names[e['source']]} → {names[e['target']]}",'event_time':e['attrs']['event_time'],'evidence_ids':e['evidence_ids']} for e in g['edges'] if e['type']=='COMMUNICATED_WITH' and e['attrs'].get('event_time')]
         return sorted(events,key=lambda n:n['event_time'])
     @app.get('/api/flow')
@@ -455,6 +564,25 @@ def create_app(store=None):
         g=graph(u);ids={n['id'] for n in g['nodes']}
         if start not in ids or (end and end not in ids):raise HTTPException(404,'Entity unavailable')
         return fund_flow(g,start,end)
+    @app.post('/api/import/bank-statement/{case_id}')
+    async def upload_statement(case_id: str, request: Request, u=Depends(user)):
+        if case_id not in u['cases']:
+            raise HTTPException(403, 'Case access required')
+        content, filename, password, currency, date_order, page_range = await read_statement_form(request, with_file=True)
+        try:
+            records = await run_in_threadpool(statement_records, content, password, currency, date_order, page_range=page_range)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        finally:
+            del password
+        try:
+            return await run_in_threadpool(
+                ledger.import_records, filename, content, STATEMENT_DATASET, False, case_id, records, u['name'],
+                statement_settings={'currency': currency, 'date_order': date_order},
+            )
+        except ImportSettingsConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+
     @app.post('/api/import/{kind}/{case_id}')
     async def upload(kind:Literal['ibm','narrative','cdr','pdf','history','judgment','judgment-document','fir-document'],case_id:str,request:Request,u=Depends(user)):
         if case_id not in u['cases']:raise HTTPException(403,'Case access required')

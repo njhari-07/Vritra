@@ -93,18 +93,28 @@ def analyze(graph,cross_case_records=None):
     # Currency-grouped, label-free descriptive IF. Full temporal evaluation is separate.
     groups=defaultdict(list)
     for n in nodes.values():
-        if n['type']=='Transaction' and 'amount_paid' in n['attrs']:groups[(n['dataset_id'],n['attrs']['payment_currency'])].append(n)
+        attrs=n['attrs']
+        if n['type']=='Transaction' and 'amount_paid' in attrs:
+            groups[(n['dataset_id'],attrs['payment_currency'],attrs.get('time_basis')=='date_only')].append(n)
     anomaly_status=[]
-    for (dataset,currency),txs in groups.items():
+    for (dataset,currency,date_only),txs in groups.items():
+        group = {'dataset': dataset, 'currency': currency, 'count': len(txs)}
+        if date_only:
+            group['features'] = ['log1p_amount_paid']
         if len(txs)<8:
-            anomaly_status.append({'dataset':dataset,'currency':currency,'status':'insufficient_records','count':len(txs)});continue
-        x=np.array([[math.log1p(float(n['attrs']['amount_paid'])),datetime.fromisoformat(n['attrs']['event_time']).hour] for n in txs])
+            anomaly_status.append({**group,'status':'insufficient_records'});continue
+        features = [('log1p_amount_paid', lambda attrs: math.log1p(float(attrs['amount_paid'])))]
+        if not date_only:
+            features.append(('hour_utc', lambda attrs: datetime.fromisoformat(attrs['event_time']).hour))
+        x=np.array([[extract(n['attrs']) for _, extract in features] for n in txs])
         model=IsolationForest(n_estimators=200,random_state=42,contamination='auto').fit(x)
         scores=-model.score_samples(x)
         for i in sorted(range(len(txs)),key=lambda i:-scores[i])[:min(5,len(txs))]:
             n=txs[i]
-            add('flagged_behavior',['isolation_forest'],[n['id']],f'Unusual amount/time pattern within {dataset}, {currency}; descriptive in-sample demo score, not a probability.',n['evidence_ids'],behavior_score=float(scores[i]),model='IsolationForest/200/seed42',model_inputs={'log1p_amount_paid':float(x[i,0]),'hour_utc':float(x[i,1])},score_scope=f'{dataset}:{currency}')
-        anomaly_status.append({'dataset':dataset,'currency':currency,'status':'descriptive_in_sample','count':len(txs)})
+            basis = 'amount' if date_only else 'amount/time'
+            scope = f'{dataset}:{currency}' + (':date-only' if date_only else '')
+            add('flagged_behavior',['isolation_forest'],[n['id']],f'Unusual {basis} pattern within {dataset}, {currency}. Descriptive in-sample score.',n['evidence_ids'],behavior_score=float(scores[i]),model='IsolationForest/200/seed42',model_inputs={key:float(value) for (key, _),value in zip(features,x[i],strict=True)},score_scope=scope)
+        anomaly_status.append({**group,'status':'descriptive_in_sample'})
     flows=fund_flow(graph)
     for path in flows['paths']:
         subjects=[e['source'] for e in path]

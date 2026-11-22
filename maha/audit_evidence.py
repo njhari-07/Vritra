@@ -14,6 +14,7 @@ from .document_intake import replay_document_pages
 from .ingestion import pdf_records
 from .limits import ResourceLimitError
 from .store import Store
+from .statements import METHOD as STATEMENT_METHOD
 
 
 CSV_METHODS = {'csv-positional', 'synthetic-history-csv'}
@@ -72,6 +73,9 @@ def check_record(data, source):
     method = data['extraction_method']
     if not locator:
         return 'missing_locators', 'Missing source locator'
+    if method == STATEMENT_METHOD:
+        reason = 'Encrypted statement requires password replay' if locator.get('encrypted') else 'Verify the statement row from its evidence panel'
+        return 'unverified', reason
     if text_method := locator.get('text_method'):
         number = locator.get('page')
         if type(number) is not int or number < 1:
