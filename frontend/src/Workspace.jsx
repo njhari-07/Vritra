@@ -14,6 +14,7 @@ import QualityTab from './components/QualityTab';
 import AuditTab from './components/AuditTab';
 import BenchmarksTab from './components/BenchmarksTab';
 import EvidenceDrawer from './components/EvidenceDrawer';
+import FindingsReview from './components/FindingsReview';
 import GraphExplorerTab from './components/GraphExplorerTab';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -66,7 +67,10 @@ export default function App({ userSlot = null }) {
   const [selected, setSelected] = useState(null);
   const [ev, setEv] = useState(null);
   const [search, setSearch] = useState('');
-  const [list, setList] = useState([]);
+  // Rows for the Resolution / Timeline / Quality / Audit / Benchmarks tabs, tagged with the tab they were
+  // loaded for. Each tab only renders its own rows, so switching tabs never draws another tab's data.
+  const [listState, setListState] = useState({ tab: null, rows: [] });
+  const list = listState.tab === tab && Array.isArray(listState.rows) ? listState.rows : [];
   const [notice, setNotice] = useState('');
   const sessionToken = useRef('');
   const caseRequest = useRef(null);
@@ -179,7 +183,7 @@ export default function App({ userSlot = null }) {
 
   useEffect(() => {
     selectItem(null);
-    setList([]);
+    setListState({ tab: null, rows: [] });
     if (!me || !activeCase) return;
     let current = true;
     const paths = {
@@ -189,7 +193,7 @@ export default function App({ userSlot = null }) {
       Audit: '/audit?case=' + encodeURIComponent(activeCase),
       Benchmarks: '/benchmarks'
     };
-    if (paths[tab]) api(paths[tab]).then(data => { if (current) setList(data); })
+    if (paths[tab]) api(paths[tab]).then(data => { if (current) setListState({ tab, rows: data }); })
       .catch(error => { if (current) setError(error.message); });
     return () => { current = false; };
   }, [tab, me, activeCase]);
@@ -405,7 +409,7 @@ export default function App({ userSlot = null }) {
         body: JSON.stringify({ state, reason })
       });
       await load(activeCase);
-      setList(await api('/candidates'));
+      setListState({ tab: 'Resolution', rows: await api('/candidates') });
       setNotice('Resolution decision saved');
     } catch (e) {
       setError(e.message);
@@ -574,9 +578,6 @@ export default function App({ userSlot = null }) {
   const suspects = analysis?.suspects || [];
 
   const leads = tab === 'Flagged behavior' ? behavior : connections;
-  const filtered = leads.filter(l =>
-    (l.reason + ' ' + l.subject_ids.map(id => graph?.nodes?.find(n => n.id === id)?.label).join(' ')).toLowerCase().includes(search.toLowerCase())
-  );
 
   const dossierGroups = [
     ['witness', 'Witnesses in source records', s => s.source_roles?.some(role => /\bwitness\b/i.test(role))],
@@ -985,33 +986,17 @@ export default function App({ userSlot = null }) {
 
         {/* OTHER TABS */}
         {['Connections', 'Flagged behavior'].includes(tab) && (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>{leads.length} findings</h2>
-              <input
-                aria-label="Search findings"
-                placeholder="Search entities or findings…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-            {filtered.map(l => (
-              <article className="lead" key={l.id}>
-                <div>
-                  <span className={'tag ' + (l.category === 'connection' ? '' : 'amber')}>{l.techniques.join(' · ')}</span>
-                  <h3>{l.subject_ids.map(id => graph?.nodes?.find(n => n.id === id)?.label || id).join(' → ')}</h3>
-                  <p>{l.reason}</p>
-                  <small>
-                    {l.evidence_ids.length} source references · {l.review_state}
-                  </small>
-                </div>
-                <button className="quiet" onClick={() => selectItem(l)}>
-                  Review evidence →
-                </button>
-              </article>
-            ))}
-            {!filtered.length && <p className="empty">No findings match this view.</p>}
-          </section>
+          <FindingsReview
+            leads={leads}
+            allLeads={analysis?.leads}
+            graph={graph}
+            analysis={analysis}
+            tabLabel={tab === 'Flagged behavior' ? 'Flagged behaviour' : 'Connections'}
+            search={search}
+            setSearch={setSearch}
+            onReview={review}
+            onOpen={selectItem}
+          />
         )}
 
         {tab === 'Graph explorer' && (
@@ -1526,12 +1511,12 @@ export default function App({ userSlot = null }) {
               <h2>Activity history</h2>
             </div>
             {list.map(r => (
-              <article className="lead" key={r.id}>
-                <strong>{r.action.replaceAll('_', ' ')}</strong>
-                <span>
+              <article className="lead tw:flex tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-1" key={r.id}>
+                <strong className="tw:capitalize">{(r.action || '').replaceAll('_', ' ')}</strong>
+                <span className="tw:font-mono tw:text-[13px] tw:opacity-75">
                   {r.actor} · {r.case_id}
                 </span>
-                <time>{new Date(r.at).toLocaleString()}</time>
+                <time className="tw:ml-auto tw:text-[13px] tw:opacity-75 tw:tabular-nums">{new Date(r.at).toLocaleString()}</time>
               </article>
             ))}
           </section>
