@@ -1,0 +1,188 @@
+/* ==========================================================================
+   MAHA styles entry: Tailwind v4 (prefixed `tw:`) + shadcn/ui theme + legacy CSS.
+
+   Layer order (lowest priority first):
+     theme   – Tailwind design tokens
+     base    – minimal defaults for shadcn components (no full Tailwind reset)
+     legacy  – MAHA's hand-written CSS (style.css, record-intake.css)
+     components
+     utilities – `tw:` classes, so they win over legacy rules on the same element
+   No Preflight reset is loaded, so existing screens keep their look.
+   ========================================================================== */
+@layer theme, base, legacy, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(tw);
+@import "tw-animate-css";
+
+@import "./style.css" layer(legacy);
+@import "./record-intake.css" layer(legacy);
+
+/* The workspace toggles `.dark-theme`; shadcn's `dark:` variant follows it. */
+@custom-variant dark (&:where(.dark-theme, .dark-theme *, .landing, .landing *));
+
+/* "Case File Night" as shadcn tokens. Each colour keeps one meaning:
+   evidence = gold (sources, CTAs, accounts), trust = blue (people, links, focus),
+   loop = coral (money loops only), signal = teal (phones, verified),
+   review = violet (places, needs review). */
+:root {
+  --radius: 0.75rem;
+  --background: #F3F5FA;
+  --foreground: #0A1020;
+  --card: #FFFFFF;
+  --card-foreground: #0A1020;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A1020;
+  --primary: #F2B544;
+  --primary-foreground: #0A1020;
+  --secondary: #E9EDF5;
+  --secondary-foreground: #0A1020;
+  --muted: #E9EDF5;
+  --muted-foreground: #5D6787;
+  --accent: #E9EDF5;
+  --accent-foreground: #0A1020;
+  --destructive: #C8372A;
+  --border: #D6DCE8;
+  --input: #D6DCE8;
+  --ring: #1F64C8;
+  /* semantic text colours: darker on light backgrounds for 4.5:1 contrast */
+  --evidence: #9A6400;
+  --trust: #1F64C8;
+  --loop: #C8372A;
+  --signal: #0B7F69;
+  --review: #6A47D1;
+}
+.dark-theme, .landing {
+  --background: #0A1020;
+  --foreground: #EDF2FA;
+  --card: #131E35;
+  --card-foreground: #EDF2FA;
+  --popover: #131E35;
+  --popover-foreground: #EDF2FA;
+  --primary: #F2B544;
+  --primary-foreground: #0A1020;
+  --secondary: #1A2843;
+  --secondary-foreground: #EDF2FA;
+  --muted: #1A2843;
+  --muted-foreground: #A59FC4;
+  --accent: #1A2843;
+  --accent-foreground: #EDF2FA;
+  --destructive: #FF6B5B;
+  --border: #233350;
+  --input: #233350;
+  --ring: #5AA9FF;
+  --evidence: #F2B544;
+  --trust: #5AA9FF;
+  --loop: #FF6B5B;
+  --signal: #3DD6B5;
+  --review: #A98BFF;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-evidence: var(--evidence);
+  --color-trust: var(--trust);
+  --color-loop: var(--loop);
+  --color-signal: var(--signal);
+  --color-review: var(--review);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@theme {
+  /* fixed palette values for fills that look the same in both themes */
+  --color-night: #0A1020;
+  --color-surface: #131E35;
+  --color-line: #233350;
+  --color-ink: #EDF2FA;
+  --color-ink-2: #C9C3E8;
+  --color-ink-3: #A59FC4;
+  --color-ink-4: #8D87B3;
+  --color-gold: #F2B544;
+  --color-blue: #5AA9FF;
+  --color-coral: #FF6B5B;
+  --color-teal: #3DD6B5;
+  --color-violet: #A98BFF;
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-out-soft: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Minimal defaults so shadcn borders pick up the theme colour. */
+@layer base {
+  *, ::before, ::after { border-color: var(--border); }
+}
+
+/* ---------- Landing + sign-in: animations and the few effects too long for class names ---------- */
+@theme {
+  --animate-lp-pulse: lp-pulse 2s infinite;
+  --animate-lp-spring: lp-spring .45s cubic-bezier(.34, 1.56, .64, 1);
+  --animate-lp-dash: lp-dash 1.4s linear infinite;
+  @keyframes lp-pulse { 50% { opacity: .35; } }
+  @keyframes lp-spring { from { transform: scale(.98); opacity: .4; } to { transform: scale(1); opacity: 1; } }
+  @keyframes lp-dash { to { stroke-dashoffset: -26; } }
+  @keyframes lp-fill { to { width: 100%; } }
+}
+
+/* Page backdrop: blue and gold glows on Night. */
+@utility lp-bg {
+  background:
+    radial-gradient(900px 520px at 78% 8%, rgb(90 169 255 / 13%), transparent 62%),
+    radial-gradient(700px 480px at 8% 62%, rgb(242 181 68 / 6%), transparent 60%),
+    #0A1020;
+}
+/* Faint case-file dot grid that fades out down the page. */
+@utility lp-dotgrid {
+  background-image: radial-gradient(rgb(201 195 232 / 9%) 1px, transparent 1px);
+  background-size: 28px 28px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 70%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 70%);
+}
+@utility lp-nav-fade { background: linear-gradient(to bottom, rgb(10 16 32 / 92%), rgb(10 16 32 / 0%)); }
+/* Fades the 3D canvas edges into the page. */
+@utility lp-stage-fade {
+  -webkit-mask-image: radial-gradient(ellipse 62% 60% at 50% 50%, #000 52%, transparent 100%);
+  mask-image: radial-gradient(ellipse 62% 60% at 50% 50%, #000 52%, transparent 100%);
+}
+@utility lp-dash-key { background: repeating-linear-gradient(90deg, #FF6B5B 0 5px, transparent 5px 8px); }
+@utility lp-final-bg { background: radial-gradient(600px 300px at 85% 0%, rgb(242 181 68 / 12%), transparent 70%), #131E35; }
+/* Step progress bar fill; only runs while the stepper autoplays. */
+@utility lp-fill { animation: lp-fill var(--dur, 7s) linear forwards; }
+/* Scroll reveal: hidden only once JS has marked the page (.lp-js), so content shows without JS. */
+@utility reveal {
+  :where(.lp-js) & {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity .7s cubic-bezier(.22, 1, .36, 1), transform .7s cubic-bezier(.22, 1, .36, 1);
+    transition-delay: var(--delay, 0ms);
+  }
+  :where(.lp-js) &:where(.is-in) { opacity: 1; transform: none; }
+}
+
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    .landing *, .landing *::before { animation: none !important; transition: none !important; }
+    :where(.lp-js) .tw\:reveal { opacity: 1 !important; transform: none !important; }
+  }
+}
