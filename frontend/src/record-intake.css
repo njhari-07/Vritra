@@ -1,7 +1,4 @@
-/* Load prefixed Tailwind utilities without applying a reset to the rest of MAHA. */
-@layer theme, utilities;
-@import "tailwindcss/theme.css" layer(theme) prefix(tw);
-@import "tailwindcss/utilities.css" layer(utilities) prefix(tw);
+/* Tailwind (prefixed `tw:`) is now loaded once for the whole app from src/index.css. */
 
 .record-intake {
   --record-tint: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-surface));

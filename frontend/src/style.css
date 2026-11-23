@@ -2039,3 +2039,103 @@ h1, h2, h3, .wordmark { letter-spacing: -0.03em; }
 .shell:not(.dark-theme) .view-switch button.active { color: #9A6400; }
 .shell:not(.dark-theme) .dev-auth-chip { color: #9A6400; }
 .login-stage .login:not(.dark-theme) { background: rgb(255 255 255 / 92%); border-color: #D6DCE8; }
+
+/* ==========================================================================
+   Hover and focus: always show where the cursor is.
+   Blue = "where your cursor is" (Trust Blue means focus in this palette).
+   Gold = "where you are" (the current page in the sidebar) and primary actions.
+   Kept last in the file so it wins over the earlier rules that removed hover effects.
+   ========================================================================== */
+.shell {
+  --hover-tint: rgb(31 100 200 / 7%);
+  --hover-line: rgb(31 100 200 / 45%);
+  --hover-glow: 0 0 0 1px rgb(31 100 200 / 18%), 0 10px 26px -14px rgb(31 100 200 / 45%);
+  --hover-text: #0A1020;
+  --focus-ring: #1F64C8;
+}
+.shell.dark-theme {
+  --hover-tint: rgb(90 169 255 / 10%);
+  --hover-line: rgb(90 169 255 / 60%);
+  --hover-glow: 0 0 0 1px rgb(90 169 255 / 22%), 0 12px 30px -12px rgb(90 169 255 / 50%);
+  --hover-text: #EDF2FA;
+  --focus-ring: #5AA9FF;
+}
+
+/* Smooth, quick transitions on everything that reacts. */
+.shell :is(.sidebar nav button, .stats > div, .panel, .lead, .mini-lead, .suspect-card, .benchmark,
+  .record-card, .template-item, button.quiet, .btn-new-case, .btn-reset-case, .btn-tmpl, .theme-toggle-btn,
+  .source-button, .graph-icon-btn, .record-chip, .record-secondary, .search-results button,
+  .btn-train-primary, .record-primary, input, select, textarea) {
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .2s ease, color .15s ease, transform .2s ease;
+}
+
+/* Sidebar: hover gets a blue tint and bar; the current page keeps a gold bar. */
+.shell .sidebar nav button:hover:not(.active) {
+  background: var(--hover-tint);
+  color: var(--hover-text);
+  box-shadow: inset 3px 0 0 var(--focus-ring);
+}
+.shell .sidebar nav button:hover:not(.active) .nav-icon { color: var(--focus-ring); }
+.shell .sidebar nav button.active { box-shadow: inset 3px 0 0 #F2B544; }
+
+/* Cards and panels lift slightly and pick up a blue edge. */
+.shell .stats > div:hover,
+.shell :is(.suspect-card, .benchmark, .record-card, .template-item):hover {
+  border-color: var(--hover-line);
+  box-shadow: var(--hover-glow);
+  transform: translateY(-2px);
+}
+.shell .panel:hover { border-color: var(--hover-line); box-shadow: 0 0 0 1px var(--hover-tint); }
+
+/* List rows look "selected" under the cursor: tint, blue edge and a left bar. */
+.shell :is(.lead, .mini-lead):hover {
+  background: var(--hover-tint);
+  border-color: var(--hover-line);
+  box-shadow: inset 3px 0 0 var(--focus-ring), var(--hover-glow);
+  color: var(--hover-text);
+  cursor: pointer;
+}
+
+/* Secondary buttons and chips: tint + blue border + glow. */
+.shell :is(button.quiet, .btn-new-case, .btn-tmpl, .theme-toggle-btn, .source-button, .graph-icon-btn,
+  .record-chip, .record-secondary, .search-results button):hover:not(:disabled) {
+  background: var(--hover-tint);
+  border-color: var(--hover-line);
+  color: var(--hover-text);
+  box-shadow: var(--hover-glow);
+  opacity: 1;
+}
+/* Reset is destructive: it warms up in red instead of blue. */
+.shell .btn-reset-case:hover:not(:disabled) {
+  background: rgb(255 107 91 / 12%);
+  border-color: rgb(255 107 91 / 60%);
+  box-shadow: 0 10px 26px -14px rgb(255 107 91 / 55%);
+  opacity: 1;
+}
+/* Primary gold actions brighten and glow gold. */
+.shell :is(.btn-train-primary, .record-primary):hover:not(:disabled) {
+  background: #F6C76A;
+  color: #0A1020;
+  box-shadow: 0 10px 26px -10px rgb(242 181 68 / 65%);
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+/* Inputs: brighter border on hover, blue ring while typing. */
+.shell :is(input:not([type=range]):not([type=checkbox]):not([type=radio]), select, textarea):hover:not(:disabled) {
+  border-color: var(--hover-line);
+}
+.shell :is(input, select, textarea):focus {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--hover-tint);
+}
+
+/* Keyboard users get the same signal as the mouse. */
+.shell :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell :is(.stats > div, .suspect-card, .benchmark, .record-card, .template-item, .btn-train-primary, .record-primary):hover { transform: none; }
+}

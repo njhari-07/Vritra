@@ -14,9 +14,11 @@ import QualityTab from './components/QualityTab';
 import AuditTab from './components/AuditTab';
 import BenchmarksTab from './components/BenchmarksTab';
 import EvidenceDrawer from './components/EvidenceDrawer';
+import FindingsReview from './components/FindingsReview';
 import GraphExplorerTab from './components/GraphExplorerTab';
-import './style.css';
-import './record-intake.css';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+// Styles (style.css, record-intake.css, Tailwind) are loaded once from index.css in main.jsx.
 
 const HeroScene = lazy(() => import('./components/three/HeroScene'));
 
@@ -65,7 +67,10 @@ export default function App({ userSlot = null }) {
   const [selected, setSelected] = useState(null);
   const [ev, setEv] = useState(null);
   const [search, setSearch] = useState('');
-  const [list, setList] = useState([]);
+  // Rows for the Resolution / Timeline / Quality / Audit / Benchmarks tabs, tagged with the tab they were
+  // loaded for. Each tab only renders its own rows, so switching tabs never draws another tab's data.
+  const [listState, setListState] = useState({ tab: null, rows: [] });
+  const list = listState.tab === tab && Array.isArray(listState.rows) ? listState.rows : [];
   const [notice, setNotice] = useState('');
   const sessionToken = useRef('');
   const caseRequest = useRef(null);
@@ -178,7 +183,7 @@ export default function App({ userSlot = null }) {
 
   useEffect(() => {
     selectItem(null);
-    setList([]);
+    setListState({ tab: null, rows: [] });
     if (!me || !activeCase) return;
     let current = true;
     const paths = {
@@ -188,7 +193,7 @@ export default function App({ userSlot = null }) {
       Audit: '/audit?case=' + encodeURIComponent(activeCase),
       Benchmarks: '/benchmarks'
     };
-    if (paths[tab]) api(paths[tab]).then(data => { if (current) setList(data); })
+    if (paths[tab]) api(paths[tab]).then(data => { if (current) setListState({ tab, rows: data }); })
       .catch(error => { if (current) setError(error.message); });
     return () => { current = false; };
   }, [tab, me, activeCase]);
@@ -404,7 +409,7 @@ export default function App({ userSlot = null }) {
         body: JSON.stringify({ state, reason })
       });
       await load(activeCase);
-      setList(await api('/candidates'));
+      setListState({ tab: 'Resolution', rows: await api('/candidates') });
       setNotice('Resolution decision saved');
     } catch (e) {
       setError(e.message);
@@ -573,9 +578,6 @@ export default function App({ userSlot = null }) {
   const suspects = analysis?.suspects || [];
 
   const leads = tab === 'Flagged behavior' ? behavior : connections;
-  const filtered = leads.filter(l =>
-    (l.reason + ' ' + l.subject_ids.map(id => graph?.nodes?.find(n => n.id === id)?.label).join(' ')).toLowerCase().includes(search.toLowerCase())
-  );
 
   const dossierGroups = [
     ['witness', 'Witnesses in source records', s => s.source_roles?.some(role => /\bwitness\b/i.test(role))],
@@ -984,38 +986,23 @@ export default function App({ userSlot = null }) {
 
         {/* OTHER TABS */}
         {['Connections', 'Flagged behavior'].includes(tab) && (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>{leads.length} findings</h2>
-              <input
-                aria-label="Search findings"
-                placeholder="Search entities or findings…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-            {filtered.map(l => (
-              <article className="lead" key={l.id}>
-                <div>
-                  <span className={'tag ' + (l.category === 'connection' ? '' : 'amber')}>{l.techniques.join(' · ')}</span>
-                  <h3>{l.subject_ids.map(id => graph?.nodes?.find(n => n.id === id)?.label || id).join(' → ')}</h3>
-                  <p>{l.reason}</p>
-                  <small>
-                    {l.evidence_ids.length} source references · {l.review_state}
-                  </small>
-                </div>
-                <button className="quiet" onClick={() => selectItem(l)}>
-                  Review evidence →
-                </button>
-              </article>
-            ))}
-            {!filtered.length && <p className="empty">No findings match this view.</p>}
-          </section>
+          <FindingsReview
+            leads={leads}
+            allLeads={analysis?.leads}
+            graph={graph}
+            analysis={analysis}
+            tabLabel={tab === 'Flagged behavior' ? 'Flagged behaviour' : 'Connections'}
+            search={search}
+            setSearch={setSearch}
+            onReview={review}
+            onOpen={selectItem}
+          />
         )}
 
         {tab === 'Graph explorer' && (
           <GraphExplorerTab
             graph={graph}
+            analysis={analysis}
             activeCase={activeCase}
             search={search}
             setSearch={setSearch}
@@ -1524,12 +1511,12 @@ export default function App({ userSlot = null }) {
               <h2>Activity history</h2>
             </div>
             {list.map(r => (
-              <article className="lead" key={r.id}>
-                <strong>{r.action.replaceAll('_', ' ')}</strong>
-                <span>
+              <article className="lead tw:flex tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-1" key={r.id}>
+                <strong className="tw:capitalize">{(r.action || '').replaceAll('_', ' ')}</strong>
+                <span className="tw:font-mono tw:text-[13px] tw:opacity-75">
                   {r.actor} · {r.case_id}
                 </span>
-                <time>{new Date(r.at).toLocaleString()}</time>
+                <time className="tw:ml-auto tw:text-[13px] tw:opacity-75 tw:tabular-nums">{new Date(r.at).toLocaleString()}</time>
               </article>
             ))}
           </section>
@@ -1625,76 +1612,58 @@ export default function App({ userSlot = null }) {
         </aside>
       )}
 
-      {/* Create New Case Modal */}
-      {showNewCaseModal && (
-        <div className="modal-overlay" onClick={() => setShowNewCaseModal(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="modal-head">
-              <h3>Create New Investigation Case</h3>
-              <button className="close" style={{ position: 'static' }} onClick={() => setShowNewCaseModal(false)}>
-                ×
-              </button>
-            </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Create an isolated investigation container. The case will start completely clean with 0 facts and un-trained models.
-            </p>
-            <form onSubmit={handleCreateCase}>
-              <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Case Identifier / Number:
-                <input
-                  placeholder="e.g. CASE-2026-X1"
-                  value={newCaseInput}
-                  onChange={e => setNewCaseInput(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </label>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button type="button" className="quiet" onClick={() => setShowNewCaseModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={busy}>
-                  Create Case →
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Create New Case dialog (shadcn) */}
+      <Dialog open={showNewCaseModal} onOpenChange={setShowNewCaseModal}>
+        <DialogContent className={`tw:sm:max-w-[440px] ${darkMode ? 'dark-theme' : ''}`}>
+          <DialogHeader>
+            <DialogTitle>Create a new investigation case</DialogTitle>
+            <DialogDescription>
+              The case starts empty, with no facts and no analysis run yet.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateCase} className="tw:grid tw:gap-5">
+            <label className="tw:grid tw:gap-1.5 tw:text-xs tw:font-semibold tw:text-foreground">
+              Case ID
+              <input
+                placeholder="e.g. CASE-2026-X1"
+                value={newCaseInput}
+                onChange={e => setNewCaseInput(e.target.value)}
+                required
+                autoFocus
+              />
+            </label>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowNewCaseModal(false)}>Cancel</Button>
+              <Button type="submit" disabled={busy}>Create case</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      {/* Templates Modal */}
-      {showTemplateModal && templates && (
-        <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <h3>Evidence Modality Schemas & Downloadable Templates</h3>
-              <button className="close" style={{ position: 'static' }} onClick={() => setShowTemplateModal(false)}>
-                ×
-              </button>
+      {/* Data templates dialog (shadcn) */}
+      <Dialog open={Boolean(showTemplateModal && templates)} onOpenChange={setShowTemplateModal}>
+        <DialogContent className={`tw:sm:max-w-2xl ${darkMode ? 'dark-theme' : ''}`}>
+          <DialogHeader>
+            <DialogTitle>Import formats and templates</DialogTitle>
+            <DialogDescription>
+              Use these exact file formats and headers to import real or synthetic records for court hearings, bank transactions, police FIRs and telecom calls.
+            </DialogDescription>
+          </DialogHeader>
+          {Object.entries(templates || {}).map(([key, t]) => (
+            <div className="template-item" key={key}>
+              <h4>
+                <span>{t.title}</span>
+                <Button variant="outline" size="sm" className="tw:h-7 tw:min-h-0 tw:text-[11px]"
+                  onClick={() => downloadFile(t.filename, t.content, t.format)}>
+                  Download {t.filename}
+                </Button>
+              </h4>
+              <p>{t.description}</p>
+              <pre>{t.content.slice(0, 320) + (t.content.length > 320 ? '\n...' : '')}</pre>
             </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Use these exact file formats and headers to ingest real or synthetic records for court hearings, bank transactions, police FIRs, and telecom calls.
-            </p>
-
-            {Object.entries(templates).map(([key, t]) => (
-              <div className="template-item" key={key}>
-                <h4>
-                  <span>{t.title}</span>
-                  <button
-                    className="quiet"
-                    style={{ fontSize: '10px', padding: '4px 10px' }}
-                    onClick={() => downloadFile(t.filename, t.content, t.format)}
-                  >
-                    Download {t.filename}
-                  </button>
-                </h4>
-                <p>{t.description}</p>
-                <pre>{t.content.slice(0, 320) + (t.content.length > 320 ? '\n...' : '')}</pre>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+          ))}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
