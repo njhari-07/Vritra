@@ -15,8 +15,9 @@ import AuditTab from './components/AuditTab';
 import BenchmarksTab from './components/BenchmarksTab';
 import EvidenceDrawer from './components/EvidenceDrawer';
 import GraphExplorerTab from './components/GraphExplorerTab';
-import './style.css';
-import './record-intake.css';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+// Styles (style.css, record-intake.css, Tailwind) are loaded once from index.css in main.jsx.
 
 const HeroScene = lazy(() => import('./components/three/HeroScene'));
 
@@ -1016,6 +1017,7 @@ export default function App({ userSlot = null }) {
         {tab === 'Graph explorer' && (
           <GraphExplorerTab
             graph={graph}
+            analysis={analysis}
             activeCase={activeCase}
             search={search}
             setSearch={setSearch}
@@ -1625,76 +1627,58 @@ export default function App({ userSlot = null }) {
         </aside>
       )}
 
-      {/* Create New Case Modal */}
-      {showNewCaseModal && (
-        <div className="modal-overlay" onClick={() => setShowNewCaseModal(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="modal-head">
-              <h3>Create New Investigation Case</h3>
-              <button className="close" style={{ position: 'static' }} onClick={() => setShowNewCaseModal(false)}>
-                ×
-              </button>
-            </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Create an isolated investigation container. The case will start completely clean with 0 facts and un-trained models.
-            </p>
-            <form onSubmit={handleCreateCase}>
-              <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Case Identifier / Number:
-                <input
-                  placeholder="e.g. CASE-2026-X1"
-                  value={newCaseInput}
-                  onChange={e => setNewCaseInput(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </label>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button type="button" className="quiet" onClick={() => setShowNewCaseModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={busy}>
-                  Create Case →
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Create New Case dialog (shadcn) */}
+      <Dialog open={showNewCaseModal} onOpenChange={setShowNewCaseModal}>
+        <DialogContent className={`tw:sm:max-w-[440px] ${darkMode ? 'dark-theme' : ''}`}>
+          <DialogHeader>
+            <DialogTitle>Create a new investigation case</DialogTitle>
+            <DialogDescription>
+              The case starts empty, with no facts and no analysis run yet.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateCase} className="tw:grid tw:gap-5">
+            <label className="tw:grid tw:gap-1.5 tw:text-xs tw:font-semibold tw:text-foreground">
+              Case ID
+              <input
+                placeholder="e.g. CASE-2026-X1"
+                value={newCaseInput}
+                onChange={e => setNewCaseInput(e.target.value)}
+                required
+                autoFocus
+              />
+            </label>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowNewCaseModal(false)}>Cancel</Button>
+              <Button type="submit" disabled={busy}>Create case</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      {/* Templates Modal */}
-      {showTemplateModal && templates && (
-        <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <h3>Evidence Modality Schemas & Downloadable Templates</h3>
-              <button className="close" style={{ position: 'static' }} onClick={() => setShowTemplateModal(false)}>
-                ×
-              </button>
+      {/* Data templates dialog (shadcn) */}
+      <Dialog open={Boolean(showTemplateModal && templates)} onOpenChange={setShowTemplateModal}>
+        <DialogContent className={`tw:sm:max-w-2xl ${darkMode ? 'dark-theme' : ''}`}>
+          <DialogHeader>
+            <DialogTitle>Import formats and templates</DialogTitle>
+            <DialogDescription>
+              Use these exact file formats and headers to import real or synthetic records for court hearings, bank transactions, police FIRs and telecom calls.
+            </DialogDescription>
+          </DialogHeader>
+          {Object.entries(templates || {}).map(([key, t]) => (
+            <div className="template-item" key={key}>
+              <h4>
+                <span>{t.title}</span>
+                <Button variant="outline" size="sm" className="tw:h-7 tw:min-h-0 tw:text-[11px]"
+                  onClick={() => downloadFile(t.filename, t.content, t.format)}>
+                  Download {t.filename}
+                </Button>
+              </h4>
+              <p>{t.description}</p>
+              <pre>{t.content.slice(0, 320) + (t.content.length > 320 ? '\n...' : '')}</pre>
             </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Use these exact file formats and headers to ingest real or synthetic records for court hearings, bank transactions, police FIRs, and telecom calls.
-            </p>
-
-            {Object.entries(templates).map(([key, t]) => (
-              <div className="template-item" key={key}>
-                <h4>
-                  <span>{t.title}</span>
-                  <button
-                    className="quiet"
-                    style={{ fontSize: '10px', padding: '4px 10px' }}
-                    onClick={() => downloadFile(t.filename, t.content, t.format)}
-                  >
-                    Download {t.filename}
-                  </button>
-                </h4>
-                <p>{t.description}</p>
-                <pre>{t.content.slice(0, 320) + (t.content.length > 320 ? '\n...' : '')}</pre>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+          ))}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
