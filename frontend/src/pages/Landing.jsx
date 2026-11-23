@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { clerkEnabled } from '../auth';
 import BrandMark from '../components/BrandMark';
+import GraphStory from '../components/landing/GraphStory';
 import { cn } from '@/lib/utils';
 
 const HeroScene = lazy(() => import('../components/three/HeroScene'));
@@ -214,12 +215,13 @@ export default function Landing() {
   const root = useReveal();
   return (
     <div ref={root}
-      className="landing tw:relative tw:min-h-screen tw:overflow-x-hidden tw:font-sans tw:text-base tw:leading-[1.6] tw:text-ink tw:lp-bg tw:[&>*]:relative tw:[&_a]:text-inherit tw:[&_a]:no-underline tw:[&_:focus-visible]:rounded-md tw:[&_:focus-visible]:outline-2 tw:[&_:focus-visible]:outline-offset-[3px] tw:[&_:focus-visible]:outline-blue">
+      className="landing tw:relative tw:min-h-screen tw:overflow-x-clip tw:font-sans tw:text-base tw:leading-[1.6] tw:text-ink tw:lp-bg tw:[&>*]:relative tw:[&_a]:text-inherit tw:[&_a]:no-underline tw:[&_:focus-visible]:rounded-md tw:[&_:focus-visible]:outline-2 tw:[&_:focus-visible]:outline-offset-[3px] tw:[&_:focus-visible]:outline-blue">
       <div aria-hidden="true" className="tw:pointer-events-none tw:absolute! tw:inset-0 tw:lp-dotgrid" />
 
       <header className="tw:fixed! tw:inset-x-0 tw:top-0 tw:z-30 tw:m-0 tw:flex tw:items-center tw:justify-between tw:gap-4 tw:border-0 tw:px-[max(16px,4vw)] tw:py-3.5 tw:shadow-none tw:backdrop-blur-[8px] tw:lp-nav-fade">
         <Link to="/" className="tw:flex tw:items-center tw:gap-2.5 tw:font-display tw:text-[19px] tw:font-bold tw:tracking-[0.04em]"><BrandMark /> MAHA</Link>
         <nav className="tw:flex tw:gap-7 tw:text-sm tw:text-ink-3 tw:max-sm:hidden tw:[&_a]:transition-colors tw:[&_a:hover]:text-ink" aria-label="Sections">
+          <a href="#story">The story</a>
           <a href="#how">How it works</a>
           <a href="#finds">What it finds</a>
           <a href="#principles">Principles</a>
@@ -269,6 +271,9 @@ export default function Landing() {
           </div>
         ))}
       </section>
+
+      {/* Records → network, scrubbed by scroll (sticky stage). The 3D hero above is unchanged. */}
+      <GraphStory />
 
       <section id="how" className={SECTION}>
         <div className={SECTION_HEAD}>
