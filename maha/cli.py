@@ -16,7 +16,7 @@ def load_env():
 
 def main():
     load_env()
-    p = argparse.ArgumentParser(description='MAHA Forensic Criminal Network Intelligence Prototype')
+    p = argparse.ArgumentParser(description='VRITRA Forensic Criminal Network Intelligence Prototype')
     sub = p.add_subparsers(dest='command', required=True)
 
     sub.add_parser('init')

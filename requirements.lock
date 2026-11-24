@@ -72,3 +72,5 @@ uvicorn==0.53.0
 wasabi==1.1.3
 weasel==1.0.0
 wrapt==2.4.1
+xlrd==2.0.2
+xlwt==1.3.0

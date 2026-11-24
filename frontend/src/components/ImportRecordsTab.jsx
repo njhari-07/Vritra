@@ -2,7 +2,7 @@ import React from 'react';
 
 /**
  * ImportRecordsTab — legacy upload form for direct file ingestion.
- * Accepts IBM CSV, narrative JSON, CDR CSV, case-history CSV, and MAHA PDF v1.
+ * Accepts IBM CSV, narrative JSON, CDR CSV, case-history CSV, and VRITRA PDF v1.
  */
 export default function ImportRecordsTab({ casesList, activeCase, busy, onUpload }) {
   return (
@@ -27,7 +27,7 @@ export default function ImportRecordsTab({ casesList, activeCase, busy, onUpload
             <option value="narrative">Synthetic narrative JSON</option>
             <option value="cdr">Synthetic CDR CSV</option>
             <option value="history">Synthetic case-history CSV</option>
-            <option value="pdf">MAHA fixed-layout PDF v1</option>
+            <option value="pdf">VRITRA fixed-layout PDF v1</option>
           </select>
         </label>
         <label>

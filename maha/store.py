@@ -35,6 +35,7 @@ class Store:
         with self.db() as db:
             db.executescript('''
             CREATE TABLE IF NOT EXISTS users(name TEXT PRIMARY KEY, token_hash TEXT UNIQUE, cases TEXT);
+            CREATE TABLE IF NOT EXISTS workspace_preferences(username TEXT PRIMARY KEY, active_case TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS cases(id TEXT PRIMARY KEY, closed_at TEXT);
             CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY, name TEXT, content BLOB, dataset TEXT, synthetic INTEGER);
             CREATE TABLE IF NOT EXISTS imports(id TEXT PRIMARY KEY, source_id TEXT, case_id TEXT, created TEXT, summary TEXT);
@@ -141,6 +142,32 @@ class Store:
             raise PermissionError("Invalid access token")
         return {"name": row["name"], "cases": json.loads(row["cases"])}
 
+    def workspace_case(self, username, cases):
+        with self.db() as db:
+            row = db.execute(
+                """SELECT p.active_case FROM workspace_preferences p
+                   JOIN cases c ON c.id=p.active_case WHERE p.username=?""", (username,)
+            ).fetchone()
+        return row['active_case'] if row and row['active_case'] in cases else None
+
+    def remember_workspace_case(self, username, case_id):
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            user = db.execute('SELECT cases FROM users WHERE name=?', (username,)).fetchone()
+            if not user or case_id not in json.loads(user['cases']):
+                raise PermissionError('Case access required')
+            if not db.execute('SELECT 1 FROM cases WHERE id=?', (case_id,)).fetchone():
+                raise KeyError(case_id)
+            self._save_workspace_case(db, username, case_id)
+
+    @staticmethod
+    def _save_workspace_case(db, username, case_id):
+        db.execute(
+            """INSERT INTO workspace_preferences(username,active_case) VALUES(?,?)
+               ON CONFLICT(username) DO UPDATE SET active_case=excluded.active_case""",
+            (username, case_id),
+        )
+
     def reset_case(self, case_id):
         with self.db() as db:
             db.execute("DELETE FROM facts WHERE case_id=?", (case_id,))
@@ -221,7 +248,8 @@ class Store:
             raise KeyError(source_id)
         return row[0], row[1]
 
-    def import_records(self, name, content, dataset, synthetic, case_id, records, actor="cli", *, statement_settings=None):
+    def import_records(self, name, content, dataset, synthetic, case_id, records, actor="cli", *,
+                       statement_settings=None, statement_scope=None):
         """Records are validated by an adapter; one atomic transaction per source import."""
         source_id = hashlib.sha256(content).hexdigest()
         import_id = secrets.token_hex(16)
@@ -229,17 +257,10 @@ class Store:
         with self.db() as db:
             db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (case_id,))
             if statement_settings is not None:
-                previous = db.execute(
-                    """SELECT DISTINCT json_extract(summary, '$.statement_settings') AS settings
-                       FROM imports WHERE source_id=? AND case_id=?""", (source_id, case_id)
-                ).fetchall()
-                for row in previous:
-                    settings = json.loads(row["settings"]) if row["settings"] else None
-                    if settings is not None and settings != statement_settings:
-                        raise ImportSettingsConflict(
-                            'This statement already exists in this case with different currency or date settings'
-                        )
+                self.check_statement_settings(db, source_id, case_id, statement_settings, statement_scope)
                 summary["statement_settings"] = statement_settings
+                if statement_scope is not None:
+                    summary["statement_scope"] = statement_scope
             db.execute("INSERT OR IGNORE INTO sources VALUES(?,?,?,?,?)", (source_id, Path(name).name, content, dataset, int(synthetic)))
             for record in records:
                 summary["rows_seen"] += 1
@@ -264,7 +285,13 @@ class Store:
                     summary.setdefault('statement_rows', []).append({
                         'evidence_id': evidence_id, 'label': record['statement_label'],
                     })
-                if db.execute("SELECT 1 FROM evidence WHERE id=?", (evidence_id,)).fetchone():
+                previous_evidence = db.execute("SELECT data FROM evidence WHERE id=?", (evidence_id,)).fetchone()
+                if previous_evidence:
+                    if record.get('statement_correction') and (
+                        json.loads(previous_evidence['data']).get('statement_correction', {}).get('fields')
+                        != record['statement_correction']
+                    ):
+                        raise ImportSettingsConflict('This statement row already has a different recorded interpretation')
                     summary["recognized_repeat"] += 1
                     continue
                 ev = dict(id=evidence_id, source=Path(name).name, source_id=source_id,
@@ -275,6 +302,10 @@ class Store:
                           dataset_id=dataset, synthetic=synthetic, case_ids=[case_id], passage=record.get("passage", ""))
                 if 'review_excerpt' in record:
                     ev['review_excerpt'] = record['review_excerpt']
+                if 'statement_correction' in record:
+                    ev['statement_correction'] = {
+                        'fields': record['statement_correction'], 'actor': actor, 'at': ev['ingestion_time'],
+                    }
                 ev['confidence_basis']=record.get('confidence_basis','deterministic extraction agreement, not source truth')
                 db.execute("INSERT INTO evidence VALUES(?,?,?,?)", (evidence_id, source_id, case_id, json.dumps(ev)))
                 if ev['extraction_method']=='csv-positional':
@@ -306,6 +337,32 @@ class Store:
             db.execute("INSERT INTO audit(at,actor,action,case_id,object_id) VALUES(?,?,?,?,?)", (now(), actor, "import", case_id, import_id))
         return {"import_id": import_id, "source_id": source_id, **summary}
 
+    def check_statement_settings(self, db, source_id, case_id, settings, scope):
+        accepted_pages = set((scope or {}).get('accepted_pages', []))
+        for row in db.execute(
+            """SELECT id, summary FROM imports
+               WHERE source_id=? AND case_id=? AND json_extract(summary, '$.statement_settings') IS NOT NULL""",
+            (source_id, case_id),
+        ):
+            previous = json.loads(row['summary'])
+            original = previous['statement_settings']
+            if any(original.get(field) != settings.get(field) for field in ('currency', 'date_order')):
+                raise ImportSettingsConflict('This statement already exists in this case with different currency or date settings')
+            if original.get('column_mapping') == settings.get('column_mapping') or not previous['accepted_new']:
+                continue
+            earlier_pages = (previous.get('statement_scope') or {}).get('accepted_pages')
+            if earlier_pages is None:
+                # Older imports did not persist page coverage. Recover it from the retained records.
+                earlier_pages = [item['page'] for item in db.execute(
+                    """SELECT DISTINCT json_extract(data, '$.source_locator.page') AS page FROM evidence
+                       WHERE source_id=? AND case_id=? AND json_extract(data, '$.import_id')=?""",
+                    (source_id, case_id, row['id']),
+                ) if item['page'] is not None]
+            if not accepted_pages or not earlier_pages or accepted_pages.intersection(earlier_pages):
+                raise ImportSettingsConflict(
+                    'This statement already has rows with a different column mapping in the selected pages'
+                )
+
     def history(self, table, cases):
         if table not in {"imports", "audit"}:
             raise ValueError("Unsupported history")
@@ -314,6 +371,47 @@ class Store:
         with self.db() as db:
             rows = db.execute(f"SELECT * FROM {table} WHERE case_id IN ({','.join('?' for _ in cases)}) ORDER BY rowid DESC LIMIT 200", cases).fetchall()
         return [dict(r) for r in rows]
+
+    def statement_batch(self, db, import_id, cases):
+        batch = db.execute("SELECT * FROM imports WHERE id=?", (import_id,)).fetchone()
+        if not batch or batch['case_id'] not in cases:
+            raise KeyError(import_id)
+        summary = json.loads(batch['summary'])
+        if 'statement_settings' not in summary:
+            raise KeyError(import_id)
+        return batch, summary
+
+    def statement_import_source(self, import_id, cases):
+        with self.db() as db:
+            batch, summary = self.statement_batch(db, import_id, cases)
+        name, content = self.source(batch['source_id'], cases)
+        return batch['case_id'], name, content, summary['statement_settings']
+
+    def statement_import_review(self, import_id, cases, offset, limit):
+        with self.db() as db:
+            batch, summary = self.statement_batch(db, import_id, cases)
+            scope = [batch['case_id'], batch['source_id'], import_id]
+            filter_sql = "case_id=? AND source_id=? AND json_extract(data, '$.import_id')=?"
+            found = db.execute(
+                f"SELECT data FROM evidence WHERE {filter_sql} ORDER BY rowid LIMIT ? OFFSET ?",
+                (*scope, limit, offset),
+            ).fetchall()
+            pages = db.execute(
+                f"""SELECT json_extract(data, '$.source_locator.page') AS page, count(*) AS count
+                    FROM evidence WHERE {filter_sql} GROUP BY page ORDER BY page""",
+                scope,
+            ).fetchall()
+            covered = {
+                row['page'] for row in db.execute(
+                    """SELECT DISTINCT json_extract(data, '$.source_locator.page') AS page FROM evidence
+                       WHERE case_id=? AND source_id=?""", scope[:2],
+                ) if row['page'] is not None
+            }
+        next_page = 1
+        while next_page in covered:
+            next_page += 1
+        return (summary, [json.loads(row['data']) for row in found],
+                [dict(row) for row in pages if row['page'] is not None], next_page if covered else None)
 
     def decisions(self, cases):
         with self.db() as db:
@@ -387,12 +485,14 @@ class Store:
             if user is None:
                 raise PermissionError('User unavailable')
             cases = json.loads(user['cases'])
-            if case_id in cases:
-                return
-            inserted = db.execute('INSERT OR IGNORE INTO cases(id) VALUES(?)', (case_id,))
-            if not inserted.rowcount:
-                raise ValueError('Case identifier unavailable')
-            db.execute('UPDATE users SET cases=? WHERE name=?', (json.dumps([*cases, case_id]), username))
+            if case_id not in cases:
+                inserted = db.execute('INSERT OR IGNORE INTO cases(id) VALUES(?)', (case_id,))
+                if not inserted.rowcount:
+                    raise ValueError('Case identifier unavailable')
+                cases.append(case_id)
+                db.execute('UPDATE users SET cases=? WHERE name=?', (json.dumps(cases), username))
+            self._save_workspace_case(db, username, case_id)
+        return cases
 
     def reset_case(self, case_id):
         with self.db() as db:

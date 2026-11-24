@@ -366,6 +366,30 @@ def test_case_creation_cannot_grant_existing_case(store):
     assert client.post('/api/adjudicate/run', headers=headers).status_code == 410
 
 
+def test_workspace_reopens_persisted_case_without_dropping_evidence(store):
+    from maha.api import create_app
+
+    token = store.create_user('investigator', ['C1'])
+    other_token = store.create_user('other', ['C2'])
+    headers = {'Authorization': 'Bearer ' + token}
+    outside = {'Authorization': 'Bearer ' + other_token}
+    imported = ingest(store, [row()], case='C1')
+    with TestClient(create_app(store)) as client:
+        assert client.put('/api/workspace/case', json={'case_id': 'C1'}, headers=headers).status_code == 200
+        assert client.put('/api/workspace/case', json={'case_id': 'C1'}, headers=outside).status_code == 403
+        assert client.post('/api/cases', json={'case_id': 'C3'}, headers=headers).status_code == 200
+        assert client.post('/api/cases', json={'case_id': 'C2'}, headers=headers).status_code == 409
+    with TestClient(create_app(Store(store.root))) as client:
+        assert client.get('/api/me', headers=headers).json()['active_case'] == 'C3'
+        cases = client.get('/api/cases', headers=headers).json()
+        assert {case['case_id']: case['evidence_count'] for case in cases} == {'C1': 1, 'C3': 0}
+        assert client.put('/api/workspace/case', json={'case_id': 'C1'}, headers=headers).status_code == 200
+    with TestClient(create_app(Store(store.root))) as client:
+        assert client.get('/api/me', headers=headers).json()['active_case'] == 'C1'
+        assert client.get('/api/me', headers=outside).json()['active_case'] is None
+        assert client.get('/api/source/' + imported['source_id'], headers=headers).status_code == 200
+
+
 def test_judgment_review_preserves_original_and_case_scope(store):
     from maha.api import create_app
 

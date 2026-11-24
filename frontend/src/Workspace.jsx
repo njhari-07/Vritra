@@ -6,6 +6,10 @@ import SourcePage from './components/SourcePage';
 import RecordIntakeModes from './components/RecordIntakeModes';
 import RecordFilePicker from './components/RecordFilePicker';
 import StatementRowReview from './components/StatementRowReview';
+import StatementImportRows from './components/StatementImportRows';
+import StatementPageCoverage from './components/StatementPageCoverage';
+import BrandMark from './components/BrandMark';
+import DynamicBrand from './components/DynamicBrand';
 import LeadsPanel from './components/LeadsPanel';
 import ResolutionTab from './components/ResolutionTab';
 import TimelineTab from './components/TimelineTab';
@@ -74,6 +78,7 @@ export default function App({ userSlot = null }) {
   const [notice, setNotice] = useState('');
   const sessionToken = useRef('');
   const caseRequest = useRef(null);
+  const casePreference = useRef(Promise.resolve());
   const evidenceRequest = useRef(null);
   const drawerClose = useRef(null);
 
@@ -95,7 +100,21 @@ export default function App({ userSlot = null }) {
   const [rawSynthetic, setRawSynthetic] = useState(false);
   const [uploadKind, setUploadKind] = useState('ibm');
   const [uploadFeedback, setUploadFeedback] = useState(null);
+  const [statementPage, setStatementPage] = useState(null);
+  const [statementDividers, setStatementDividers] = useState('');
+  const [statementCorrections, setStatementCorrections] = useState({});
   const uploading = uploadFeedback?.status === 'pending';
+
+  useEffect(() => {
+    if (!statementPage) return;
+    return () => URL.revokeObjectURL(statementPage.url);
+  }, [statementPage]);
+
+  useEffect(() => {
+    setStatementPage(null);
+    setStatementCorrections({});
+    setUploadFeedback(null);
+  }, [activeCase, tab]);
 
   // Feature 4: ML Tuning & Weights
 
@@ -105,7 +124,7 @@ export default function App({ userSlot = null }) {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templates, setTemplates] = useState(null);
 
-  const api = async (path, options = {}) => {
+  const api = async (path, { raw = false, ...options } = {}) => {
     const r = await fetch('/api' + path, {
       ...options,
       headers: { Authorization: 'Bearer ' + token, ...options.headers }
@@ -114,7 +133,7 @@ export default function App({ userSlot = null }) {
       const d = await r.json().catch(() => ({ detail: r.statusText }));
       throw Error(d.detail || 'Request failed');
     }
-    return r.json();
+    return raw ? r : r.json();
   };
 
   const load = async targetCase => {
@@ -128,10 +147,24 @@ export default function App({ userSlot = null }) {
     try {
       const [m, cList] = await Promise.all([api('/me', options), api('/cases', options)]);
       if (controller.signal.aborted) return;
-      setMe(m);
-      setCasesList(cList);
-      const preferred = targetCase || activeCase;
+      const preferred = targetCase || m.active_case || activeCase;
       const selCase = cList.find(item => item.case_id === preferred)?.case_id || cList[0]?.case_id || '';
+      if (selCase && selCase !== m.active_case) {
+        // Queue writes so switching cases cannot leave an older choice saved last.
+        const save = casePreference.current.catch(() => {}).then(async () => {
+          if (!controller.signal.aborted) {
+            await api('/workspace/case', {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ case_id: selCase }),
+            });
+          }
+        });
+        casePreference.current = save;
+        await save;
+      }
+      if (controller.signal.aborted) return;
+      setMe({ ...m, active_case: selCase || null });
+      setCasesList(cList);
       setActiveCase(selCase);
       if (selCase !== activeCase || !selCase) {
         setGraph(null);
@@ -202,7 +235,6 @@ export default function App({ userSlot = null }) {
     selectItem(null);
     setGraph(null);
     setAnalysis(null);
-    setActiveCase(cId);
     setShowTrainingStudio(false);
     load(cId);
   };
@@ -428,30 +460,91 @@ export default function App({ userSlot = null }) {
     }
     const kind = f.get('kind'), caseId = f.get('case');
     const statement = kind === 'bank-statement';
+    const preview = statement && e.nativeEvent.submitter?.value === 'statement-preview';
+    const viewPage = statement && e.nativeEvent.submitter?.value === 'statement-page';
+    const selectedFile = form.elements.file.files[0];
+    const savedPreview = uploadFeedback?.rows ? uploadFeedback : null;
     if (statement) {
+      const columns = {};
+      for (const [name, value] of [...f.entries()]) {
+        if (name.startsWith('map_column_')) {
+          if (value !== '') columns[name.slice('map_column_'.length)] = Number(value);
+          f.delete(name);
+        }
+      }
+      const dividers = f.get('map_dividers')?.trim();
+      f.delete('map_dividers');
+      if (!viewPage && (Object.keys(columns).length || dividers)) {
+        const separators = dividers ? dividers.split(',').map(value => Number(value.trim())) : [];
+        f.set('column_mapping', JSON.stringify({ columns, separators }));
+      }
+      if (!viewPage && Object.keys(statementCorrections).length) {
+        f.set('row_corrections', JSON.stringify(statementCorrections));
+      }
       form.elements.password.value = '';
       f.delete('kind');
       f.delete('case');
     }
     setBusy(true);
-    setUploadFeedback({ status: 'pending', message: statement ? 'Reading statement rows… This may take a moment.' : 'Importing records…' });
+    setUploadFeedback({ ...savedPreview, status: 'pending', message: viewPage ? 'Rendering statement page…' : statement ? 'Reading statement rows… This may take a moment.' : 'Importing records…' });
     try {
-      const r = await api(`/import/${kind}/${encodeURIComponent(caseId)}`, {
+      const action = viewPage ? '?layout_page=true' : preview ? '?preview=true' : '';
+      const r = await api(`/import/${kind}/${encodeURIComponent(caseId)}${action}`, {
         method: 'POST',
-        body: statement ? f : file
+        body: statement ? f : file,
+        raw: viewPage,
       });
       if (token !== sessionToken.current) return;
+      if (viewPage) {
+        const image = await r.blob();
+        if (token !== sessionToken.current) return;
+        if (form.isConnected && form.elements.file.files[0] === selectedFile && form.elements.case.value === caseId
+          && form.elements.pdf_pages?.value === f.get('pdf_pages')) {
+          setStatementPage({ url: URL.createObjectURL(image), number: r.headers.get('X-Statement-Page') });
+        }
+        setUploadFeedback(savedPreview);
+        return;
+      }
+      if (preview) {
+        setUploadFeedback({
+          status: 'preview',
+          message: `${r.accepted} valid · ${r.rejected} rejected · Showing ${r.rows.length} candidates. Nothing imported.`,
+          rows: r.rows,
+          inferredPages: r.balance_inferred_pages,
+          inferredSheets: r.balance_inferred_sheets,
+          pageCoverage: r.page_coverage,
+          pageRange: r.page_range,
+          recoveredLayoutRows: r.recovered_layout_rows,
+        });
+        return;
+      }
       setUploadFeedback({
         status: 'success',
         message: `${r.accepted_new} accepted · ${r.recognized_repeat} repeated · ${r.quarantined} quarantined${statement ? '. Open Quality to review statement rows.' : ''}`,
+        pageCoverage: r.statement_scope?.coverage,
+        pageRange: r.statement_scope?.requested,
       });
+      setStatementCorrections({});
       await load(caseId);
     } catch (e) {
-      if (token === sessionToken.current) setUploadFeedback({ status: 'error', message: e.message });
+      if (token === sessionToken.current) setUploadFeedback({ ...savedPreview, status: 'error', message: e.message });
     } finally {
       if (token === sessionToken.current) setBusy(false);
     }
   };
+
+  function statementField(row, field, label, fallback) {
+    if (!row.repairable?.includes(field)) return fallback || '—';
+    return <input type="text" maxLength={64} data-statement-edit="true"
+      className="statement-preview-input" aria-label={`${label} for source row ${row.locator.row}`}
+      disabled={uploading} value={statementCorrections[row.candidate_id]?.[field] ?? row.fields[field] ?? ''}
+      onChange={event => {
+        const value = event.target.value;
+        setStatementCorrections(previous => ({
+          ...previous, [row.candidate_id]: { ...previous[row.candidate_id], [field]: value },
+        }));
+      }} />;
+  }
 
   const askCopilot = async qText => {
     const q = (qText || copilotQuery).trim();
@@ -521,10 +614,7 @@ export default function App({ userSlot = null }) {
           </span>
         </div>
         <div className="wordmark">
-          <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 18L12 5l7 13H5Z" />
-            <circle cx="5" cy="18" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="18" r="2" />
-          </svg> MAHA
+          <DynamicBrand size={28} />
         </div>
         <p className="eyebrow">LOCAL EVIDENCE WORKSPACE</p>
         <h1>
@@ -591,10 +681,7 @@ export default function App({ userSlot = null }) {
     <div className={`shell ${darkMode ? 'dark-theme' : ''}`}>
       <aside className="sidebar">
         <div className="wordmark">
-          <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 18L12 5l7 13H5Z" />
-            <circle cx="5" cy="18" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="18" r="2" />
-          </svg> MAHA
+          <DynamicBrand size={28} />
         </div>
         <p className="eyebrow">EVIDENCE WORKSPACE</p>
         <nav>
@@ -657,6 +744,9 @@ export default function App({ userSlot = null }) {
               setError('');
               setNotice('');
               setUploadFeedback(null);
+              setStatementPage(null);
+              setStatementDividers('');
+              setStatementCorrections({});
               setRawText('');
               setCopilotQuery('');
               setCopilotResult(null);
@@ -1155,7 +1245,12 @@ export default function App({ userSlot = null }) {
                 <h2 id="record-upload-title">Upload a file</h2>
                 <p>Select the case and format before uploading. Scanned English FIRs and judgments use local OCR.</p>
                 <form className="tw:grid tw:gap-4" onSubmit={upload}
-                  onChange={() => { if (!uploading) setUploadFeedback(null); }}>
+                  onChange={event => {
+                    if (event.target.name === 'password' || event.target.dataset.statementEdit) return;
+                    if (!uploading) setUploadFeedback(null);
+                    setStatementCorrections({});
+                    if (['case', 'file', 'kind', 'pdf_pages'].includes(event.target.name)) setStatementPage(null);
+                  }}>
                   <label>
                     Authorized case
                     <select key={activeCase} name="case" aria-label="Authorized case" defaultValue={activeCase}>
@@ -1171,14 +1266,14 @@ export default function App({ userSlot = null }) {
                     <select name="kind" aria-label="Record format" value={uploadKind}
                       onChange={event => setUploadKind(event.target.value)}>
                       <option value="ibm">IBM HI-Small CSV</option>
-                      <option value="bank-statement">Bank statement (PDF or Excel .xlsx)</option>
+                      <option value="bank-statement">Bank statement (PDF, Excel, or scan)</option>
                       <option value="narrative">Synthetic narrative JSON</option>
                       <option value="judgment">English Indian court judgment (.txt)</option>
                       <option value="judgment-document">English Indian court judgment (PDF or image)</option>
                       <option value="fir-document">English police FIR (PDF or image)</option>
                       <option value="cdr">Synthetic CDR CSV</option>
                       <option value="history">Synthetic case-history CSV</option>
-                      <option value="pdf">MAHA fixed-layout PDF v1</option>
+                      <option value="pdf">VRITRA fixed-layout PDF v1</option>
                     </select>
                   </label>
                   {uploadKind === 'bank-statement' && (
@@ -1197,28 +1292,129 @@ export default function App({ userSlot = null }) {
                           </select>
                         </label>
                       </div>
-                      <label>PDF pages (optional)
+                      <label>PDF or TIFF pages (optional)
                         <input type="text" name="pdf_pages" placeholder="e.g. 1-10" maxLength={32}
                           aria-describedby="statement-pages-hint" />
-                        <small id="statement-pages-hint">Leave blank to read the whole file. For PDFs, enter a page or range to import only those pages.</small>
+                        <small id="statement-pages-hint">Leave blank to read the whole file. Enter a page or range to read only those pages.</small>
                       </label>
                       <label>File password (if protected)
                         <input type="password" name="password" autoComplete="off" maxLength={1024}
                           aria-describedby="statement-password-hint" />
                         <small id="statement-password-hint">Used for one upload. Re-enter it before retrying a protected file.</small>
                       </label>
+                      <details className="statement-column-mapping">
+                        <summary>Map columns manually</summary>
+                        <p>Count columns left to right from 1. Enter the transaction date and either both debit and credit columns or a signed amount column. Leave all fields blank for automatic detection.</p>
+                        <div className="record-fields grid gap-3 sm:grid-cols-3">
+                          {[
+                            ['date', 'Transaction date'], ['debit', 'Debit'], ['credit', 'Credit'],
+                            ['amount', 'Signed amount'], ['direction', 'Debit or credit indicator'],
+                            ['value_date', 'Value date'], ['narration', 'Details'],
+                            ['reference', 'Reference'], ['balance', 'Running balance'],
+                          ].map(([field, label]) => (
+                            <label key={field}>{label}
+                              <input name={`map_column_${field}`} type="number" min="1" max="48" placeholder="Column number" />
+                            </label>
+                          ))}
+                        </div>
+                        <button type="submit" className="record-secondary" value="statement-page" disabled={!activeCase || busy || uploading}>View PDF or scan page</button>
+                        {statementPage && (
+                          <figure className="statement-layout-view">
+                            <figcaption>Page {statementPage.number}. Click between columns to place a divider, or enter the percentages below.</figcaption>
+                            <div className="statement-layout-page" onClick={event => {
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const percentage = Math.round(1000 * (event.clientX - rect.left) / rect.width) / 10;
+                              if (uploading || percentage <= 0 || percentage >= 100) return;
+                              const values = statementDividers.split(',').map(Number).filter(value => value > 0 && value < 100);
+                              if (values.length < 47) {
+                                setStatementDividers([...new Set([...values, percentage])].sort((a, b) => a - b).join(', '));
+                                setUploadFeedback(null);
+                                setStatementCorrections({});
+                              }
+                            }}>
+                              <img src={statementPage.url} alt={`Statement page ${statementPage.number}`} draggable={false} />
+                              {statementDividers.split(',').map(Number).filter(value => value > 0 && value < 100).map((value, index) => (
+                                <span key={index} className="statement-layout-divider" style={{ left: `${value}%` }} aria-hidden />
+                              ))}
+                            </div>
+                          </figure>
+                        )}
+                        <label>PDF or image column dividers (optional)
+                          <input name="map_dividers" type="text" maxLength={300} value={statementDividers}
+                            onChange={event => setStatementDividers(event.target.value)} placeholder="e.g. 12, 24, 61, 74, 87" aria-describedby="statement-dividers-hint" />
+                          <small id="statement-dividers-hint">For borderless tables, enter each divider as a percentage of the page width from the left. Leave blank when the table has visible borders.</small>
+                        </label>
+                      </details>
                     </>
                   )}
                   <RecordFilePicker name="file"
-                    accept={uploadKind === 'bank-statement' ? '.pdf,.xlsx' : '.csv,.json,.pdf,.txt,.png,.jpeg,.jpg'}
-                    label="Source file" required />
-                  <button className="record-primary" disabled={!activeCase || busy || uploading}>
-                    {uploading ? 'Importing…' : 'Validate and import'}
-                  </button>
+                    accept={uploadKind === 'bank-statement' ? '.pdf,.xlsx,.xls,.png,.jpeg,.jpg,.tif,.tiff' : '.csv,.json,.pdf,.txt,.png,.jpeg,.jpg'}
+                    label="Source file" onClear={() => { setStatementPage(null); setUploadFeedback(null); setStatementCorrections({}); }} required />
+                  <div className="flex flex-wrap items-center gap-2">
+                    {uploadKind === 'bank-statement' && (
+                      <button className="record-secondary" value="statement-preview" disabled={!activeCase || busy || uploading}>
+                        Preview transactions
+                      </button>
+                    )}
+                    <button className="record-primary" disabled={!activeCase || busy || uploading}>
+                      {uploading ? 'Reading…' : 'Validate and import'}
+                    </button>
+                  </div>
                   {uploadFeedback && (
                     <div className="record-upload-feedback" data-status={uploadFeedback.status}
                       role={uploadFeedback.status === 'error' ? 'alert' : 'status'}>
                       {uploadFeedback.message}
+                    </div>
+                  )}
+                  {uploadFeedback?.inferredPages?.length > 0 && (
+                    <p>Column mapping was inferred from matching running balances on {uploadFeedback.inferredPages.length > 1 ? 'pages' : 'page'} {uploadFeedback.inferredPages.join(', ')}.</p>
+                  )}
+                  <StatementPageCoverage pages={uploadFeedback?.pageCoverage} pageRange={uploadFeedback?.pageRange} />
+                  {uploadFeedback?.recoveredLayoutRows > 0 && (
+                    <p>Another reader recovered {uploadFeedback.recoveredLayoutRows} {uploadFeedback.recoveredLayoutRows === 1 ? 'row' : 'rows'} after checking for agreement with the first reader.</p>
+                  )}
+                  {uploadFeedback?.inferredSheets?.length > 0 && (
+                    <p>Column mapping was inferred from matching running balances in {uploadFeedback.inferredSheets.join(', ')}.</p>
+                  )}
+                  {!!Object.keys(statementCorrections).length && (
+                    <div className="statement-ledger-paging">
+                      <span>{Object.keys(statementCorrections).length} rows edited. Preview again to check the changes.</span>
+                      <Button type="button" size="sm" variant="outline" disabled={uploading} onClick={() => {
+                        setStatementCorrections({});
+                        setUploadFeedback(null);
+                      }}>Clear edits</Button>
+                    </div>
+                  )}
+                  {uploadFeedback?.rows?.length > 0 && (
+                    <div className="statement-preview-table" role="region" aria-label="Statement transaction preview" tabIndex={0}>
+                      <table>
+                        <thead><tr>{['Source', 'Transaction date', 'Value date', 'Details', 'Reference', 'Debit', 'Credit', 'Raw amount', 'Balance', 'Review'].map(label => (
+                          <th key={label} scope="col">{label}</th>
+                        ))}</tr></thead>
+                        <tbody>{uploadFeedback.rows.map((row, index) => {
+                          const { locator, fields, normalized, error, balance_check, corrected } = row;
+                          return (
+                          <tr key={index}>
+                            <td>{locator.sheet || `Page ${locator.page}`} · row {locator.row}
+                              {locator.header_page && <div>Headings from page {locator.header_page}</div>}
+                            </td>
+                            <td>{statementField(row, 'date', 'Transaction date', fields.date)}</td>
+                            <td>{fields.value_date || '—'}</td>
+                            <td>{fields.narration || '—'}</td>
+                            <td>{fields.reference || '—'}</td>
+                            <td>{statementField(row, 'debit', 'Debit', normalized?.debit ?? fields.debit)}</td>
+                            <td>{statementField(row, 'credit', 'Credit', normalized?.credit ?? fields.credit)}</td>
+                            <td>{statementField(row, 'amount', 'Amount', fields.amount)}
+                              {row.repairable?.includes('direction') && (
+                                <div>{statementField(row, 'direction', 'Debit or credit indicator', fields.direction)}</div>
+                              )}
+                            </td>
+                            <td>{fields.balance || '—'}</td>
+                            <td>{error || balance_check}{corrected && <small>Reviewed correction</small>}</td>
+                          </tr>
+                          );
+                        })}</tbody>
+                      </table>
                     </div>
                   )}
                 </form>
@@ -1390,7 +1586,7 @@ export default function App({ userSlot = null }) {
               <h2>Import quality ledger</h2>
             </div>
             {list.map(r => (
-              <article className="lead" key={r.id}>
+              <article className={r.summary.statement_settings ? 'lead statement-import-card' : 'lead'} key={r.id}>
                 <div>
                   <h3>
                     {r.case_id} · {r.id.slice(0, 8)}
@@ -1420,16 +1616,13 @@ export default function App({ userSlot = null }) {
                       ))}
                     </details>
                   )}
-                  {r.summary.statement_rows?.length > 0 && (
-                    <details>
-                      <summary>Bank statement · {r.summary.statement_settings.currency} · Review first {r.summary.statement_rows.length} rows</summary>
-                      {r.summary.statement_rows.map(({ evidence_id, label }) => (
-                        <button key={evidence_id} className="source-button" onClick={() => {
-                          selectItem({ label, reason: 'Bank statement transaction as recorded in the source' });
-                          evidence(evidence_id);
-                        }}>{label}</button>
-                      ))}
-                    </details>
+                  {r.summary.statement_settings && (
+                    <StatementImportRows batch={r} api={api} onEvidence={(id, label) => {
+                      selectItem({ label, reason: 'Bank statement transaction as recorded in the source' });
+                      evidence(id);
+                    }} onRecovered={() => {
+                      if (sessionToken.current === token) load(activeCase);
+                    }} />
                   )}
                   {r.summary.issues.map((x, i) => (
                     <p key={i} className="error">
@@ -1523,7 +1716,7 @@ export default function App({ userSlot = null }) {
         )}
 
         <footer>
-          MAHA / Evidence workspace <span>{graph?.backend} · Projection v0.1 · Evidence coverage is not evidence correctness</span>
+          VRITRA / Evidence workspace <span>{graph?.backend} · Projection v0.1 · Evidence coverage is not evidence correctness</span>
         </footer>
       </main>
 
