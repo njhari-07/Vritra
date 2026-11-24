@@ -21,13 +21,14 @@ CSV_METHODS = {'csv-positional', 'synthetic-history-csv'}
 TEXT_METHODS = {
     'explicit-identifier-rule', 'spacy-en_core_web_sm', 'document-metadata',
     'raw-text-source', 'en_legal_ner_sm',
+    'document-place-mention',
 }
 
 
 def audit_source(blob, records, deadline):
     same_source = [(data['source_locator'], data['extraction_method']) for data in records]
-    wanted_pages = {locator.get('page') for locator, _ in same_source
-                    if locator.get('text_method') and type(locator.get('page')) is int}
+    wanted_pages = {locator.get('page') for locator, method in same_source
+                    if method != 'reviewed-report-table' and locator.get('text_method') and type(locator.get('page')) is int}
     pages, pdf_rows, raw_text, csv_lines, narratives = {}, {}, None, None, None
     page_error = None
     if wanted_pages:
@@ -76,6 +77,8 @@ def check_record(data, source):
     if method == STATEMENT_METHOD:
         reason = 'Encrypted statement requires password replay' if locator.get('encrypted') else 'Verify the statement row from its evidence panel'
         return 'unverified', reason
+    if method == 'reviewed-report-table':
+        return 'unverified', 'Verify this report row against its source page.'
     if text_method := locator.get('text_method'):
         number = locator.get('page')
         if type(number) is not int or number < 1:

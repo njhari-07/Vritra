@@ -135,7 +135,7 @@ def score_kingpin_features(dossier):
     return final_score, is_witness, breakdown, reasons
 
 
-def compute_suspect_dossiers(graph, leads, metrics=None):
+def compute_suspect_dossiers(graph, leads, metrics=None, *, score_sample_roles=False):
     metrics = metrics or {}
     nodes = {node['id']: node for node in graph['nodes']}
     related = defaultdict(list)
@@ -212,7 +212,10 @@ def compute_suspect_dossiers(graph, leads, metrics=None):
         }
         dossiers.append(dossier)
 
-    # Compute multi-modal Kingpin scoring & classifications
+    if not score_sample_roles:
+        return sorted(dossiers, key=lambda dossier: (dossier['name'].casefold(), dossier['id']))
+
+    # Role scoring applies only to the bundled fictional sample.
     scored_candidates = []
     for d in dossiers:
         score, is_witness, breakdown, reasons = score_kingpin_features(d)

@@ -39,6 +39,82 @@ def test_positional_accounts_leading_zero_and_decimal(store):
     assert {e['type'] for e in g['edges']}=={'SENT_FROM','SENT_TO','TRANSACTED_WITH'}
 
 
+def test_access_file_cannot_restore_stale_tokens(store):
+    old = store.create_user('reviewer', ['C1'])
+    removed = store.create_user('removed', ['C2'])
+    (store.root / 'access.json').write_text(json.dumps({'reviewer': old, 'removed': removed}))
+    current = store.create_user('reviewer', ['C1'])
+    with store.db() as db:
+        db.execute("DELETE FROM users WHERE name='removed'")
+
+    reopened = Store(store.root)
+    for token in (old, removed):
+        with pytest.raises(PermissionError):
+            reopened.authenticate(token)
+    assert reopened.authenticate(current) == {'name': 'reviewer', 'cases': ['C1']}
+
+
+def test_role_scoring_is_scoped_to_bundled_sample_evidence(store):
+    from maha.api import create_app
+
+    case = 'C1'
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', [case])}
+    with TestClient(create_app(store)) as client:
+        assert client.post('/api/cases/C1/load-sample', headers=headers).status_code == 200
+        trained = client.post('/api/cases/C1/train', headers=headers)
+        assert trained.status_code == 200
+        assert trained.json()['kingpin']['scope'] == 'bundled synthetic sample review cue'
+        store.import_records('fixture.txt', b'Independent evidence fixture', 'fixture', False, case, [
+            {'locator': {'line': 1}, 'facts': [node('Person', 'person:fixture', 'Example person')]},
+        ])
+        mixed = client.post('/api/cases/C1/train', headers=headers)
+        assert mixed.status_code == 200
+        assert mixed.json()['kingpin'] is None
+        assert mixed.json()['suspects']
+        assert all('kingpin_score' not in dossier for dossier in mixed.json()['suspects'])
+
+
+def test_novel_sample_picker_loads_each_package_with_case_scope(store, monkeypatch):
+    from maha.api import create_app
+
+    novels = ('valley_of_fear', 'red_headed_league', 'monte_cristo', 'beryl_coronet', 'blue_carbuncle')
+    cases = ['DEMO-' + str(index) for index in range(len(novels))]
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', [*cases, 'PRIVATE', 'LIMIT'])}
+    store.import_records('fixture.txt', b'Independent evidence', 'fixture', False, 'PRIVATE', [
+        {'locator': {'line': 1}, 'passage': 'Example passage', 'facts': []},
+    ])
+    with TestClient(create_app(store)) as client:
+        catalog = client.get('/api/sample-datasets', headers=headers).json()
+        assert [entry['id'] for entry in catalog] == ['the_exchange', *novels]
+        assert client.post('/api/cases/OTHER/load-sample', headers=headers).status_code == 403
+        failed = client.post(f'/api/cases/{cases[0]}/load-sample', headers=headers, params={'dataset': 'missing'})
+        assert failed.status_code == 404
+        for case, dataset in zip(cases, novels):
+            url = f'/api/cases/{case}/load-sample'
+            response = client.post(url, headers=headers, params={'dataset': dataset})
+            assert response.status_code == 200, response.text
+            result = response.json()
+            assert result['dataset'] == dataset and result['details'] == 4
+            assert result['accepted_new'] == result['case']['evidence_count'] > 0
+            assert result['quarantined'] == 0
+            graph = client.get('/api/graph', headers=headers, params={'case': case}).json()
+            assert {node['id'] for node in graph['nodes'] if node['type'] == 'Case'} == {case}
+            assert {'FILED_UNDER', 'INVOLVED_IN_CASE', 'COMMUNICATED_WITH', 'TRANSACTED_WITH'} <= {
+                edge['type'] for edge in graph['edges']
+            }
+        repeat = client.post(f'/api/cases/{cases[0]}/load-sample', headers=headers, params={'dataset': novels[0]}).json()
+        assert repeat['accepted_new'] == 0 and repeat['recognized_repeat'] > 0
+        mixed = client.post(f'/api/cases/{cases[0]}/load-sample', headers=headers, params={'dataset': novels[1]})
+        assert mixed.status_code == 409
+        private = client.post('/api/cases/PRIVATE/load-sample', headers=headers, params={'dataset': novels[0]})
+        assert private.status_code == 409
+        assert len(store.history('imports', ['PRIVATE'])) == 1
+        monkeypatch.setenv('MAHA_MAX_GRAPH_NODES', '1')
+        blocked = client.post('/api/cases/LIMIT/load-sample', headers=headers, params={'dataset': novels[0]})
+        assert blocked.status_code == 413
+        assert not store.history('imports', ['LIMIT'])
+
+
 def test_duplicate_values_retained_repeat_import_idempotent(store):
     r=ingest(store,[row(),row()]);assert r['accepted_new']==2
     assert any(i['reason']=='possible_duplicate_retained' for i in r['issues'])

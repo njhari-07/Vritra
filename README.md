@@ -1,230 +1,149 @@
-# VRITRA · Evidence workspace
+# VRITRA · MAHA evidence workspace
 
-A runnable local academic prototype for the BAI506 criminal-network analysis project.
-FastAPI + React/vis-network + Neo4j, with an immutable SQLite evidence ledger.
+VRITRA is a local criminal-network analysis workspace for the BAI506 project. It helps investigators ingest case records, inspect the original evidence behind each finding, and review relationships, money movement, and timelines. Findings are leads for human review. The project has been evaluated on synthetic investigations and separate benchmark datasets.
 
-**Status:** ingestion, pretrained extraction, reversible resolution, graph construction,
-analytics, dashboard, fixed-layout PDF intake, and baseline evaluation are implemented.
-This is a synthetic investigation demonstration and a separate real transaction benchmark;
-it is not an operational policing system or a validated assessment of people.
+## Local setup
 
-The installed project is stored at `/opt/MAHA` on the root partition.
-`/home/nj/MAHA` remains a compatibility link, preserving existing virtualenv paths.
-Docker Desktop and the bundled Python runtime remain external dependencies under home.
+Run setup commands from the repository root. The existing Ubuntu installation is at `/opt/MAHA`. On a new checkout, use Python 3.12 and Node.js 22.12 or newer with npm 10.5.1 or newer. Docker Compose is optional for the Neo4j graph projection.
 
-## Open the installed workspace
-
-The local app runs at **http://127.0.0.1:8765**. Access tokens are stored privately in
-`data/private/runtime/access.json`: `investigator` has three demo cases; `restricted`
-has only DEMO-C01. Paste a token into the login screen. Tokens are kept in browser memory
-only and cleared by Lock workspace or a reload.
-
-Case files, evidence, and findings are saved in the private SQLite ledger at
-`data/private/runtime/ledger.sqlite3`. VRITRA also saves the last active case for
-each user and reopens it after the workspace is unlocked. Creating a new case
-keeps existing cases in the case selector.
-
-If the service has stopped, from this folder:
-
-```bash
-docker compose up -d
-.venv/bin/python -m maha.cli serve
-```
-
-The app binds to loopback. Neo4j uses loopback ports 7474 and 7687; its randomly generated
-password is in the ignored `.env`. Do not expose either service publicly.
-
-## Reproduce on another machine
-
-Requires Python 3.12, Node 20.19+ or 22.12+, pnpm 11, Docker Compose, and about 2 GB of
-project storage plus Docker image/volume space. Source datasets remain out of Git.
+### Install dependencies and initialize the ledger
 
 ```bash
 python3.12 -m venv .venv
-.venv/bin/pip install -r requirements.lock
-.venv/bin/pip install -e .
-cp .env.example .env
-# Edit NEO4J_PASSWORD in .env to a random local password before starting Neo4j.
-docker compose up -d
-.venv/bin/python scripts/download_data.py
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python -m pip install --no-deps -e .
+npm --prefix frontend ci
 .venv/bin/python -m maha.cli init
-.venv/bin/python -m maha.cli demo --ibm data/raw/HI-Small_Trans.csv
-.venv/bin/python -m maha.cli sync
-cd frontend
-ppnpm install --frozen-lockfile
-pnpm build
-cd ..
+```
+
+Use `init` once per new ledger. It creates an investigator token for the three demo case IDs and a restricted token for `DEMO-C01`. An existing installation can go straight to starting the app. Python setup installs the general English spaCy model `en_core_web_sm`.
+
+For scanned PDFs and images on Ubuntu, install Tesseract and its English language data. The OCR pipeline runs locally.
+
+```bash
+sudo apt install tesseract-ocr tesseract-ocr-eng
+```
+
+The Indian court judgment reader needs the optional `en_legal_ner_sm` model. Configure `MAHA_LEGAL_MODEL` to point to the extracted model directory with `config.cfg`. See [InLegalNER model setup and evaluation](docs/evaluation/inlegalner.md) for the compatible artifact.
+
+### Start the backend and frontend
+
+Open two terminals at the repository root.
+
+**Terminal 1 — FastAPI backend**
+
+```bash
 .venv/bin/python -m maha.cli serve
 ```
 
-The lock includes the pretrained `en_core_web_sm` 3.8.0 model. Installation needs internet
-access to PyPI, GitHub, and the npm registry. The downloader uses public Kaggle endpoints;
-provider access requirements may change. Elliptic stays in its original ZIP to save disk;
-the benchmark also supports extracted CSVs under `data/raw/elliptic`.
-
-## Try the full investigation flow
-
-1. Open **Overview**: three cases, graph, and two separate finding categories.
-2. Select Arun Mehta's cross-case finding and inspect its exact document passage.
-   This linkage works without financial edges. The narratives explicitly identify him
-   as a witness; case association is not suspicion.
-3. Use **Connections** for centrality/community context, and **Flagged behavior** for
-   descriptive transaction anomalies and a chronological same-currency cycle.
-4. Use **Resolution** to inspect name-match candidates, record a decision, and undo it.
-   Exact identifiers resolve automatically; names alone never do. Conflicting identifiers
-   also block transitive matches.
-5. Inspect **Timeline**, **Quality**, and **Audit**. Use **Import records** for synthetic
-   IBM-format CSV, narrative JSON, CDR, history CSV, or the single supported PDF layout.
-6. Export an evidence-linked JSON report. Every source reference includes its exact row,
-   character span, or PDF page/table row and bbox.
-7. Lock the workspace and sign in with the restricted token: other cases and their
-   cross-case results disappear. Raw files shared across cases require all their grants.
-8. **Benchmarks** displays dataset-specific temporal evaluation, separately from leads.
-
-Import examples are generated under `data/private/runtime/demo-sources/` after controls
-are initialized: 24 case narratives, CDR, history, a 120-record IBM prefix subset, separate
-team-authored cycle controls, and a fixed-layout statement. Each generated record/source
-is labeled synthetic; fictional ownership assertions are never attributed to IBM.
-
-## Evaluation and tests
+**Terminal 2 — React and Vite frontend**
 
 ```bash
-.venv/bin/python -m maha.cli profile-ibm data/raw/HI-Small_Trans.csv
-.venv/bin/python -m maha.cli evaluate --elliptic data/raw/elliptic
-.venv/bin/python -m maha.cli evaluate-ibm data/raw/HI-Small_Trans.csv
-.venv/bin/python -m maha.cli evaluate-demo
+npm --prefix frontend run dev -- --port 5173 --strictPort
+```
+
+Open [the workspace](http://127.0.0.1:5173/app). Vite forwards `/api` requests to FastAPI at `127.0.0.1:8765`, including requests for local map assets. Check the backend at [`/api/health`](http://127.0.0.1:8765/api/health).
+
+For a single-process setup, run `npm --prefix frontend run build` and serve the built frontend through FastAPI at [`http://127.0.0.1:8765/app`](http://127.0.0.1:8765/app).
+
+### Unlock the workspace
+
+Read the investigator token in your local terminal and paste it into the workspace sign-in. If you changed `MAHA_DATA`, use the `access.json` in that directory.
+
+```bash
+.venv/bin/python -c 'import json; from pathlib import Path; print(json.loads(Path("data/private/runtime/access.json").read_text())["investigator"])'
+```
+
+The token stays in browser memory and clears when you reload or lock the workspace. Cases, original sources, imports, and review decisions persist in the SQLite ledger. The app restores your last selected case after you unlock it. Keep the token and `data/private/` outside Git. With no Clerk publishable key, the frontend uses local token sign-in. Optional Clerk setup is documented in [`frontend/.env.example`](frontend/.env.example). The local API still checks its own token and case grants.
+
+### Optional Neo4j and map assets
+
+For Neo4j, create a root `.env` from [`.env.example`](.env.example) if it is absent. Set a local `NEO4J_PASSWORD`, start Docker, then run these commands. Restart a running backend to load the new configuration.
+
+```bash
+docker compose up -d neo4j
+.venv/bin/python -m maha.cli sync
+```
+
+SQLite is the source of truth. When Neo4j is configured, the backend synchronizes the case graph in the background. Reads use the authorized SQLite projection when Neo4j is unavailable or behind the ledger revision. For a SQLite-only run on a machine with Neo4j configured in `.env`, start the backend with `NEO4J_URI= .venv/bin/python -m maha.cli serve`.
+
+Optional local OpenStreetMap vector tiles provide an India overview and street-level detail around Bengaluru and Mysuru. The app reads them in ranges from `data/private/map-assets/`. The default outline map remains available without those assets. See [map installation and coverage](docs/design/location-timeline.md#install-map-assets) for the download and verification commands.
+
+## Investigation workflow
+
+1. Create a case or choose an existing one. Use **Sample datasets** to load a bundled fictional case, or start from your own documents in **Import records**.
+2. Paste English case text and select **Extract mentions**, or upload the original file. MAHA inspects the file locally and suggests a reader. Confirm or change the suggested record format before importing.
+3. Review saved records in **Quality**. Check accepted, repeated, and quarantined rows, page coverage, original-page previews, and the extraction details. Source locators record the relevant page and row, cell, or text span.
+4. Review identity candidates in **Resolution** and confirm place matches in **Timeline**. Use the separate financial and call report explorers for source-level transaction and call review.
+5. Run case analysis to inspect **Dossiers**, **Connections**, and **Flagged behavior**. Follow the evidence links before recording a decision or exporting a case-scoped report.
+
+### Unified ingestion
+
+| Input | Review workflow |
+| --- | --- |
+| English FIR, Indian court judgment, or pasted case text | Digital PDFs use their text layer where usable. Scanned PDFs, JPEGs, and PNGs use local English OCR. The readers retain legal mentions and common printed fields, with original wording and source positions for review. |
+| Bank statement | Supports text or scanned PDFs, `.xlsx` and `.xls`, JPEG, PNG, and TIFF. Preview transactions, review page ranges and field mapping, correct eligible rejected rows, and compare running balances and any recognized summary totals. |
+| Call detail or wire transfer report | Upload a PDF, JPEG, or PNG. Review columns, dates, source page ranges and the timezone of timestamps without an offset. Acknowledge any skipped pages or unreadable rows before saving a partial import. |
+| Structured files | Recognized CSV and JSON templates still use the same upload entry point. Existing readers cover IBM-format transfers, synthetic narratives, call detail records, and FIR history. |
+
+FIR and judgment document extraction supports up to 20 PDF pages per upload. Call and wire PDF review supports up to 20 selected pages. The statement reader supports up to 200 selected PDF or TIFF pages, subject to the upload size, OCR time, and row limits. The default import budget is 5,000 rows. See [intake design](docs/design/document-intake.md) and [resource limits](docs/resource-management.md).
+
+### Bank statements and the 3D financial explorer
+
+- Statement review preserves value date, post date, narration, reference, debit, credit, balance, and the original row location where available. The page coverage and reconciliation panels show which ranges were parsed and which balances or printed totals could be checked.
+- Password-protected PDFs and supported encrypted Excel workbooks use a password for the current request. The retained original remains byte-for-byte what was uploaded. Encrypted legacy `.xls` files need conversion to `.xlsx`. Rechecking an encrypted original requires its password again.
+- Use **Save as statement evidence** to keep a statement available for review and the financial explorer without spending the case graph's node budget. **Import to case graph** and **Publish to case graph** check the graph budget before publishing. The default budget is 2,000 graph nodes per case.
+- Use **Quality → Open 3D money flow** to inspect incoming payments in green and outgoing payments in red. A bidirectional connection carries both colors. Select a counterparty to see its rows and open the source. Printed payment labels and narration-derived names are leads for review. A saved statement can be named and removed from the case through **Quality**.
+
+Call reports have their own directed call graph and timeline. Reviewed wire reports can populate the main case graph with source-linked transfers.
+
+### Timeline, location analysis, and evidence detail
+
+- **Places from documents** extracts place mentions, printed addresses, reported sightings, and event locations from supported English sources. Confirm a suggested match before it appears on the map. A reviewer can link a reported sighting to a person in the current case.
+- The map shows confirmed site pins and area references with separate markers. Click a marker to zoom in or open the source. Place lookup uses a local catalogue and can use a locally hosted Nominatim instance. Case locations stay on the local machine.
+- Timeline filters, the call explorer, and the evidence drawer display India Standard Time (IST, UTC+05:30). The ledger uses UTC for timestamped comparisons. Date-only records retain their original precision.
+- **Synthetic coordinate tools** can load demo observations and compare time windows, reported accuracy radii, and proximity. The evidence drawer links observations and location mentions to their original source pages or records. [Location workflow and reproduction](docs/design/location-timeline.md)
+
+### Graph analysis and models
+
+- The case graph gives a 2D and 3D view of entities and evidence-backed relationships. NetworkX computes degree, sampled betweenness, PageRank, and Louvain communities. Dossier rankings use evidence and graph heuristics. Fuzzy names remain candidate matches for investigator review.
+- Fund-flow search follows ordered transfers in the same currency and checks time precision. Dates alone provide no within-day sequence.
+- Live Isolation Forest fits the current transaction rows grouped by dataset, currency, and time precision. A group needs at least eight rows. It uses log amount and the recorded UTC hour for timed rows, or log amount alone for date-only rows. The same group is scored in memory. The output is an in-case anomaly ranking.
+- General English and legal NER load pretrained spaCy models. Separate benchmark runs evaluate Elliptic and IBM models, Montagna network structure, and InLegalNER extraction. [Model and dataset details](docs/SYSTEM_HANDOFF.md) · [Verification reports](docs/verification.md)
+
+## Verify and reproduce
+
+```bash
+npm --prefix frontend run build
 .venv/bin/python -m pytest -q
-MAHA_NEO4J_TEST=1 .venv/bin/python -m pytest -q
+.venv/bin/python -m maha.cli doctor
 ```
 
-The last command additionally needs a running, seeded, synchronized Neo4j service.
-Reports live under `artifacts/evaluation/`; committed summaries are in
-[verification](docs/verification.md). Elliptic uses steps 1–29 train, 30–34 validation,
-35–49 test; unknown labels never become negatives. IBM evaluation uses a fixed seeded
-50,000-record reservoir and chronological partitions, with time ties kept together.
+The timeline and map release check passed the frontend build and 102 backend tests. Two live Neo4j tests were skipped. Chrome verification used a fictional case to check street tiles in both themes, pin-to-PDF navigation, IST and date-only display, and the narrow evidence drawer. To include the Neo4j integration tests, supply a running, seeded, synchronized service and run `MAHA_NEO4J_TEST=1 .venv/bin/python -m pytest -q`.
 
-## Architecture and operating limits
-
-- `maha/store.py`: private source blobs, evidence, assertions, permissions, audit, retention.
-- `maha/ingestion.py`, `maha/nlp.py`: strict adapters, NER, explicit relation rules, candidates.
-- `maha/graph.py`: Neo4j typed relationships and evidence-scoped assertions; local test fallback.
-- `maha/analytics.py`, `maha/benchmark.py`: projected graph analysis, bounded flow search, temporal ML.
-- `maha/api.py`, `frontend/`: authenticated API and React investigation workspace.
-- `docs/design/`: the five design artifacts and initial source inspection.
-
-SQLite is the source of truth. With Neo4j configured, the API reconciles the
-ledger's committed revision in the background, including writes from CLI imports.
-Neo4j publishes its revision in the same transaction as the graph replacement.
-Until the revisions match, case graph reads use the SQLite ledger and identify
-it as their backend. A failed sync is retried automatically with backoff.
-Use `maha sync` to reconcile immediately. Run a dedicated Neo4j database per
-ledger. Synchronization still rebuilds the MAHA projection in one transaction.
-
-The graph demo is bounded and deliberately small. Full datasets are profiled/evaluated
-separately; the app does not load five million transfers into an interactive browser.
-Relation extraction supports explicit templates, not arbitrary legal narratives. PDF
-support is only MAHA-DEMO-STATEMENT v1, not commercial bank layouts or OCR. Structural
-metrics have no criminality score. Descriptive dashboard Isolation Forest scores are
-in-sample demonstrations, distinct from held-out benchmark metrics.
-
-Case closure and purge:
+Run the full synthetic investigation in an isolated ledger. Choose an empty output directory.
 
 ```bash
-.venv/bin/python -m maha.cli close-case DEMO-C01
-.venv/bin/python -m maha.cli purge
+.venv/bin/python scripts/evaluate_synthetic_investigation.py --case DEMO-RIVER-VERIFY --out /tmp/maha-river-verify
 ```
 
-Purge removes managed case evidence after 30 days, cleans generated source copies,
-resynchronizes Neo4j, and removes audit entries after 90 days. User-owned input files,
-externally downloaded exports, and externally created backups are outside managed
-retention and must be handled by their owner. No automatic scheduled purge is installed.
+The script generates fictional inputs and a report covering the normal ingest and analysis flows. Use the CLI for optional benchmarks once the source data is available under `data/raw/`.
 
-The original [v2 handoff](docs/reference/project-handoff-v2.md) is preserved. See
-[implementation decisions](docs/implementation-notes.md) for scope boundaries and remaining work.
-# Resource management
+```bash
+.venv/bin/python -m maha.cli evaluate --elliptic data/raw/elliptic.zip
+.venv/bin/python -m maha.cli evaluate-ibm data/raw/HI-Small_Trans.csv
+```
 
-See [local resource budgets](docs/resource-management.md) for memory limits,
-compressed dataset handling, and the verified cleanup record.
+The bundled sample cases and local setup work without downloading the large benchmark datasets. See [benchmark reproduction](docs/SYSTEM_HANDOFF.md#benchmark-reproduction) and [resource budgets](docs/resource-management.md). Keep generated outputs, private evidence, local model artifacts, map archives, and credentials out of Git.
 
-### FIR and judgment document intake
+## Repository guide
 
-In **Import records**, choose an English FIR or Indian court judgment and upload
-a PDF, JPEG, or PNG. MAHA reads usable embedded PDF text and runs local English
-Tesseract on scanned pages. Install Tesseract and the English language data for
-scan support. On this local Ubuntu installation, the private
-`data/private/ocr-runtime/` directory provides the fallback runtime.
+| Area | Role |
+| --- | --- |
+| `frontend/` | React 19, Vite, Tailwind and CSS. vis-network and Three.js for graphs. MapLibre for document locations. |
+| `maha/api.py` and `maha/store.py` | FastAPI, case-scoped access, SQLite source and evidence storage, review decisions, and audit. |
+| `maha/document_intake.py`, `maha/report_intake.py`, and `maha/statements.py` | OCR, document reading, table review, and reconciliation. |
+| `maha/graph.py`, `maha/analytics.py`, and `maha/suspects.py` | Neo4j projection, graph analysis, transaction scores, and dossier ranking. |
+| [`docs/`](docs/) | [System handoff](docs/SYSTEM_HANDOFF.md), [design](docs/design/), [evaluation](docs/evaluation/), and [original project handoff](docs/reference/project-handoff-v2.md). |
 
-Use **Quality** to open an extracted observation, see its page and text source,
-preview the original page, or download the file. Judgment mentions enter the existing review panel.
-Document offsets refer to extracted page text. The importer preserves originals
-and leaves NLP output as review evidence. Current limits are 25 MiB per upload,
-20 PDF pages, 20 megapixels per OCR image, and 100,000 extracted characters.
-This document adapter handles printed English prose. CDR and statement tables
-still use their existing structured adapters.
-
-### Bank statements
-
-Create or select a case and open **Import records → Upload file**. Choose
-**Bank statement (PDF, Excel, or scan)**, confirm the currency and numeric date
-order, attach your file, and enter its password if protected. The adapter
-supports text and scanned PDFs, PNG, JPEG, and multipage TIFF scans, and Excel .xlsx and .xls worksheets
-with a recognized date and debit/credit or amount header. `Post Date` and `Value Date` are supported date
-headers. If those are the only two date columns, the importer uses `Post Date`
-for the timeline and preserves both source cells in the row evidence.
-When the primary PDF reader cannot recover transaction cells, a second local
-PDF text reader tries the embedded text before OCR. Local OCR can recover
-headings or full scanned rows. For sideways, upside-down, and slightly tilted
-scans, it can correct the orientation and still record each row's position on
-the original page.
-When the first reader accepts some rows and rejects others with readable dates,
-another reader can recover a rejected row if both readers agree on a transaction
-on the page and the replacement matches one source location.
-The scanner uses ruling lines to keep wrapped details inside the same transaction. When only a signed
-amount column is available, explicit Dr/Cr markers set direction. Without a
-marker, positive values are credits and negative values are debits. The
-parser accepts comma decimals with two fractional digits and validates their
-digit grouping. Save encrypted legacy .xls files as .xlsx before uploading.
-
-**Preview transactions** shows up to 25 extracted rows, validation errors, and
-checks of adjacent running balances. It leaves the case ledger untouched.
-For a ruled two-date, seven-column table with unreadable headers, the preview
-can recover the layout when at least three transactions reconcile. Different
-date values require readable date labels for that recovery.
-If the headings are unfamiliar, open **Map columns manually** and enter the
-column numbers from left to right. For borderless PDFs or scans, supply column
-dividers as percentages of the page width or place them on **View PDF or scan page**.
-Preview the result before importing.
-For ruled PDFs and TIFFs, the importer can reuse a verified mapping from a nearby
-page when the column borders match. Preview identifies the page that provided the
-mapping. Only selected pages provide imported transactions. Rejected rows with
-mapped cells can be corrected in the preview. The evidence drawer records the
-extracted and corrected values with the reviewer.
-
-A statement upload can read up to 200 PDF or TIFF pages, separate from the 20-page
-document OCR limit. The default record limit is 5,000 per upload and the case
-graph has a separate default limit of 2,000 nodes. Use **PDF or TIFF pages** to select a
-page or range such as `1-10` when testing a layout or importing a large file.
-Overlapping ranges of the same source count as repeats. Each import retains the
-full original file and uses its original page numbers in the evidence. If the
-import would exceed the case's graph capacity, MAHA rejects the whole batch.
-The upload form shows progress and errors next to **Validate and import**.
-
-After upload, the confirmation shows accepted, repeated, and quarantined counts.
-**Quality** lists rejected row reasons and the page coverage of each statement
-batch. The expandable transaction table shows both dates, narration, reference,
-debit, credit, balance, and original row evidence.
-For a saved PDF or TIFF, **Recover another page from this statement** previews
-and imports a selected page from the retained source. Protected PDFs require
-the original password for each request.
-**Timeline** shows recognized transaction dates, with date-only records displayed
-as dates. **Run case analysis** can rank unusual amounts in groups of at least
-eight date-only transactions. These statement rows do not create account links
-or fund-flow edges.
-
-The original stored blob is byte-for-byte the upload. For an encrypted statement
-it remains encrypted, with the same SHA-256 as the file received. MAHA uses the
-password for that request and retains only the original blob and extracted
-records, including row evidence. From the drawer, **Re-check original row**
-opens the source again and compares it with the ingested row. Encrypted files
-ask for the password again. Automated evidence audits defer statement replay to
-this review action.
+The CLI provides `close-case` and `purge` for managed retention. Purge removes expired managed case evidence after 30 days and audit records after 90 days. Exports and backups are managed by their owner.

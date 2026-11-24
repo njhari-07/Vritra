@@ -5,7 +5,7 @@ import csv
 import io
 import json
 from pathlib import Path
-from .store import Store
+from .store import SAMPLE_EXCHANGE_ACTOR, Store
 from .ingestion import (
     IBM_HEADER, ibm_records, narrative_records, cdr_records, CDR_HEADER,
     pdf_records, HISTORY_HEADER, history_records
@@ -232,144 +232,38 @@ def seed_court_and_crime_data(store, ibm_path=None):
     return outputs
 
 
-def seed_case_evidence(store, case_id, dataset="the_exchange"):
-    """Seeds a complete multi-modal investigation scenario into a specific case_id."""
-    exchange_dir = Path(__file__).resolve().parents[1] / "data/novel_dataset_the_exchange"
-    if dataset in ("the_exchange", "exchange", "default") and exchange_dir.exists():
-        outputs = []
-        # Ingest Court
-        court_file = exchange_dir / "court_proceedings.json"
-        court_content = court_file.read_text(encoding="utf-8")
-        if case_id != "CASE-THE-EXCHANGE":
-            court_content = court_content.replace('"case_id": "CASE-THE-EXCHANGE"', f'"case_id": "{case_id}"')
-            court_content = court_content.replace('"case_id":"CASE-THE-EXCHANGE"', f'"case_id":"{case_id}"')
-        court_bytes = court_content.encode("utf-8")
-        outputs.append(store.import_records(f"court_exchange_{case_id}.json", court_bytes, "court-proceedings", True,
-                                            case_id, narrative_records(court_bytes), "sample-exchange-loader"))
+SAMPLE_PACKAGES = {
+    'the_exchange': ('The Exchange', 'novel_dataset_the_exchange'),
+    'valley_of_fear': ('The Valley of Fear', 'novel_cases/case_1_valley_of_fear'),
+    'red_headed_league': ('The Red-Headed League', 'novel_cases/case_2_red_headed_league'),
+    'monte_cristo': ('The Count of Monte Cristo', 'novel_cases/case_3_monte_cristo'),
+    'beryl_coronet': ('The Beryl Coronet', 'novel_cases/case_4_beryl_coronet'),
+    'blue_carbuncle': ('The Blue Carbuncle', 'novel_cases/case_5_blue_carbuncle'),
+}
 
-        # Ingest Crime
-        crime_file = exchange_dir / "crime_records.csv"
-        crime_content = crime_file.read_text(encoding="utf-8")
-        if case_id != "CASE-THE-EXCHANGE":
-            crime_content = crime_content.replace(",CASE-THE-EXCHANGE,", f",{case_id},")
-        crime_bytes = crime_content.encode("utf-8")
-        outputs.append(store.import_records(f"crime_exchange_{case_id}.csv", crime_bytes, "crime-registry", True,
-                                            case_id, history_records(crime_bytes, case_id), "sample-exchange-loader"))
 
-        # Ingest Telecom
-        cdr_file = exchange_dir / "telecom_cdr.csv"
-        cdr_bytes = cdr_file.read_bytes()
-        outputs.append(store.import_records(f"telecom_exchange_{case_id}.csv", cdr_bytes, "cdr-records", True,
-                                            case_id, cdr_records(cdr_bytes), "sample-exchange-loader"))
-
-        # Ingest Wires
-        wires_file = exchange_dir / "financial_wires.csv"
-        wires_bytes = wires_file.read_bytes()
-        outputs.append(store.import_records(f"wires_exchange_{case_id}.csv", wires_bytes, "financial-wires", True,
-                                            case_id, ibm_records(wires_bytes), "sample-exchange-loader"))
-        return outputs
-
-    folder = store.root / 'demo-sources'
-    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    outputs = []
-
-    # 1. Court Case Proceedings
-    court_docs = [
-        {
-            "document_id": f"COURT-{case_id}-01",
-            "case_id": case_id,
-            "filed_date": "2023-04-12",
-            "synthetic": True,
-            "text": (
-                f"In the Special Court for PMLA Offenses.\n"
-                f"Case No: Special CC-501/2023. Directorate of Enforcement vs. Arun Mehta & Ors.\n"
-                f"Person Arun Mehta [ID:P001] is named as Prime Accused in this case.\n"
-                f"Person Arun Mehta [ID:P001] owns account [Bank:DEMO; Account:A].\n"
-                f"Charges framed under Section 3 & Section 4 of Prevention of Money Laundering Act, 2002 (PMLA) "
-                f"read with Section 120B (Criminal Conspiracy) and Section 420 (Cheating) of Indian Penal Code.\n"
-                f"Prosecution demonstrates that Accused P001 operated account DEMO / A as a primary layering pool "
-                f"to conceal $450,000 generated through illicit procurement contracts.\n"
-                f"The investigator also recorded the alias Rajesh Singhania in an unverified handwritten note.\n"
-            )
-        },
-        {
-            "document_id": f"COURT-{case_id}-02",
-            "case_id": case_id,
-            "filed_date": "2023-04-15",
-            "synthetic": True,
-            "text": (
-                f"Forensic Bank Audit Report & Cash Smurfing Seizure Memo.\n"
-                f"Person Vikas Agarwal [ID:P002] is named as Mule Coordinator in this case.\n"
-                f"Person Vikas Agarwal [ID:P002] owns account [Bank:DEMO; Account:B].\n"
-                f"Person Vikas Agarwal [ID:P002] was recorded at [Location:Hawala Remittance Hub, Old Delhi].\n"
-                f"Audit identifies systematic cash structuring deposits into Account DEMO / B."
-            )
-        },
-        {
-            "document_id": f"COURT-{case_id}-03",
-            "case_id": case_id,
-            "filed_date": "2023-04-18",
-            "synthetic": True,
-            "text": (
-                f"Digital Forensics Inspection Memo: Crypto Off-Ramp & Layering.\n"
-                f"Person Dev Shah [ID:P003] is named as Co-Accused and Crypto Layerer in this case.\n"
-                f"Person Dev Shah [ID:P003] owns account [Bank:DEMO; Account:C].\n"
-                f"Person Dev Shah [ID:P003] was recorded at [Location:Fintech District, Mumbai].\n"
-                f"Charges under PMLA Sections 3 & 4 framed for operating darknet crypto swaps."
-            )
-        }
+def seed_case_evidence(store, case_id, dataset='the_exchange'):
+    """Load the bundled fictional sources in one case transaction."""
+    if dataset in ('exchange', 'default'):
+        dataset = 'the_exchange'
+    title, relative_path = SAMPLE_PACKAGES[dataset]
+    folder = Path(__file__).resolve().parents[1] / 'data' / relative_path
+    court = (folder / 'court_proceedings.json').read_bytes()
+    history = (folder / 'crime_records.csv').read_bytes()
+    calls = (folder / 'telecom_cdr.csv').read_bytes()
+    wires = (folder / 'financial_wires.csv').read_bytes()
+    if dataset == 'the_exchange' and case_id != 'CASE-THE-EXCHANGE':
+        # Preserve source hashes for existing Exchange sample imports.
+        target = json.dumps(case_id, ensure_ascii=False).encode()
+        for prefix in (b'"case_id": ', b'"case_id":'):
+            court = court.replace(prefix + b'"CASE-THE-EXCHANGE"', prefix + target)
+        if all(char not in case_id for char in ',"\r\n'):
+            history = history.replace(b',CASE-THE-EXCHANGE,', b',' + case_id.encode() + b',')
+    sources = [
+        ('court-proceedings.json', court, 'court-proceedings', list(narrative_records(court, case_id=case_id))),
+        ('crime-records.csv', history, 'crime-registry', list(history_records(history, case_id))),
+        ('telecom-cdr.csv', calls, 'cdr-records', list(cdr_records(calls))),
+        ('financial-wires.csv', wires, 'financial-wires', list(ibm_records(wires))),
     ]
-    doc_bytes = json.dumps(court_docs, indent=2).encode()
-    fname = f'court-cases-{case_id}.json'
-    (folder / fname).write_bytes(doc_bytes)
-    outputs.append(store.import_records(fname, doc_bytes, 'court-records', True, case_id, narrative_records(doc_bytes)))
-
-    # 2. Crime FIR History Sheets
-    hist_rows = [
-        ['HIST-101', 'P001', case_id, '2021-11-14', 'conviction_priors', 'FIR No. 88/2021 (EOW Delhi) under IPC 420, 120B. Special Court framed charges for public procurement cheating. Bail denied due to flight risk.', 'true'],
-        ['HIST-102', 'P002', case_id, '2022-05-20', 'arrest_warrant', 'FIR No. 112/2022 (Crime Branch) for illegal hawala remittance and cash smurfing. Non-bailable arrest warrant issued.', 'true'],
-        ['HIST-103', 'P003', case_id, '2023-02-18', 'loc_active', 'FIR No. 204/2023 (Cyber Police) for online banking fraud and darknet crypto laundering. Active Look-Out Circular (LOC) at airports.', 'true'],
-    ]
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow(HISTORY_HEADER)
-    w.writerows(hist_rows)
-    hist_bytes = out.getvalue().encode()
-    fname = f'crime-firs-{case_id}.csv'
-    (folder / fname).write_bytes(hist_bytes)
-    outputs.append(store.import_records(fname, hist_bytes, 'crime-registry', True, case_id, history_records(hist_bytes, case_id)))
-
-    # 3. Call Detail Records (CDR)
-    cdr_rows = [
-        ['CALL-101', 'P001', 'P002', '2022-09-01T08:30:00+00:00', '180', 'true'],
-        ['CALL-102', 'P002', 'P003', '2022-09-01T09:45:00+00:00', '240', 'true'],
-        ['CALL-103', 'P003', 'P001', '2022-09-01T10:50:00+00:00', '120', 'true'],
-    ]
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow(CDR_HEADER)
-    w.writerows(cdr_rows)
-    cdr_bytes = out.getvalue().encode()
-    fname = f'cdr-calls-{case_id}.csv'
-    (folder / fname).write_bytes(cdr_bytes)
-    outputs.append(store.import_records(fname, cdr_bytes, 'cdr-records', True, case_id, cdr_records(cdr_bytes)))
-
-    # 4. Financial Transactions (Closed Layering Loop A -> B -> C -> A)
-    tx_rows = [
-        ['2022/09/01 09:00', 'DEMO', 'A', 'DEMO', 'B', '100000.00', 'US Dollar', '100000.00', 'US Dollar', 'ACH', '1'],
-        ['2022/09/01 10:00', 'DEMO', 'B', 'DEMO', 'C', '107000.00', 'US Dollar', '107000.00', 'US Dollar', 'ACH', '1'],
-        ['2022/09/01 11:00', 'DEMO', 'C', 'DEMO', 'A', '114000.00', 'US Dollar', '114000.00', 'US Dollar', 'ACH', '1'],
-    ]
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow(IBM_HEADER)
-    w.writerows(tx_rows)
-    tx_bytes = out.getvalue().encode()
-    fname = f'transactions-{case_id}.csv'
-    (folder / fname).write_bytes(tx_bytes)
-    outputs.append(store.import_records(fname, tx_bytes, 'ibm-hi-small', True, case_id, ibm_records(tx_bytes)))
-
-    for p in folder.iterdir():
-        p.chmod(0o600)
-    return outputs
-
+    actor = SAMPLE_EXCHANGE_ACTOR if dataset == 'the_exchange' else 'sample-novel-loader'
+    return dataset, title, store.import_sample_package(case_id, sources, actor, dataset)

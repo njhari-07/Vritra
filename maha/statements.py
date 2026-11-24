@@ -35,7 +35,7 @@ from xlrd.compdoc import CompDocError
 from xlrd.xldate import XLDateError
 
 from .document_intake import (
-    MAX_PIXELS, ocr_pdf_word_band, ocr_statement_image, pdfium_lock, raster_table_rules, render_pdf_image,
+    DocumentOcrTimeout, MAX_PIXELS, ocr_pdf_word_band, ocr_statement_image, pdfium_lock, raster_table_rules, render_pdf_image,
     statement_deskew_angle,
 )
 from .ingestion import json_row, node
@@ -50,6 +50,8 @@ MAX_PDF_PAGES = 200
 MAX_COLUMNS = 48
 NO_PDF_TEXT = 'No usable text found on this PDF page'
 UNKNOWN_PDF_TABLE = 'PDF text found, but no supported transaction table recognized on this page'
+SUMMARY_WITHOUT_ROWS = 'Statement summary found. No transaction rows detected on this page.'
+STATEMENT_OCR_TIMEOUT = 'OCR timed out on this page. Preview a smaller page range or use the bank’s Excel export.'
 OLE_SIGNATURE = bytes.fromhex('D0CF11E0A1B11AE1')
 BIFF_SIGNATURES = (b'\x09\x00', b'\x09\x02', b'\x09\x04', b'\x09\x08')
 TIFF_SIGNATURES = (b'II*\x00', b'MM\x00*', b'II+\x00', b'MM\x00+')
@@ -70,12 +72,20 @@ HEADER_ALIASES = {
     'value_date': ('value date', 'effective date'),
     'post_date': ('post date', 'posting date', 'booking date'),
     'narration': ('details', 'narration', 'description', 'transaction details', 'particulars', 'remarks'),
-    'reference': ('ref no cheque no', 'reference', 'reference number', 'cheque no', 'ref no', 'check number'),
+    'reference': ('ref no cheque no', 'reference', 'reference number', 'cheque no', 'ref no', 'check number',
+                  'payment id reference number', 'payment reference number', 'payment id', 'transaction reference'),
     'balance': ('balance', 'running balance', 'closing balance', 'available balance', 'balance amount'),
+    'time': ('time', 'transaction time', 'payment time'),
+    'bank': ('bank name', 'bank'),
+    'account': ('account number', 'account no', 'account'),
+    'sender': ('sender', 'payer', 'sender upi id'),
+    'receiver': ('receiver', 'payee', 'receiver upi id'),
+    'payment_type': ('pay collect', 'payment type'),
+    'status': ('status', 'transaction status', 'payment status'),
 }
 HEADER_DIAGNOSTIC_LABELS = ('value date', 'post date', 'posting date', 'transaction date', 'date', 'details',
                             'narration', 'ref no', 'cheque no', 'debit', 'credit', 'withdrawal', 'deposit',
-                            'amount', 'balance')
+                            'amount', 'balance', 'sender', 'receiver', 'dr cr', 'payment id reference number')
 NUMERIC_DATE = re.compile(r'[0-9]{1,4}([./-])[0-9]{1,2}\1[0-9]{2,4}')
 AMOUNT_DIRECTIONS = {'dr': 'debit', 'debit': 'debit', 'cr': 'credit', 'credit': 'credit'}
 AMOUNT_DIRECTION_SUFFIX = re.compile(r'(debit|credit|dr|cr)\.?$', re.IGNORECASE)
@@ -85,6 +95,14 @@ TWO_DATE_COLUMNS = {
     'value_date': 0, 'date': 1, 'narration': 2, 'reference': 3, 'debit': 4, 'credit': 5, 'balance': 6,
 }
 TWO_DATE_HEADERS = ['Value date', 'Posting date', 'Details', 'Reference', 'Debit', 'Credit', 'Balance']
+SUMMARY_HEADERS = {
+    'opening_balance': ('brought forward', 'opening balance', 'balance brought forward'),
+    'debit_count': ('dr count', 'debit count', 'debits count'),
+    'credit_count': ('cr count', 'credit count', 'credits count'),
+    'total_debit': ('total debits', 'total debit', 'debit total'),
+    'total_credit': ('total credits', 'total credit', 'credit total'),
+    'closing_balance': ('closing balance', 'ending balance'),
+}
 CORRECTABLE_STATEMENT_FIELDS = frozenset({'date', 'debit', 'credit', 'amount', 'direction'})
 
 
@@ -109,7 +127,12 @@ def header_key(value):
     # Some bank PDFs render a currency symbol but expose only a font CID in extracted text.
     value = re.sub(r'\(cid:\d+\)', ' ', value, flags=re.IGNORECASE)
     value = re.sub(r'[^a-z0-9]+', ' ', value.casefold()).strip()
-    return re.sub(r'^(?:inr|rs|usd|gbp|eur) | (?:inr|rs|usd|gbp|eur)$', '', value)
+    value = re.sub(r'^(?:inr|rs|usd|gbp|eur) | (?:in )?(?:inr|rs|rupees|usd|gbp|eur)$', '', value)
+    return value.removesuffix(' in') if value in {'amount in', 'transaction amount in'} else value
+
+
+def payment_export(columns):
+    return {'sender', 'receiver', 'amount'} <= columns.keys()
 
 
 def header_map(cells):
@@ -628,7 +651,7 @@ def pdf_rows_with_ocr_header(page, encrypted, lines, deadline):
         header_lines = cluster_objects(words, 'top', 3)
         for index, line in enumerate(header_lines):
             header = positioned_header(header_lines, index, 6)
-            if not header or not {'debit', 'credit'} <= header[2].keys():
+            if not header or not ({'debit', 'credit'} <= header[2].keys() or {'amount', 'direction'} <= header[2].keys()):
                 continue
             groups, labels, columns, size = header
             header_top = min(word['top'] for word in line)
@@ -679,6 +702,83 @@ def pdf_vector_grids(page):
         cells = [(number, values, table.rows[number - 1].bbox)
                  for number, values in enumerate(table.extract(), 1)]
         yield table_index, signature, cells
+
+
+def join_payment_page_break(row, page, following):
+    locator, headers, cells, columns = row
+    if locator.get('layout') not in {'ruled', 'continued-ruled'} or not payment_export(columns):
+        return row
+    if not {'time', 'direction', 'reference'} <= columns.keys() or len(cells) != len(headers):
+        return row
+    date_index, time_index = columns['date'], columns['time']
+    if not re.fullmatch(r'\d{1,2}/\d{1,2}', cells[date_index].strip()) or not re.fullmatch(
+        r'\d{1,2}:\d{2}:', cells[time_index].strip(),
+    ):
+        return row
+    if not all(cells[columns[field]].strip() for field in ('direction', 'reference', 'amount')):
+        return row
+    grids = list(pdf_vector_grids(page))
+    if not grids or grids[-1][0] != locator['table'] or grids[-1][2][-1][0] != locator['row']:
+        return row
+    _, signature, _ = grids[-1]
+    neighbor = next(pdf_vector_grids(following), None)
+    if not neighbor or len(neighbor[2]) < 2 or len(signature) != len(neighbor[1]) or any(
+        abs(left - right) > .006 for left, right in zip(signature, neighbor[1], strict=True)
+    ):
+        return row
+    number, fragment, bounds = neighbor[2][0]
+    fragment = [cell_text(value).strip() for value in fragment]
+    if len(fragment) != len(cells) or not re.fullmatch(r'/\d{4}', fragment[date_index]) or not re.fullmatch(
+        r'\d{2}', fragment[time_index],
+    ):
+        return row
+    if any(fragment[columns[field]] for field in ('direction', 'reference', 'amount')):
+        return row
+    if not viable_transaction([cell_text(value) for value in neighbor[2][1][1]], columns):
+        return row
+    joined = ['\n'.join(filter(None, (original, extra))) for original, extra in zip(cells, fragment, strict=True)]
+    if not plausible_date(joined[date_index]) or statement_printed_time({'time': joined[time_index]}) is None:
+        return row
+    continuation = {'page': following.page_number, 'row': number, 'bbox': list(bounds), 'bbox_units': 'points'}
+    return {**locator, 'continuation': continuation}, headers, joined, columns
+
+
+def pdf_printed_summaries(page, lines, currency, full_document):
+    text = header_key(' '.join(word['text'] for line in lines for word in line))
+    if 'statement summary' not in text and not ('total debits' in text and 'total credits' in text):
+        return []
+    summaries = []
+    for table in page.find_tables():
+        extracted = table.extract()
+        for index, (headers, cells) in enumerate(zip(extracted, extracted[1:]), 1):
+            keys = [header_key(cell_text(value)) for value in headers]
+            columns = {field: [i for i, key in enumerate(keys) if key in aliases]
+                       for field, aliases in SUMMARY_HEADERS.items()}
+            if not all(len(positions) == 1 for positions in columns.values()):
+                continue
+            raw = {field: cell_text(cells[positions[0]]).strip() for field, positions in columns.items()}
+            if not all(raw.values()) or not all(re.fullmatch(r'\d{1,3}(?:,\d{3})+|\d{1,9}', raw[field])
+                                               for field in ('debit_count', 'credit_count')):
+                continue
+            try:
+                counts = {kind + '_count': int(raw[kind + '_count'].replace(',', ''))
+                          for kind in ('debit', 'credit')}
+                totals = {f'total_{kind}': parse_amount(raw[f'total_{kind}'], currency) for kind in ('debit', 'credit')}
+                opening = parse_balance(raw['opening_balance'], currency)
+                closing_balance = parse_balance(raw['closing_balance'], currency)
+            except ValueError:
+                continue
+            if min(*counts.values(), *totals.values()) < 0 or any(
+                not re.search(r'\d', raw[field]) for field in ('opening_balance', 'closing_balance')
+            ):
+                continue
+            summaries.append({
+                'page': page.page_number, 'bbox': list(table.rows[index].bbox),
+                'table_bbox': table.bbox, 'full_document': full_document, 'printed': raw,
+                'expected': {**counts, **totals},
+                'arithmetic_matches': opening + totals['total_credit'] - totals['total_debit'] == closing_balance,
+            })
+    return summaries
 
 
 def pdf_previous_grids(page, deadline):
@@ -826,7 +926,7 @@ def recover_damaged_rows(primary, damaged, alternative):
             damaged.pop(index)
 
 
-def select_row_layout(candidates):
+def select_row_layout(candidates, *, excluded_bounds=()):
     first_rejected = []
     primary = []
     damaged = {}
@@ -835,6 +935,11 @@ def select_row_layout(candidates):
             pending = []
             with closing(rows):
                 for row in rows:
+                    locator = row[0]
+                    if excluded_bounds and locator.get('bbox_units') == 'points' and (box := locator.get('bbox')):
+                        x, y = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+                        if any(l <= x <= r and t <= y <= b for l, t, r, b in excluded_bounds):
+                            continue
                     check(len(pending) + 1, 'IMPORT_RECORDS', 5000)
                     pending.append((row, row_values(row)))
             if not any(values is not None for _, values in pending):
@@ -860,7 +965,7 @@ def select_row_layout(candidates):
     yield from (row for row, _ in primary or first_rejected)
 
 
-def pdf_statement_rows(content, password, page_range, manual=None):
+def pdf_statement_rows(content, password, page_range, manual=None, *, currency=None, summaries=None):
     deadline = monotonic() + 60
     with pdfplumber.open(BytesIO(content), password=password or '') as pdf:
         total = len(pdf.pages)
@@ -885,6 +990,11 @@ def pdf_statement_rows(content, password, page_range, manual=None):
 
         for page in pdf.pages[start - 1:end]:
             try:
+                lines = cluster_objects(page.extract_words(), 'top', 3)
+                printed = pdf_printed_summaries(page, lines, currency, start == 1 and end == total)
+                if summaries is not None:
+                    summaries.extend(printed)
+                excluded = tuple(item['table_bbox'] for item in printed)
                 if manual:
                     location = {'format': 'pdf', 'page': page.page_number, 'table': 1, 'layout': 'manual-text',
                                 'encrypted': encrypted, 'bbox_units': 'points', 'bbox_origin': 'top-left'}
@@ -896,14 +1006,14 @@ def pdf_statement_rows(content, password, page_range, manual=None):
                     with closing(select_row_layout(chain(
                         (primary,), alternate_pdf_candidates(content, password, page, encrypted, manual),
                         scanned_pdf_candidates(page, encrypted, deadline, manual),
-                    ))) as rows:
+                    ), excluded_bounds=excluded)) as rows:
                         if first := next(rows, None):
                             yield first
                             yield from rows
                             continue
-                    yield {**location, 'diagnostic': 'No transaction rows matched the supplied columns'}, None, None, None
+                    diagnostic = SUMMARY_WITHOUT_ROWS if printed else 'No transaction rows matched the supplied columns'
+                    yield {**location, 'diagnostic': diagnostic}, None, None, None
                     continue
-                lines = cluster_objects(page.extract_words(), 'top', 3)
                 direct = (
                     pdf_table_rows(page, encrypted, 'ruled', {}),
                     pdf_table_rows(page, encrypted, 'mixed', HYBRID_TABLE),
@@ -923,17 +1033,26 @@ def pdf_statement_rows(content, password, page_range, manual=None):
                     direct, (grouped, pdf_table_rows(page, encrypted, 'balance-verified-ruled', {})),
                     alternate_pdf_candidates(content, password, page, encrypted),
                     continued_pdf_candidates(page, encrypted, earlier_grids), image_fallback(),
-                ))) as rows:
-                    if first := next(rows, None):
-                        yield first
-                        yield from rows
-                        continue
-                diagnostic = UNKNOWN_PDF_TABLE if lines else NO_PDF_TEXT
+                ), excluded_bounds=excluded)) as rows:
+                    candidates = list(rows)
+                if candidates:
+                    if page.page_number < total and payment_export(candidates[-1][3]) and damaged_date(candidates[-1]) is None:
+                        following = pdf.pages[page.page_number]
+                        try:
+                            candidates[-1] = join_payment_page_break(candidates[-1], page, following)
+                        finally:
+                            following.close()
+                    yield from candidates
+                    continue
+                diagnostic = SUMMARY_WITHOUT_ROWS if printed else UNKNOWN_PDF_TABLE if lines else NO_PDF_TEXT
                 location = {'format': 'pdf', 'page': page.page_number, 'encrypted': encrypted,
                             'diagnostic': diagnostic}
                 if labels := header_signals(lines):
                     location['header_signals'] = labels
                 yield location, None, None, None
+            except DocumentOcrTimeout:
+                yield {'format': 'pdf', 'page': page.page_number, 'encrypted': encrypted,
+                       'diagnostic': STATEMENT_OCR_TIMEOUT}, None, None, None
             finally:
                 page.close()
 
@@ -1160,10 +1279,10 @@ def spreadsheet_statement_rows(content, password, manual):
         yield from excel_statement_rows(content, password, manual)
 
 
-def statement_rows(content, password, *, page_range=None, manual=None):
+def statement_rows(content, password, *, page_range=None, manual=None, currency=None, summaries=None):
     """Yield raw row locators and fields. Decrypted workbook buffers close on return."""
     if content.startswith(b'%PDF-'):
-        rows = pdf_statement_rows(content, password, page_range, manual)
+        rows = pdf_statement_rows(content, password, page_range, manual, currency=currency, summaries=summaries)
     elif any(content.startswith(signature) for signature in IMAGE_EXTENSIONS):
         if page_range is not None and not content.startswith(TIFF_SIGNATURES):
             raise ValueError('Page ranges are only available for PDF and TIFF statements')
@@ -1317,11 +1436,36 @@ def transaction_fields(cells, columns, currency, date_order):
         signed = parse_amount(value, currency)
         direction_field = cell('direction').casefold().rstrip('.')
         direction = AMOUNT_DIRECTIONS.get(direction_field)
+        if payment_export(columns) and not (direction or marker):
+            raise ValueError('Payment row requires a debit or credit indicator')
         if (not signed or (direction_field and not direction) or (direction and marker and direction != marker)
                 or (signed < 0 and (direction or marker) == 'credit')):
             raise ValueError('Invalid signed amount or debit/credit direction')
         amount, direction = abs(signed), direction or marker or ('debit' if signed < 0 else 'credit')
     return event_time, time_basis, str(amount), direction
+
+
+def statement_payment_status(fields):
+    text = ' '.join(fields.get('status', '').upper().split())
+    if text in {'SUCCESS', 'SUCCESSFUL', 'COMPLETED', 'SETTLED', 'POSTED'}:
+        return 'completed'
+    if text in {'PENDING', 'PROCESSING', 'IN PROGRESS'}:
+        return 'pending'
+    if text in {'FAILED', 'FAILURE', 'DECLINED', 'CANCELLED', 'CANCELED', 'REJECTED', 'EXPIRED'}:
+        return 'failed'
+    if text in {'REVERSED', 'REFUNDED'}:
+        return 'reversed'
+    return 'unknown' if text or {'sender', 'receiver'} <= fields.keys() else 'completed'
+
+
+def statement_printed_time(fields):
+    raw = re.sub(r'\s*:\s*', ':', fields.get('time', '').strip())
+    for pattern in ('%H:%M:%S', '%H:%M', '%I:%M:%S %p', '%I:%M %p'):
+        try:
+            return datetime.strptime(raw, pattern).strftime('%H:%M:%S' if pattern.count(':') == 2 else '%H:%M')
+        except ValueError:
+            continue
+    return None
 
 
 def validate_statement_corrections(corrections):
@@ -1337,12 +1481,14 @@ def validate_statement_corrections(corrections):
 
 
 def statement_records(content, password, currency, date_order, *, page_range=None, preview=False, manual=None,
-                      corrections=None):
+                      corrections=None, summaries=None):
     digest = sha256(content).hexdigest()
     supplied = validate_statement_corrections(corrections) if corrections is not None else {}
     remaining = set(supplied)
     records = []
-    for locator, headers, cells, columns in statement_rows(content, password, page_range=page_range, manual=manual):
+    for locator, headers, cells, columns in statement_rows(
+        content, password, page_range=page_range, manual=manual, currency=currency, summaries=summaries,
+    ):
         if columns is None:
             records.append({'locator': locator, 'error': locator['diagnostic']})
             continue
@@ -1386,12 +1532,14 @@ def statement_records(content, password, currency, date_order, *, page_range=Non
         transaction_id = 'transaction:' + uid(STATEMENT_DATASET, digest, locator)
         day = event_time[:10]
         label = f'{day} · {direction.title()} {amount} {currency}'
+        status = statement_payment_status(raw)
+        attrs = {'amount_paid': amount} if status == 'completed' else {'reported_amount': amount}
         record = {
             'locator': locator, 'method': METHOD, 'extraction_version': '1',
             'event_time': event_time, 'time_basis': time_basis, 'passage': json_row([headers, cells]),
             'statement_label': label,
             'facts': [node('Transaction', transaction_id, label, event_time=event_time, time_basis=time_basis,
-                           amount_paid=amount, payment_currency=currency, direction=direction)],
+                           payment_currency=currency, direction=direction, payment_status=status, **attrs)],
         }
         if adjusted is not None:
             record['statement_correction'] = {
@@ -1409,7 +1557,16 @@ def statement_records(content, password, currency, date_order, *, page_range=Non
         records.append(record)
     if remaining:
         raise ValueError('A corrected row no longer matches the selected file, pages, or import settings. Preview the statement again.')
+    timed_out = [record['locator']['page'] for record in records if record.get('error') == STATEMENT_OCR_TIMEOUT]
+    if timed_out and not preview:
+        raise ValueError(f'OCR timed out on pages {", ".join(map(str, timed_out))}. Select a smaller page range. No rows were imported.')
+    if timed_out and preview:
+        return records
     if not any('facts' in record for record in records):
+        if records and all(record.get('error') == SUMMARY_WITHOUT_ROWS for record in records):
+            if preview:
+                return records
+            raise ValueError('The selected pages contain the statement summary. Select pages with transaction rows to import.')
         rejected = [record for record in records if record['locator'].get('row')]
         if rejected:
             if preview:
@@ -1451,6 +1608,39 @@ def statement_page_coverage(records):
     return [pages[number] for number in sorted(pages)]
 
 
+def statement_summary_checks(transactions, expected):
+    extracted = {'debit_count': 0, 'credit_count': 0, 'total_debit': Decimal(0), 'total_credit': Decimal(0)}
+    for attrs in transactions:
+        if 'amount_paid' not in attrs:
+            continue
+        direction = attrs['direction']
+        extracted[f'{direction}_count'] += 1
+        extracted[f'total_{direction}'] += Decimal(attrs['amount_paid'])
+    return {field: {'extracted': str(value), 'matches': expected[field] == value}
+            for field, value in extracted.items()}
+
+
+def saved_statement_reconciliation(verification, currency):
+    if verification is None:
+        return None
+    report, transactions = verification
+    printed = report['printed']
+    expected = {f'{kind}_count': int(printed[f'{kind}_count'].replace(',', '')) for kind in ('debit', 'credit')}
+    expected.update({f'total_{kind}': parse_amount(printed[f'total_{kind}'], currency) for kind in ('debit', 'credit')})
+    return {**report, 'checks': statement_summary_checks(transactions, expected)}
+
+
+def statement_reconciliation(records, summaries):
+    if not summaries or any(item['printed'] != summaries[0]['printed'] for item in summaries[1:]):
+        return None
+    summary = summaries[0]
+    checks = None
+    if summary['full_document']:
+        transactions = (record['facts'][0]['attrs'] for record in records if 'facts' in record)
+        checks = statement_summary_checks(transactions, summary['expected'])
+    return {key: summary[key] for key in ('page', 'bbox', 'printed', 'arithmetic_matches')} | {'checks': checks}
+
+
 def statement_preview(records, currency, page_range=None):
     """Review up to 25 candidates in source order, verifying adjacent printed balances."""
     accepted = [row for row in records if 'facts' in row]
@@ -1469,20 +1659,26 @@ def statement_preview(records, currency, page_range=None):
             previous = None
             continue
         attrs = row['facts'][0]['attrs']
+        if 'amount_paid' not in attrs:
+            previous = None
+            continue
         amount = Decimal(attrs['amount_paid'])
         change = amount if attrs['direction'] == 'credit' else -amount
         if previous is not None:
             checks[id(row)] = 'Matched' if previous + change == balance else 'Mismatch'
         previous = balance
     candidates = [row for row in records if 'fields' in row]
+    balance_counts = Counter(checks.values())
     visible = candidates[:25]
     if not accepted:
         visible = sorted(candidates, key=lambda row: not bool(row['fields'].get('date')))[:25]
     return {
         'accepted': len(accepted),
-        'rejected': len(records) - len(accepted),
+        'rejected': sum('row' in row['locator'] and 'facts' not in row for row in records),
         'page_range': list(page_range) if page_range else None,
         'page_coverage': statement_page_coverage(records),
+        'balance_checks': {'matched': balance_counts['Matched'], 'mismatched': balance_counts['Mismatch'],
+                           'unverified': len(accepted) - len(checks)},
         'recovered_layout_rows': sum(bool(row['locator'].get('recovered_layout')) for row in accepted),
         'balance_inferred_pages': sorted({
             row['locator']['page'] for row in accepted
@@ -1521,4 +1717,5 @@ def stored_statement_row(item, settings):
         except (ValueError, OverflowError):
             pass
     return {'evidence_id': item['id'], 'locator': locator, 'fields': fields, 'normalized': normalized,
-            'event_time': item['event_time'], 'corrected': bool(item.get('statement_correction'))}
+            'event_time': item['event_time'], 'printed_time': statement_printed_time(fields),
+            'payment_status': statement_payment_status(fields), 'corrected': bool(item.get('statement_correction'))}

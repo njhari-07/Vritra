@@ -1,18 +1,18 @@
 import React, { useCallback, useEffect, useState, useRef, lazy, Suspense } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useMatch, useNavigate } from 'react-router-dom';
 import GraphView from './components/GraphView';
-import JudgmentReview from './components/JudgmentReview';
-import SourcePage from './components/SourcePage';
 import RecordIntakeModes from './components/RecordIntakeModes';
 import RecordFilePicker from './components/RecordFilePicker';
-import StatementRowReview from './components/StatementRowReview';
-import StatementImportRows from './components/StatementImportRows';
+import { ReportSettings, ReportPreview, SavedWireRows } from './components/ReportImport';
+import StatementImportRows, { PAYMENT_COLUMNS } from './components/StatementImportRows';
 import StatementPageCoverage from './components/StatementPageCoverage';
+import StatementReconciliation from './components/StatementReconciliation';
 import BrandMark from './components/BrandMark';
 import DynamicBrand from './components/DynamicBrand';
 import LeadsPanel from './components/LeadsPanel';
-import ResolutionTab from './components/ResolutionTab';
-import TimelineTab from './components/TimelineTab';
+import ResolutionQueue from './components/ResolutionQueue';
+import LocationTimeline from './components/LocationTimeline';
+import DocumentPlaces from './components/DocumentPlaces';
 import ImportRecordsTab from './components/ImportRecordsTab';
 import QualityTab from './components/QualityTab';
 import AuditTab from './components/AuditTab';
@@ -25,6 +25,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 // Styles (style.css, record-intake.css, Tailwind) are loaded once from index.css in main.jsx.
 
 const HeroScene = lazy(() => import('./components/three/HeroScene'));
+const StatementMoneyFlow = lazy(() => import('./components/StatementMoneyFlow'));
+const CallReportExplorer = lazy(() => import('./components/CallReportExplorer'));
 
 const colors = {
   Person: '#5AA9FF',
@@ -42,6 +44,9 @@ function Graph({ graph, onSelect, darkMode = false, height = '520px' }) {
 
 // userSlot: account controls from the auth layer (Clerk UserButton), shown in the sidebar.
 export default function App({ userSlot = null }) {
+  const navigate = useNavigate();
+  const moneyFlow = useMatch('/app/statement-flow/:importId');
+  const callFlow = useMatch('/app/call-flow/:importId');
   const [token, setToken] = useState('');
   const [input, setInput] = useState('');
   const [me, setMe] = useState(null);
@@ -68,6 +73,10 @@ export default function App({ userSlot = null }) {
   const [tab, setTab] = useState('Overview');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showSamplePicker, setShowSamplePicker] = useState(false);
+  const [samplePackages, setSamplePackages] = useState([]);
+  const [sampleDataset, setSampleDataset] = useState('');
+  const [sampleError, setSampleError] = useState('');
   const [selected, setSelected] = useState(null);
   const [ev, setEv] = useState(null);
   const [search, setSearch] = useState('');
@@ -97,13 +106,18 @@ export default function App({ userSlot = null }) {
   const [rawText, setRawText] = useState('');
   const [rawTitle, setRawTitle] = useState('FIR-CRIME-REGISTRY-01');
   const [rawSourceType, setRawSourceType] = useState('police_fir');
-  const [rawSynthetic, setRawSynthetic] = useState(false);
-  const [uploadKind, setUploadKind] = useState('ibm');
+  const [rawIsExample, setRawIsExample] = useState(false);
+  const [uploadKind, setUploadKind] = useState('');
+  const [intakeProfile, setIntakeProfile] = useState(null);
+  const intakeForm = useRef(null);
+  const intakeRequest = useRef(null);
+  const manualIntakeKind = useRef('');
   const [uploadFeedback, setUploadFeedback] = useState(null);
   const [statementPage, setStatementPage] = useState(null);
   const [statementDividers, setStatementDividers] = useState('');
   const [statementCorrections, setStatementCorrections] = useState({});
   const uploading = uploadFeedback?.status === 'pending';
+  const statementPaymentColumns = PAYMENT_COLUMNS.filter(([key]) => uploadFeedback?.rows?.some(row => key in row.fields));
 
   useEffect(() => {
     if (!statementPage) return;
@@ -114,17 +128,17 @@ export default function App({ userSlot = null }) {
     setStatementPage(null);
     setStatementCorrections({});
     setUploadFeedback(null);
-  }, [activeCase, tab]);
+    setIntakeProfile(null);
+    return () => intakeRequest.current?.abort();
+  }, [activeCase, tab, token]);
 
   // Feature 4: ML Tuning & Weights
 
   // Modals
   const [showNewCaseModal, setShowNewCaseModal] = useState(false);
   const [newCaseInput, setNewCaseInput] = useState('');
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
-  const [templates, setTemplates] = useState(null);
 
-  const api = async (path, { raw = false, ...options } = {}) => {
+  const api = useCallback(async (path, { raw = false, ...options } = {}) => {
     const r = await fetch('/api' + path, {
       ...options,
       headers: { Authorization: 'Bearer ' + token, ...options.headers }
@@ -134,6 +148,26 @@ export default function App({ userSlot = null }) {
       throw Error(d.detail || 'Request failed');
     }
     return raw ? r : r.json();
+  }, [token]);
+
+  const inspectFile = async file => {
+    const caseId = intakeForm.current?.elements.case.value;
+    if (!caseId) return;
+    intakeRequest.current?.abort();
+    const controller = new AbortController();
+    intakeRequest.current = controller;
+    setUploadKind(manualIntakeKind.current);
+    setIntakeProfile({ loading: true });
+    try {
+      const profile = await api(`/intake/${encodeURIComponent(caseId)}/inspect`, {
+        method: 'POST', body: file, signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      setIntakeProfile(profile);
+      if (!manualIntakeKind.current && profile.kind) setUploadKind(profile.kind);
+    } catch (err) {
+      if (!controller.signal.aborted) setIntakeProfile({ error: err.message });
+    }
   };
 
   const load = async targetCase => {
@@ -198,7 +232,7 @@ export default function App({ userSlot = null }) {
     const close = drawerClose.current;
     close?.focus();
     const onKeyDown = event => {
-      if (event.key === 'Escape' && close?.parentElement?.contains(document.activeElement)) {
+      if (event.key === 'Escape' && close?.closest('.evidence-drawer')?.contains(document.activeElement)) {
         event.preventDefault();
         close?.click();
       }
@@ -220,7 +254,7 @@ export default function App({ userSlot = null }) {
     if (!me || !activeCase) return;
     let current = true;
     const paths = {
-      Resolution: '/candidates',
+      Resolution: '/candidates?case=' + encodeURIComponent(activeCase),
       Timeline: '/timeline?case=' + encodeURIComponent(activeCase),
       Quality: '/quality?case=' + encodeURIComponent(activeCase),
       Audit: '/audit?case=' + encodeURIComponent(activeCase),
@@ -276,14 +310,39 @@ export default function App({ userSlot = null }) {
     }
   };
 
-  const handleLoadSample = async () => {
-    setBusy(true);
+  const openSamplePicker = async () => {
+    setSampleError('');
+    setShowSamplePicker(true);
+    if (samplePackages.length) return;
     try {
-      await api(`/cases/${encodeURIComponent(activeCase)}/load-sample`, { method: 'POST' });
-      setNotice(`Sample Evidence Package loaded into ${activeCase} (3 Court Cases, 3 Crime FIRs, 3 CDR Calls, 3-hop Money Loop). Ready for ML Model Training!`);
+      const packages = await api('/sample-datasets');
+      setSamplePackages(packages);
+      setSampleDataset(packages[0]?.id || '');
+    } catch (e) {
+      setSampleError(e.message);
+    }
+  };
+
+  const handleLoadSample = async event => {
+    event.preventDefault();
+    if (!activeCase || !sampleDataset || busy) return;
+    setBusy(true);
+    setSampleError('');
+    try {
+      const result = await api(
+        `/cases/${encodeURIComponent(activeCase)}/load-sample?dataset=${encodeURIComponent(sampleDataset)}`,
+        { method: 'POST' }
+      );
+      setShowSamplePicker(false);
+      const outcome = [
+        `${result.accepted_new} evidence records added`,
+        result.recognized_repeat && `${result.recognized_repeat} already present`,
+        result.quarantined && `${result.quarantined} quarantined`,
+      ].filter(Boolean).join(' · ');
+      setNotice(`${result.title} loaded into ${activeCase}. ${outcome}.`);
       await load(activeCase);
     } catch (e) {
-      setError(e.message);
+      setSampleError(e.message);
     } finally {
       setBusy(false);
     }
@@ -307,23 +366,6 @@ export default function App({ userSlot = null }) {
     }
   };
 
-  const handleDirectUpload = async (kind, file) => {
-    if (!file) return;
-    setBusy(true);
-    try {
-      const r = await api(`/import/${kind}/${encodeURIComponent(activeCase)}`, {
-        method: 'POST',
-        body: file
-      });
-      setNotice(`Evidence accepted into ${activeCase}: ${r.accepted_new} new records · ${r.recognized_repeat} repeats · ${r.quarantined} quarantined.`);
-      await load(activeCase);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleRawTextImport = async () => {
     if (!rawText.trim()) return;
     setBusy(true);
@@ -335,39 +377,18 @@ export default function App({ userSlot = null }) {
           text: rawText,
           title: rawTitle.trim() || 'FREE-TEXT-FIR',
           source_type: rawSourceType,
-          synthetic: rawSynthetic
+          synthetic: rawIsExample
         })
       });
       setNotice(`${res.summary.accepted_new} new evidence records · ${res.summary.recognized_repeat} repeats. Open Quality to inspect them.`);
       setRawText('');
-      setRawSynthetic(false);
+      setRawIsExample(false);
       await load(activeCase);
     } catch (e) {
       setError(e.message);
     } finally {
       setBusy(false);
     }
-  };
-
-  const openTemplateModal = async () => {
-    try {
-      const t = await api('/templates?case=' + encodeURIComponent(activeCase));
-      setTemplates(t);
-      setShowTemplateModal(true);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  const downloadFile = (filename, content, type) => {
-    const blob = new Blob([content], { type: type === 'json' ? 'application/json' : 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    setNotice(`Downloaded template: ${filename}`);
   };
 
   const downloadOriginal = async source => {
@@ -434,17 +455,19 @@ export default function App({ userSlot = null }) {
   const decide = async (c, state) => {
     const reason = window.prompt('Reason for this identity decision');
     if (!reason) return;
+    setBusy(true);
     try {
-      await api('/candidates/' + c.id, {
+      await api('/candidates/' + encodeURIComponent(c.id) + '?case=' + encodeURIComponent(activeCase), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state, reason })
       });
       await load(activeCase);
-      setListState({ tab: 'Resolution', rows: await api('/candidates') });
       setNotice('Resolution decision saved');
     } catch (e) {
       setError(e.message);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -459,9 +482,53 @@ export default function App({ userSlot = null }) {
       return;
     }
     const kind = f.get('kind'), caseId = f.get('case');
+    if (!kind || intakeProfile?.loading) return;
+    if (kind === 'calls-document' || kind === 'wires-document') {
+      const save = e.nativeEvent.submitter?.value === 'save-report';
+      const pendingReview = uploadFeedback?.report;
+      const params = new URLSearchParams();
+      for (const name of ['first', 'last', 'offset', 'date_order', 'dividers']) {
+        const value = f.get('report_' + name)?.trim();
+        if (value) params.set(name, value);
+      }
+      const mapping = [...f.entries()].filter(([name, value]) => name.startsWith('report_column_') && value !== '')
+        .map(([name, value]) => name.slice('report_column_'.length) + ':' + value);
+      if (mapping.length) params.set('mapping', mapping.join(','));
+      if (save) {
+        if (!pendingReview?.accepted || pendingReview.file !== file || pendingReview.caseId !== caseId) return;
+        params.set('review_digest', pendingReview.review_digest);
+        params.set('accept_partial', String(f.has('report_partial')));
+      }
+      setBusy(true);
+      setUploadFeedback({ report: pendingReview, status: 'pending', message: save ? 'Saving reviewed records…' : 'Reading the report…' });
+      try {
+        const type = kind === 'calls-document' ? 'calls' : 'wires';
+        const result = await api(`/report-intake/${type}/${encodeURIComponent(caseId)}?${params}`, { method: 'POST', body: file });
+        if (token !== sessionToken.current) return;
+        if (save) {
+          setUploadFeedback({
+            status: 'success',
+            message: `${result.accepted_new} accepted · ${result.recognized_repeat} repeated · ${result.quarantined} quarantined. See Quality for the import record.`,
+            callImportId: type === 'calls' ? result.import_id : null,
+          });
+          await load(caseId);
+        } else if (form.elements.file.files[0] === file && form.elements.case.value === caseId && form.elements.kind.value === kind) {
+          setUploadFeedback({ status: 'preview', message: 'Compare the rows against the source pages, then save reviewed records.',
+            report: { ...result, file, caseId } });
+        } else {
+          setUploadFeedback(null);
+        }
+      } catch (error) {
+        if (token === sessionToken.current) setUploadFeedback({ report: pendingReview, status: 'error', message: error.message });
+      } finally {
+        if (token === sessionToken.current) setBusy(false);
+      }
+      return;
+    }
     const statement = kind === 'bank-statement';
     const preview = statement && e.nativeEvent.submitter?.value === 'statement-preview';
     const viewPage = statement && e.nativeEvent.submitter?.value === 'statement-page';
+    const evidenceOnly = statement && e.nativeEvent.submitter?.value === 'statement-evidence';
     const selectedFile = form.elements.file.files[0];
     const savedPreview = uploadFeedback?.rows ? uploadFeedback : null;
     if (statement) {
@@ -488,7 +555,7 @@ export default function App({ userSlot = null }) {
     setBusy(true);
     setUploadFeedback({ ...savedPreview, status: 'pending', message: viewPage ? 'Rendering statement page…' : statement ? 'Reading statement rows… This may take a moment.' : 'Importing records…' });
     try {
-      const action = viewPage ? '?layout_page=true' : preview ? '?preview=true' : '';
+      const action = viewPage ? '?layout_page=true' : preview ? '?preview=true' : evidenceOnly ? '?destination=evidence' : '';
       const r = await api(`/import/${kind}/${encodeURIComponent(caseId)}${action}`, {
         method: 'POST',
         body: statement ? f : file,
@@ -510,19 +577,24 @@ export default function App({ userSlot = null }) {
           status: 'preview',
           message: `${r.accepted} valid · ${r.rejected} rejected · Showing ${r.rows.length} candidates. Nothing imported.`,
           rows: r.rows,
+          accepted: r.accepted,
+          graphImpact: r.graph_impact,
           inferredPages: r.balance_inferred_pages,
           inferredSheets: r.balance_inferred_sheets,
           pageCoverage: r.page_coverage,
           pageRange: r.page_range,
+          balanceChecks: r.balance_checks,
+          reconciliation: r.reconciliation,
           recoveredLayoutRows: r.recovered_layout_rows,
         });
         return;
       }
       setUploadFeedback({
         status: 'success',
-        message: `${r.accepted_new} accepted · ${r.recognized_repeat} repeated · ${r.quarantined} quarantined${statement ? '. Open Quality to review statement rows.' : ''}`,
+        message: `${statement ? `${r.statement_name} · ` : ''}${r.accepted_new} accepted · ${r.recognized_repeat} repeated · ${r.quarantined} quarantined${evidenceOnly ? ' · Saved as statement evidence' : ''}${statement ? '. Open Quality to verify saved rows.' : ''}`,
         pageCoverage: r.statement_scope?.coverage,
         pageRange: r.statement_scope?.requested,
+        reconciliation: r.statement_scope?.reconciliation,
       });
       setStatementCorrections({});
       await load(caseId);
@@ -654,6 +726,21 @@ export default function App({ userSlot = null }) {
       </main>
       </div>
     );
+
+  if (moneyFlow) return (
+    <Suspense fallback={<main className="workspace" role="status">Loading financial explorer…</main>}>
+      <StatementMoneyFlow key={moneyFlow.params.importId} importId={moneyFlow.params.importId} api={api}
+        activeCase={activeCase} people={graph?.nodes?.filter(item => item.type === 'Person') || []} darkMode={darkMode}
+        onBack={() => { setTab('Quality'); navigate('/app'); }} onOwnerSaved={() => load(activeCase)} />
+    </Suspense>
+  );
+
+  if (callFlow) return (
+    <Suspense fallback={<main className="workspace" role="status">Loading call report explorer…</main>}>
+      <CallReportExplorer key={callFlow.params.importId} importId={callFlow.params.importId} api={api}
+        darkMode={darkMode} onBack={() => { setTab('Quality'); navigate('/app'); }} />
+    </Suspense>
+  );
 
   const activeStatus = casesList.find(c => c.case_id === activeCase) || {
     case_id: activeCase,
@@ -809,8 +896,8 @@ export default function App({ userSlot = null }) {
             <button className="btn-reset-case" onClick={handleResetCase} disabled={!activeCase || busy}>
               ↺ Reset Case
             </button>
-            <button className="btn-tmpl" onClick={openTemplateModal} disabled={!activeCase || busy}>
-              Data Templates
+            <button className="btn-tmpl" onClick={openSamplePicker} disabled={!activeCase || busy}>
+              Sample datasets
             </button>
             <button className="btn-train-primary" onClick={() => setTab('Import records')} disabled={!activeCase || busy}>
               Add evidence
@@ -872,7 +959,7 @@ export default function App({ userSlot = null }) {
                 </div>
                 <div className="case-actions">
                   {!activeStatus.facts_count && (
-                    <button className="quiet" onClick={handleLoadSample} disabled={busy}>Load sample</button>
+                    <button className="quiet" onClick={openSamplePicker} disabled={!activeCase || busy}>Load sample</button>
                   )}
                   <button className="btn-train-primary" onClick={() => {
                     if (activeStatus.facts_count) {
@@ -1007,8 +1094,8 @@ export default function App({ userSlot = null }) {
                     </p>
                   </div>
                   <div className="train-box-actions">
-                    <button className="btn-sample" onClick={handleLoadSample} disabled={isTraining || busy}>
-                      1-Click Load Sample Package
+                    <button className="btn-sample" onClick={openSamplePicker} disabled={!activeCase || isTraining || busy}>
+                      Load sample
                     </button>
                     <button
                       className="btn-train-primary"
@@ -1102,62 +1189,29 @@ export default function App({ userSlot = null }) {
         )}
 
         {tab === 'Resolution' && (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Candidate identity matches</h2>
-              <span className="badge">HUMAN REVIEW REQUIRED</span>
-            </div>
-            {list.map(c => (
-              <article className="lead" key={c.id}>
-                <div>
-                  <h3>
-                    {c.left_name} ↔ {c.right_name}
-                  </h3>
-                  <p>
-                    Name similarity {(c.similarity * 100).toFixed(1)}% · {c.state}
-                  </p>
-                  <small>Similarity does not establish identity.</small>
-                  <button className="quiet" onClick={() => selectItem(c)}>
-                    Source evidence
-                  </button>
-                </div>
-                <div>
-                  {c.state === 'accepted' ? (
-                    <button onClick={() => decide(c, 'revoked')}>Undo match</button>
-                  ) : (
-                    <>
-                      <button onClick={() => decide(c, 'accepted')}>Accept match</button>
-                      <button className="quiet" onClick={() => decide(c, 'rejected')}>
-                        Reject
-                      </button>
-                    </>
-                  )}
-                </div>
-              </article>
-            ))}
-            {!list.length && <p className="empty">No candidate matches in your case scope.</p>}
-          </section>
+          <ResolutionQueue key={activeCase} caseId={activeCase} matches={list} busy={busy} onDecision={decide}
+            onEvidence={selectItem} onSource={(id, label) => {
+              selectItem({ label, reason: 'Candidate identity source', evidence_ids: [id] });
+              evidence(id);
+            }} />
         )}
 
-        {tab === 'Timeline' && (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Recorded events ({activeCase})</h2>
-            </div>
-            {list.map(n => (
-              <article className="lead" key={n.id}>
-                <time>{n.time_basis === 'date_only' ? n.event_time.slice(0, 10) : new Date(n.event_time).toLocaleString()}</time>
-                <strong>{n.label}</strong>
-                <button className="quiet" onClick={() => selectItem(n)}>
-                  View source →
-                </button>
-              </article>
-            ))}
-          </section>
-        )}
+        {tab === 'Timeline' && (() => {
+          const openSource = (id, label) => {
+            selectItem({ label, reason: 'Timeline source', evidence_ids: [id] });
+            evidence(id);
+          };
+          return <>
+            <DocumentPlaces key={'places-' + activeCase} caseId={activeCase} api={api} onSource={openSource}
+              onChanged={() => load(activeCase)} people={(graph?.nodes || []).filter(item => item.type === 'Person')}
+              darkMode={darkMode} />
+            <LocationTimeline key={activeCase} events={list} caseId={activeCase} api={api} onEvent={selectItem}
+              onEvidence={openSource} onChanged={() => load(activeCase)} />
+          </>;
+        })()}
 
         {tab === 'Import records' && (
-          <div className="record-intake tw:grid tw:min-w-0 tw:items-start tw:gap-5 tw:min-[1160px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <div className="record-intake tw:grid tw:min-w-0 tw:items-start tw:gap-5">
             <RecordIntakeModes>
               <section className="record-card record-paste" aria-labelledby="record-paste-title">
                 <h2 id="record-paste-title">Paste case text</h2>
@@ -1170,7 +1224,7 @@ export default function App({ userSlot = null }) {
                     type="button"
                     className="record-chip"
                     onClick={() => {
-                      setRawSynthetic(true);
+                      setRawIsExample(true);
                       setRawSourceType('police_fir');
                       setRawTitle('ED-PMLA-COMPLAINT-142');
                       setRawText(`IN THE SPECIAL COURT FOR PMLA OFFENSES: Directorate of Enforcement vs. Vikram Singhania [ID:P001] & Ors.\nPrime Accused Vikram Singhania operates HDFC Bank account 001928374 for layering procurement fraud kickbacks of ₹14,200,000.\nCo-conspirator Rajesh Sharma operates ICICI Bank account 009847261 as hawala mule routing pass-through tranches.\nCharges registered under PMLA Section 3 & 4 and IPC Section 420 and 120B.\nNon-Bailable Warrant issued by EOW.`);
@@ -1182,7 +1236,7 @@ export default function App({ userSlot = null }) {
                     type="button"
                     className="record-chip"
                     onClick={() => {
-                      setRawSynthetic(true);
+                      setRawIsExample(true);
                       setRawSourceType('police_fir');
                       setRawTitle('CYBER-PS-FIR-204');
                       setRawText(`CYBER CRIME POLICE STATION: State vs. Dev Shah [ID:P003] & Associates.\nAccused Dev Shah operates darknet crypto conversion infrastructure and Axis Bank account 005511223.\nMule coordinator Vikas Agarwal routed funds through Axis Bank and ICICI Bank.\nFIR No. 204/2023 under IT Act Section 66D and IPC Section 420. Look-Out Circular (LOC) active at international airports.`);
@@ -1194,7 +1248,7 @@ export default function App({ userSlot = null }) {
                     type="button"
                     className="record-chip"
                     onClick={() => {
-                      setRawSynthetic(true);
+                      setRawIsExample(true);
                       setRawSourceType('police_fir');
                       setRawTitle(`EOW-FIR-144-${activeCase}`);
                       setRawText(`POLICE STATION: Economic Offenses Wing (EOW), Mandir Marg, New Delhi\nFIR No: 144/2026 | Date: 12-03-2026\nActs & Sections: Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), read with Section 3 & 4 of Prevention of Money Laundering Act, 2002 (PMLA).\n(i) Accused Vikram Malhotra [ID:P101], Managing Director, Zenith Health Ventures Ltd. Role: Prime Syndicate Mastermind and beneficial owner of destination fund accounts.\n(ii) Accused Sanjay Agarwal [ID:P102], Financial Consultant & Hawala Remittance Mule Coordinator. Operates account ACC-AGARWAL-882 at Bank 010.\n(iii) Accused Karan Singhania [ID:P103], Dummy Director, Apex Logistics Front Corp. Operates account ACC-APEXSHELL-993 at Bank 010.\n(iv) Accused Rohit Verma [ID:P104], Operator of unauthorized digital escrow and crypto mixing channels, account ACC-VERMA-104 at Bank 010.\nAllegations: Accused Vikram Malhotra [ID:P101] utilized shell corporate vehicles to route approximately $750,000 USD of misappropriated funds through closed-loop layering transfers. Primary layering was executed through bank account 010 / ACC-MALHOTRA-771 into mule account 010 / ACC-AGARWAL-882, which was then layered into shell account 010 / ACC-APEXSHELL-993 before returning into primary beneficiary accounts under the guise of dividend reinvestment.`);
@@ -1214,8 +1268,6 @@ export default function App({ userSlot = null }) {
                   <label>Source title
                     <input value={rawTitle} maxLength={120} onChange={event => setRawTitle(event.target.value)} />
                   </label>
-                  <label className="record-check tw:col-span-full tw:flex tw:items-center tw:gap-2"><input type="checkbox" checked={rawSynthetic}
-                    onChange={event => setRawSynthetic(event.target.checked)} /> Synthetic example</label>
                 </div>
                 <div className="record-text-meta tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-x-3">
                   <label htmlFor="import-case-text">Case text</label>
@@ -1227,7 +1279,10 @@ export default function App({ userSlot = null }) {
                   maxLength={50000}
                   placeholder="Paste an FIR, judgment, or other case text here…"
                   value={rawText}
-                  onChange={e => setRawText(e.target.value)}
+                  onChange={event => {
+                    setRawText(event.target.value);
+                    setRawIsExample(false);
+                  }}
                 />
                 <div className="record-actions tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
                   <span className="record-scope">Active case <strong>{activeCase || 'No case selected'}</strong></span>
@@ -1243,17 +1298,22 @@ export default function App({ userSlot = null }) {
               </section>
               <section className="record-card record-upload" aria-labelledby="record-upload-title">
                 <h2 id="record-upload-title">Upload a file</h2>
-                <p>Select the case and format before uploading. Scanned English FIRs and judgments use local OCR.</p>
-                <form className="tw:grid tw:gap-4" onSubmit={upload}
+                <p>Upload your original PDF or scan. MAHA reads the document locally and suggests an import type.</p>
+                <form ref={intakeForm} className="tw:grid tw:gap-4" onSubmit={upload}
                   onChange={event => {
-                    if (event.target.name === 'password' || event.target.dataset.statementEdit) return;
+                    if (event.target.name === 'password' || event.target.dataset.statementEdit || event.target.dataset.reportUi) return;
+                    if (event.target.name === 'case') {
+                      intakeRequest.current?.abort();
+                      const file = event.currentTarget.elements.file.files[0];
+                      if (file) inspectFile(file);
+                    }
                     if (!uploading) setUploadFeedback(null);
                     setStatementCorrections({});
                     if (['case', 'file', 'kind', 'pdf_pages'].includes(event.target.name)) setStatementPage(null);
                   }}>
                   <label>
                     Authorized case
-                    <select key={activeCase} name="case" aria-label="Authorized case" defaultValue={activeCase}>
+                    <select key={activeCase} name="case" aria-label="Authorized case" defaultValue={activeCase} disabled={busy}>
                       {casesList.map(c => (
                         <option key={c.case_id} value={c.case_id}>
                           {c.case_id}
@@ -1261,23 +1321,40 @@ export default function App({ userSlot = null }) {
                       ))}
                     </select>
                   </label>
+                  <RecordFilePicker name="file" accept=".pdf,.xlsx,.xls,.csv,.json,.txt,.png,.jpeg,.jpg,.tif,.tiff"
+                    label="Source file" disabled={busy} onPick={file => { manualIntakeKind.current = ''; inspectFile(file); }} onClear={() => {
+                      intakeRequest.current?.abort(); setIntakeProfile(null); setUploadKind(manualIntakeKind.current);
+                      setStatementPage(null); setUploadFeedback(null); setStatementCorrections({});
+                    }} required />
+                  {intakeProfile && <p role={intakeProfile.error ? 'alert' : 'status'}>
+                    {intakeProfile.loading ? 'Inspecting the file…' : intakeProfile.error ||
+                      `${intakeProfile.file_type} detected. ${intakeProfile.kind ? 'Check the record format below.' : 'Choose a record format to continue.'}`}
+                  </p>}
                   <label>
                     Record format
-                    <select name="kind" aria-label="Record format" value={uploadKind}
-                      onChange={event => setUploadKind(event.target.value)}>
-                      <option value="ibm">IBM HI-Small CSV</option>
+                    <select name="kind" aria-label="Record format" value={uploadKind} disabled={busy}
+                      onChange={event => {
+                        manualIntakeKind.current = event.target.value;
+                        setUploadKind(event.target.value || intakeProfile?.kind || '');
+                      }}>
+                      <option value="">Identify from file</option>
                       <option value="bank-statement">Bank statement (PDF, Excel, or scan)</option>
-                      <option value="narrative">Synthetic narrative JSON</option>
-                      <option value="judgment">English Indian court judgment (.txt)</option>
+                      <option value="calls-document">Call detail report (PDF or scan)</option>
+                      <option value="wires-document">Wire transfer report (PDF or scan)</option>
                       <option value="judgment-document">English Indian court judgment (PDF or image)</option>
                       <option value="fir-document">English police FIR (PDF or image)</option>
-                      <option value="cdr">Synthetic CDR CSV</option>
-                      <option value="history">Synthetic case-history CSV</option>
-                      <option value="pdf">VRITRA fixed-layout PDF v1</option>
+                      {['ibm', 'narrative', 'judgment', 'cdr', 'history', 'pdf'].includes(uploadKind) &&
+                        <option value={uploadKind}>Recognized structured file</option>}
                     </select>
                   </label>
+                  {['calls-document', 'wires-document'].includes(uploadKind) &&
+                    <ReportSettings key={uploadKind} kind={uploadKind} disabled={busy} />}
                   {uploadKind === 'bank-statement' && (
                     <>
+                      <label>Statement name
+                        <input name="statement_name" type="text" required maxLength={100}
+                          placeholder="e.g. Harish bank statement year 25-26" />
+                      </label>
                       <div className="record-fields tw:grid tw:gap-3 tw:sm:grid-cols-2">
                         <label>Statement currency
                           <select name="currency" defaultValue="INR">
@@ -1311,6 +1388,7 @@ export default function App({ userSlot = null }) {
                             ['amount', 'Signed amount'], ['direction', 'Debit or credit indicator'],
                             ['value_date', 'Value date'], ['narration', 'Details'],
                             ['reference', 'Reference'], ['balance', 'Running balance'],
+                            ...PAYMENT_COLUMNS,
                           ].map(([field, label]) => (
                             <label key={field}>{label}
                               <input name={`map_column_${field}`} type="number" min="1" max="48" placeholder="Column number" />
@@ -1347,17 +1425,21 @@ export default function App({ userSlot = null }) {
                       </details>
                     </>
                   )}
-                  <RecordFilePicker name="file"
-                    accept={uploadKind === 'bank-statement' ? '.pdf,.xlsx,.xls,.png,.jpeg,.jpg,.tif,.tiff' : '.csv,.json,.pdf,.txt,.png,.jpeg,.jpg'}
-                    label="Source file" onClear={() => { setStatementPage(null); setUploadFeedback(null); setStatementCorrections({}); }} required />
                   <div className="flex flex-wrap items-center gap-2">
                     {uploadKind === 'bank-statement' && (
-                      <button className="record-secondary" value="statement-preview" disabled={!activeCase || busy || uploading}>
+                      <button className="record-secondary" value="statement-preview" disabled={!activeCase || busy || uploading || intakeProfile?.loading}>
                         Preview transactions
                       </button>
                     )}
-                    <button className="record-primary" disabled={!activeCase || busy || uploading}>
-                      {uploading ? 'Reading…' : 'Validate and import'}
+                    {uploadKind === 'bank-statement' && uploadFeedback?.accepted > 0 && (
+                      <button className={uploadFeedback.graphImpact?.fits ? 'record-secondary' : 'record-primary'}
+                        value="statement-evidence" disabled={!activeCase || busy || uploading}>
+                        Save as statement evidence
+                      </button>
+                    )}
+                    <button className="record-primary" value="preview-report" disabled={!activeCase || !uploadKind || busy || uploading || intakeProfile?.loading || uploadFeedback?.graphImpact?.fits === false}>
+                      {uploading ? 'Reading…' : ['calls-document', 'wires-document'].includes(uploadKind) ? 'Review extracted rows'
+                        : uploadKind === 'bank-statement' ? 'Import to case graph' : 'Validate and import'}
                     </button>
                   </div>
                   {uploadFeedback && (
@@ -1366,10 +1448,30 @@ export default function App({ userSlot = null }) {
                       {uploadFeedback.message}
                     </div>
                   )}
+                  {uploadFeedback?.report && ['calls-document', 'wires-document'].includes(uploadKind) && (
+                    <>
+                      <ReportPreview key={uploadFeedback.report.review_digest} preview={uploadFeedback.report} api={api} kind={uploadKind} />
+                      <button className="record-primary" value="save-report" disabled={busy || !uploadFeedback.report.accepted}>
+                        Save reviewed records
+                      </button>
+                    </>
+                  )}
+                  {uploadFeedback?.callImportId && <button type="button" className="record-secondary"
+                    onClick={() => navigate(`/app/call-flow/${encodeURIComponent(uploadFeedback.callImportId)}`)}>Open call report explorer</button>}
+                  {uploadFeedback?.graphImpact && (
+                    <p className="statement-graph-impact">
+                      Case graph · {uploadFeedback.graphImpact.nodes.current.toLocaleString()} current nodes · {uploadFeedback.graphImpact.nodes.projected.toLocaleString()} after import · {uploadFeedback.graphImpact.nodes.limit.toLocaleString()} limit.
+                      {uploadFeedback.graphImpact.fits === false && ' Save as statement evidence to review the full file in Quality and the financial explorer.'}
+                    </p>
+                  )}
                   {uploadFeedback?.inferredPages?.length > 0 && (
                     <p>Column mapping was inferred from matching running balances on {uploadFeedback.inferredPages.length > 1 ? 'pages' : 'page'} {uploadFeedback.inferredPages.join(', ')}.</p>
                   )}
                   <StatementPageCoverage pages={uploadFeedback?.pageCoverage} pageRange={uploadFeedback?.pageRange} />
+                  <StatementReconciliation result={uploadFeedback?.reconciliation} />
+                  {uploadFeedback?.balanceChecks && (
+                    <p>Running balances · {uploadFeedback.balanceChecks.matched} matched · {uploadFeedback.balanceChecks.mismatched} mismatched · {uploadFeedback.balanceChecks.unverified} unverified</p>
+                  )}
                   {uploadFeedback?.recoveredLayoutRows > 0 && (
                     <p>Another reader recovered {uploadFeedback.recoveredLayoutRows} {uploadFeedback.recoveredLayoutRows === 1 ? 'row' : 'rows'} after checking for agreement with the first reader.</p>
                   )}
@@ -1388,7 +1490,8 @@ export default function App({ userSlot = null }) {
                   {uploadFeedback?.rows?.length > 0 && (
                     <div className="statement-preview-table" role="region" aria-label="Statement transaction preview" tabIndex={0}>
                       <table>
-                        <thead><tr>{['Source', 'Transaction date', 'Value date', 'Details', 'Reference', 'Debit', 'Credit', 'Raw amount', 'Balance', 'Review'].map(label => (
+                        <thead><tr>{['Source', 'Transaction date', 'Value date', 'Details', 'Reference',
+                          ...statementPaymentColumns.map(([, label]) => label), 'Debit', 'Credit', 'Raw amount', 'Balance', 'Review'].map(label => (
                           <th key={label} scope="col">{label}</th>
                         ))}</tr></thead>
                         <tbody>{uploadFeedback.rows.map((row, index) => {
@@ -1397,11 +1500,13 @@ export default function App({ userSlot = null }) {
                           <tr key={index}>
                             <td>{locator.sheet || `Page ${locator.page}`} · row {locator.row}
                               {locator.header_page && <div>Headings from page {locator.header_page}</div>}
+                              {locator.continuation && <div>Continued on page {locator.continuation.page}</div>}
                             </td>
                             <td>{statementField(row, 'date', 'Transaction date', fields.date)}</td>
                             <td>{fields.value_date || '—'}</td>
                             <td>{fields.narration || '—'}</td>
                             <td>{fields.reference || '—'}</td>
+                            {statementPaymentColumns.map(([key]) => <td key={key}>{fields[key] || '—'}</td>)}
                             <td>{statementField(row, 'debit', 'Debit', normalized?.debit ?? fields.debit)}</td>
                             <td>{statementField(row, 'credit', 'Credit', normalized?.credit ?? fields.credit)}</td>
                             <td>{statementField(row, 'amount', 'Amount', fields.amount)}
@@ -1420,163 +1525,6 @@ export default function App({ userSlot = null }) {
                 </form>
               </section>
             </RecordIntakeModes>
-            <section className="record-shortcuts tw:min-w-0" aria-labelledby="record-quick-title">
-              <h2 id="record-quick-title">Structured imports</h2>
-              <p>Files selected here import directly into the active case. Download a template for the format you need.</p>
-              <div className="tw:grid tw:grid-cols-1 tw:gap-3 tw:sm:grid-cols-2">
-                {/* 1. Court Cases */}
-                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
-                  <div>
-                    <div className="record-quick-heading">
-
-                      <div>
-                        <h3>Court proceedings</h3>
-                        <span className="record-format">Synthetic narrative</span>
-                      </div>
-                    </div>
-                    <p>
-                      Legal narratives in the synthetic case format.
-                    </p>
-                  </div>
-                  <div>
-
-                    <div className="tw:grid tw:min-w-0 tw:gap-2">
-                      <RecordFilePicker accept=".json" label="Upload court proceedings JSON"
-                        onPick={file => handleDirectUpload('narrative', file)} />
-                      <button
-                        type="button"
-                        className="record-secondary"
-                        onClick={() => {
-                          downloadFile(
-                            'court_cases_template.json',
-                            JSON.stringify([
-                              {
-                                document_id: `COURT-${activeCase}-01`,
-                                case_id: activeCase,
-                                filed_date: '2026-03-15',
-                                synthetic: true,
-                                text: `In the Special Court for PMLA Offenses: Directorate of Enforcement vs. Vikram Singhania [ID:P001]. Accused P001 operated account DEMO/A as primary layering pool.`
-                              }
-                            ], null, 2),
-                            'json'
-                          );
-                        }}
-                      >
-                        Download template
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Financial Transactions */}
-                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
-                  <div>
-                    <div className="record-quick-heading">
-
-                      <div>
-                        <h3>Financial wires</h3>
-                        <span className="record-format">IBM HI-Small</span>
-                      </div>
-                    </div>
-                    <p>
-                      Transactions in the IBM HI-Small CSV layout.
-                    </p>
-                  </div>
-                  <div>
-
-                    <div className="tw:grid tw:min-w-0 tw:gap-2">
-                      <RecordFilePicker accept=".csv" label="Upload financial wires CSV"
-                        onPick={file => handleDirectUpload('ibm', file)} />
-                      <button
-                        type="button"
-                        className="record-secondary"
-                        onClick={() => {
-                          downloadFile(
-                            'transactions_template.csv',
-                            "Timestamp,From Bank,Account,To Bank,Account,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering\n2026/03/10 10:15,DEMO,A,DEMO,B,100000.00,US Dollar,100000.00,US Dollar,ACH,1\n2026/03/10 11:30,DEMO,B,DEMO,C,107000.00,US Dollar,107000.00,US Dollar,ACH,1\n2026/03/10 12:45,DEMO,C,DEMO,A,114000.00,US Dollar,114000.00,US Dollar,ACH,1\n",
-                            'csv'
-                          );
-                        }}
-                      >
-                        Download template
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Crime FIR History */}
-                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
-                  <div>
-                    <div className="record-quick-heading">
-
-                      <div>
-                        <h3>FIR history</h3>
-                        <span className="record-format">History Registry CSV</span>
-                      </div>
-                    </div>
-                    <p>
-                      Structured prior records with a status and date.
-                    </p>
-                  </div>
-                  <div>
-
-                    <div className="tw:grid tw:min-w-0 tw:gap-2">
-                      <RecordFilePicker accept=".csv" label="Upload FIR history CSV"
-                        onPick={file => handleDirectUpload('history', file)} />
-                      <button
-                        type="button"
-                        className="record-secondary"
-                        onClick={() => {
-                          downloadFile(
-                            'crime_firs_template.csv',
-                            `record_id,person_id,case_id,record_date,record_status,text,synthetic\nFIR-01,P001,${activeCase},2026-01-14,Active Charge-Sheet,FIR No. 44/2026 under IPC 420/120B and PMLA Section 3 for syndicate fraud,true\nFIR-02,P002,${activeCase},2026-02-02,Look Out Circular,LOC Issued at International Airports for evasion of summons,true\n`,
-                            'csv'
-                          );
-                        }}
-                      >
-                        Download template
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Telecom CDR */}
-                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
-                  <div>
-                    <div className="record-quick-heading">
-
-                      <div>
-                        <h3>Telecom calls</h3>
-                        <span className="record-format">Synthetic CDR</span>
-                      </div>
-                    </div>
-                    <p>
-                      Caller, callee, timestamp, and call duration.
-                    </p>
-                  </div>
-                  <div>
-
-                    <div className="tw:grid tw:min-w-0 tw:gap-2">
-                      <RecordFilePicker accept=".csv" label="Upload telecom CDR CSV"
-                        onPick={file => handleDirectUpload('cdr', file)} />
-                      <button
-                        type="button"
-                        className="record-secondary"
-                        onClick={() => {
-                          downloadFile(
-                            'cdr_calls_template.csv',
-                            "record_id,caller_person_id,callee_person_id,start_time,duration_seconds,synthetic\nCALL-101,P001,P002,2026-03-10T09:45:00+00:00,420,true\nCALL-102,P002,P003,2026-03-10T12:10:00+00:00,185,true\nCALL-103,P003,P001,2026-03-10T15:00:00+00:00,310,true\n",
-                            'csv'
-                          );
-                        }}
-                      >
-                        Download template
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
           </div>
         )}
 
@@ -1585,14 +1533,16 @@ export default function App({ userSlot = null }) {
             <div className="panel-head">
               <h2>Import quality ledger</h2>
             </div>
-            {list.map(r => (
+            {list.filter((r, index) => !r.summary.statement_settings || list.findIndex(prior => (
+              prior.summary.statement_settings && prior.case_id === r.case_id && prior.source_id === r.source_id
+            )) === index).map(r => (
               <article className={r.summary.statement_settings ? 'lead statement-import-card' : 'lead'} key={r.id}>
                 <div>
                   <h3>
-                    {r.case_id} · {r.id.slice(0, 8)}
+                    {r.summary.statement_settings ? r.summary.statement_name || 'Bank statement' : `${r.case_id} · ${r.id.slice(0, 8)}`}
                   </h3>
                   <p>
-                    {r.summary.rows_seen} records · {r.summary.accepted_new} accepted · {r.summary.recognized_repeat} repeats · {r.summary.quarantined} quarantined
+                    {r.summary.statement_settings && `${r.case_id} · Latest import · `}{r.summary.rows_seen} records · {r.summary.accepted_new} accepted · {r.summary.recognized_repeat} repeats · {r.summary.quarantined} quarantined
                   </p>
                   {r.summary.legal_mentions?.length > 0 && (
                     <details>
@@ -1617,13 +1567,29 @@ export default function App({ userSlot = null }) {
                     </details>
                   )}
                   {r.summary.statement_settings && (
-                    <StatementImportRows batch={r} api={api} onEvidence={(id, label) => {
+                    <StatementImportRows batch={r} api={api} onOpenFlow={() => {
+                      navigate(`/app/statement-flow/${encodeURIComponent(r.id)}`);
+                    }} onEvidence={(id, label) => {
                       selectItem({ label, reason: 'Bank statement transaction as recorded in the source' });
                       evidence(id);
-                    }} onRecovered={() => {
-                      if (sessionToken.current === token) load(activeCase);
+                    }} onChanged={message => {
+                      if (sessionToken.current === token) {
+                        if (message) setNotice(message);
+                        selectItem(null);
+                        load(activeCase);
+                      }
                     }} />
                   )}
+                  {r.summary.report_review?.kind === 'calls' && (
+                    <button className="quiet" onClick={() => navigate(`/app/call-flow/${encodeURIComponent(r.id)}`)}>
+                      Open call report explorer
+                    </button>
+                  )}
+                  {r.summary.report_review?.kind === 'wires' && <SavedWireRows importId={r.id} api={api}
+                    onEvidence={id => {
+                      selectItem({ label: 'Wire transfer', reason: 'Reviewed wire report row' });
+                      evidence(id);
+                    }} />}
                   {r.summary.issues.map((x, i) => (
                     <p key={i} className="error">
                       {JSON.stringify(x.locator)}: {x.reason}
@@ -1720,90 +1686,12 @@ export default function App({ userSlot = null }) {
         </footer>
       </main>
 
-      {/* Detail Drawer */}
-      {selected && (
-        <aside className="drawer" aria-label="Evidence detail">
-          <button
-            className="close"
-            ref={drawerClose}
-            onClick={() => {
-              drawerClose.current.dataset.restoreFocus = 'true';
-              selectItem(null);
-            }}
-            aria-label="Close evidence panel"
-          >
-            ×
-          </button>
-          <p className="eyebrow">EVIDENCE DETAIL</p>
-          <h2>{selected.title ? `${selected.title}: ${selected.name}` : selected.label || selected.left_name || selected.name || 'Finding for review'}</h2>
-          <p>{selected.role || selected.reason || selected.type || 'Inspect the source references below.'}</p>
-          {selected.structural_context && <pre>{JSON.stringify(selected.structural_context, null, 2)}</pre>}
-          {selected.behavior_score != null && (
-            <p>
-              Model score: {selected.behavior_score.toFixed(4)}
-              <br />
-              <small>{selected.score_scope}</small>
-            </p>
-          )}
-          {selected.assertions && (
-            <details>
-              <summary>{selected.assertions.length} preserved assertions</summary>
-              <pre>{JSON.stringify(selected.assertions, null, 2)}</pre>
-            </details>
-          )}
-          <h3>Source references</h3>
-          {selected.evidence_ids?.map((id, i) => (
-            <button className="source-button" key={id} onClick={() => evidence(id)}>
-              ↗ Source {i + 1} <small>{id.slice(0, 10)}</small>
-            </button>
-          ))}
-          {ev && (
-            <div className="evidence">
-              <span className="tag">{ev.synthetic ? 'SYNTHETIC' : ev.dataset_id === 'court-judgment' ? 'LEGAL MENTION' : 'SOURCE EVIDENCE'}</span>
-              <h3>{ev.source}</h3>
-              {ev.source_locator?.text_method && (
-                <p>Page {ev.source_locator.page} · {ev.source_locator.text_method === 'pdf-text' ? 'Embedded PDF text' : 'Local OCR'}
-                  {' · '}Characters {ev.source_locator.char_start}–{ev.source_locator.char_end}</p>
-              )}
-              {!ev.source_locator?.text_method && <p>{JSON.stringify(ev.source_locator)}</p>}
-              {ev.source_locator?.text_method && (
-                <div className="document-source-actions">
-                  <SourcePage key={ev.id} evidence={ev} token={token} />
-                  <button className="quiet" onClick={() => downloadOriginal(ev)}>Download original document</button>
-                </div>
-              )}
-              {ev.extraction_method === 'bank-statement-row' ? (
-                <>
-                  <button className="quiet" onClick={() => downloadOriginal(ev)}>Download original statement</button>
-                  <StatementRowReview key={ev.id} evidence={ev} api={api} />
-                </>
-              ) : <blockquote>{ev.passage}</blockquote>}
-              <small>
-                {ev.extraction_method} · v{ev.extraction_version}
-                <br />
-                Event: {ev.time_basis === 'date_only' ? ev.event_time.slice(0, 10) + ' (date only)' : ev.event_time || 'Not supplied'}
-                <br />
-                Imported: {ev.ingestion_time}
-              </small>
-            </div>
-          )}
-          {ev?.dataset_id === 'court-judgment' && ev.extraction_method === 'en_legal_ner_sm' && (
-            <JudgmentReview key={ev.id} evidenceId={ev.id} api={api} />
-          )}
-          {selected.category && (
-            <div className="review-actions">
-              <h3>Record your review</h3>
-              <button onClick={() => review(selected, 'relevant')}>Relevant</button>
-              <button className="quiet" onClick={() => review(selected, 'not_relevant')}>
-                Not relevant
-              </button>
-              <button className="quiet" onClick={() => review(selected, 'insufficient_evidence')}>
-                Insufficient evidence
-              </button>
-            </div>
-          )}
-        </aside>
-      )}
+      {selected && <EvidenceDrawer selected={selected} ev={ev} closeRef={drawerClose}
+        api={api} token={token} downloadOriginal={downloadOriginal} onEvidenceLoad={evidence}
+        onReview={review} onClose={() => {
+          drawerClose.current.dataset.restoreFocus = 'true';
+          selectItem(null);
+        }} />}
 
       {/* Create New Case dialog (shadcn) */}
       <Dialog open={showNewCaseModal} onOpenChange={setShowNewCaseModal}>
@@ -1833,30 +1721,33 @@ export default function App({ userSlot = null }) {
         </DialogContent>
       </Dialog>
 
-      {/* Data templates dialog (shadcn) */}
-      <Dialog open={Boolean(showTemplateModal && templates)} onOpenChange={setShowTemplateModal}>
-        <DialogContent className={`tw:sm:max-w-2xl ${darkMode ? 'dark-theme' : ''}`}>
+      <Dialog open={showSamplePicker} onOpenChange={open => { if (!busy) setShowSamplePicker(open); }}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Import formats and templates</DialogTitle>
-            <DialogDescription>
-              Use these exact file formats and headers to import real or synthetic records for court hearings, bank transactions, police FIRs and telecom calls.
-            </DialogDescription>
+            <DialogTitle>Sample datasets</DialogTitle>
+            <DialogDescription>Load fictional court, incident, call, and transaction records into {activeCase}.</DialogDescription>
           </DialogHeader>
-          {Object.entries(templates || {}).map(([key, t]) => (
-            <div className="template-item" key={key}>
-              <h4>
-                <span>{t.title}</span>
-                <Button variant="outline" size="sm" className="tw:h-7 tw:min-h-0 tw:text-[11px]"
-                  onClick={() => downloadFile(t.filename, t.content, t.format)}>
-                  Download {t.filename}
-                </Button>
-              </h4>
-              <p>{t.description}</p>
-              <pre>{t.content.slice(0, 320) + (t.content.length > 320 ? '\n...' : '')}</pre>
-            </div>
-          ))}
+          <form onSubmit={handleLoadSample} className="tw:grid tw:gap-4">
+            <label className="tw:grid tw:gap-2">
+              Dataset
+              <select value={sampleDataset} onChange={event => setSampleDataset(event.target.value)}
+                disabled={!samplePackages.length || busy} required>
+                {!samplePackages.length && <option value="">{sampleError ? 'Datasets unavailable' : 'Loading datasets…'}</option>}
+                {samplePackages.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
+              </select>
+            </label>
+            {activeStatus.evidence_count > 0 && <p>Select an empty case or create a new one to load a sample.</p>}
+            {sampleError && <p role="alert" className="error">{sampleError}</p>}
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setShowSamplePicker(false)} disabled={busy}>Cancel</Button>
+              <Button type="submit" disabled={!activeCase || !sampleDataset || busy || activeStatus.evidence_count > 0}>
+                {busy ? 'Loading sample…' : 'Load into case'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

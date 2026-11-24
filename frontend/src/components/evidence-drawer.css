@@ -1,0 +1,62 @@
+.shell .evidence-drawer {
+  width: min(36rem, 100%);
+  padding: 0;
+  overscroll-behavior: contain;
+}
+.shell .evidence-drawer > .evidence-drawer-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .75rem;
+  margin: 0;
+  padding: 1.15rem clamp(1rem, 4vw, 1.5rem);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  backdrop-filter: none;
+}
+.evidence-drawer-header h2 { margin: .25rem 0 0; font-size: 1.3rem; line-height: 1.25; }
+.evidence-drawer-header .eyebrow { margin: 0; }
+.evidence-drawer-header button { flex-shrink: 0; }
+.evidence-drawer-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 1rem clamp(1rem, 4vw, 1.5rem) 2rem; }
+.evidence-drawer-content :is(h3, h4, p) { margin: 0; }
+.evidence-secondary { color: var(--text-secondary); }
+.evidence-references { display: grid; gap: .45rem; }
+.evidence-references h3, .evidence-passage h4 { font-size: .85rem; }
+.evidence-references h3 span { margin-inline-start: .3rem; color: var(--text-secondary); font-weight: 400; }
+.evidence-references > div, .evidence-tags { display: flex; flex-wrap: wrap; gap: .35rem; }
+.evidence-references button[aria-pressed='true'] { border-color: var(--border-focus); }
+.evidence-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .75rem;
+  background: var(--bg-app);
+  padding: 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 0;
+}
+.evidence-source h3 { font-size: 1rem; }
+.evidence-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: .75rem;
+  margin: 0;
+  padding: .65rem 0;
+  border-block: 1px solid var(--border-subtle);
+}
+.evidence-facts dt, .evidence-facts small { color: var(--text-secondary); font-size: .75rem; }
+.evidence-facts dd { margin: .15rem 0 0; font-size: .88rem; }
+.evidence-drawer .evidence-passage blockquote {
+  margin: .4rem 0 0;
+  border-inline-start: 2px solid var(--border-focus);
+  border-radius: var(--radius-sm);
+  line-height: 1.6;
+}
+.evidence-source-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: .45rem; justify-items: start; }
+.evidence-source-actions > div { min-width: 0; width: 100%; }
+.evidence-technical { color: var(--text-secondary); font-size: .85rem; }
+.evidence-technical summary { cursor: pointer; }
+.evidence-technical p { margin-top: .35rem; }

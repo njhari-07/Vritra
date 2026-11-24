@@ -21,6 +21,7 @@ from pdfplumber.utils.exceptions import MalformedPDFException
 from .judgments import judgment_records
 from .limits import ResourceLimitError
 from .nlp import raw_text_records
+from .places import document_place_records
 
 MAX_PIXELS = 20_000_000
 MAX_PAGES = 20
@@ -28,6 +29,10 @@ MAX_CHARACTERS = 100_000
 _slots = BoundedSemaphore(1)
 # PDFium's native rendering and text APIs require process-wide serialization.
 pdfium_lock = Lock()
+
+
+class DocumentOcrTimeout(ResourceLimitError):
+    pass
 
 
 def render_pdf_image(page, **options):
@@ -51,7 +56,7 @@ def _ocr(image, deadline, *, words=False):
         raise FileNotFoundError('Local OCR is unavailable. Install Tesseract and its English language data.')
     remaining = deadline - monotonic()
     if remaining <= 0:
-        raise ResourceLimitError('Document OCR exceeded its time budget')
+        raise DocumentOcrTimeout('Document OCR exceeded its time budget')
     with BytesIO() as pixels:
         image.save(pixels, format='PNG')
         try:
@@ -61,7 +66,7 @@ def _ocr(image, deadline, *, words=False):
                 capture_output=True, timeout=min(20, remaining), env=environment,
             )
         except subprocess.TimeoutExpired as exc:
-            raise ResourceLimitError('Document OCR exceeded its time budget') from exc
+            raise DocumentOcrTimeout('Document OCR exceeded its time budget') from exc
     if result.returncode:
         raise FileNotFoundError('Local OCR could not run. Check Tesseract and its English language data.')
     return result.stdout.decode('utf-8')
@@ -229,7 +234,7 @@ def render_source_page(content, page_number):
             if content.startswith(b'%PDF-'):
                 try:
                     with pdfplumber.open(BytesIO(content)) as pdf:
-                        if not 1 <= page_number <= min(len(pdf.pages), MAX_PAGES):
+                        if not 1 <= page_number <= len(pdf.pages):
                             raise ValueError('Source page is unavailable')
                         page = pdf.pages[page_number - 1]
                         width, height = page.width * 120 / 72, page.height * 120 / 72
@@ -281,6 +286,34 @@ def replay_document_pages(content, deadline, wanted):
         _slots.release()
 
 
+DOCUMENT_FIELDS = {
+    False: {
+        'FIR number': r'F\.?\s*I\.?\s*R\.?\s*(?:No\.?|Number)',
+        'Police station': r'Police\s+Station',
+        'Report date': r'(?:FIR\s+)?Date',
+        'Sections cited': r'(?:Acts\s*[&/]\s*)?Sections?',
+    },
+    True: {
+        'Case number': r'Case\s*(?:No\.?|Number)',
+        'Decision date': r'(?:Date of (?:Judgment|Decision)|(?:Judgment|Decision) Date)',
+        'Court': r'Court',
+        'Sections cited': r'(?:Acts\s*[&/]\s*)?Sections?',
+    },
+}
+
+
+def printed_document_fields(text, judgment):
+    for label, field in DOCUMENT_FIELDS[judgment].items():
+        label_prefix = r'(?:^|\|[ \t]*)' if label == 'Report date' else r'^'
+        for match in re.finditer(label_prefix + rf'[ \t]*(?:{field})[ \t]*[:：][ \t]*([^\n\r|]{{1,250}})', text, re.I | re.M):
+            value = match[1].rstrip()
+            if not value:
+                continue
+            yield {'locator': {'char_start': match.start(1), 'char_end': match.start(1) + len(value),
+                                'text_label': label}, 'passage': value, 'method': 'printed-document-field',
+                   'confidence': None, 'confidence_basis': 'Label and value printed together in the document', 'facts': []}
+
+
 def extract_document(content, *, judgment):
     """Return source extension and review-only records; never publish partial extraction."""
     if not _slots.acquire(blocking=False):
@@ -308,6 +341,8 @@ def extract_document(content, *, judgment):
                                 'text_label': 'Source excerpt'},
                     'passage': text[:360], 'method': 'document-page-excerpt', 'facts': [],
                 })
+            page_records.extend(printed_document_fields(text, judgment))
+            page_records.extend(list(document_place_records(text, page_records)))
             for record in page_records:
                 locator = record['locator']
                 locator.update(page=number, text_method=method, page_text_sha256=digest,

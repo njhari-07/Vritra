@@ -81,7 +81,7 @@ def json_row(row):
     return json.dumps(row, ensure_ascii=False)
 
 
-def narrative_records(content, nlp=None):
+def narrative_records(content, nlp=None, *, case_id=None):
     import json
     from .nlp import extract
     docs = json.loads(content)
@@ -89,12 +89,11 @@ def narrative_records(content, nlp=None):
     for ordinal, doc in enumerate(docs,1):
         base = {"document_ordinal":ordinal}
         try:
-            required = ["document_id","case_id","filed_date","text"]
-            if any(k not in doc for k in required): raise ValueError("missing_required_document_field")
-            if "synthetic" in doc and doc["synthetic"] not in (True, False): raise ValueError("invalid_synthetic_value")
+            required = ["document_id","case_id","filed_date","text","synthetic"]
+            if any(k not in doc for k in required) or doc["synthetic"] is not True: raise ValueError("invalid_synthetic_document")
             datetime.strptime(doc["filed_date"],"%Y-%m-%d")
             if not isinstance(doc["text"],str) or not doc["text"].strip(): raise ValueError("empty_text")
-            yield from extract(doc,base,nlp)
+            yield from extract({**doc, 'case_id': case_id} if case_id is not None else doc, base, nlp)
         except (ValueError,TypeError) as e:
             yield {"locator":base,"error":str(e)}
 
@@ -105,7 +104,7 @@ CDR_HEADER = ['record_id','caller_person_id','callee_person_id','start_time','du
 def cdr_records(content):
     for r, loc in csv_rows(content,CDR_HEADER):
         try:
-            if len(r)!=6 or any(not x for x in r) or r[5].strip().lower() not in ("true","1","false","0"): raise ValueError("invalid_cdr")
+            if len(r)!=6 or any(not x for x in r) or r[5]!="true": raise ValueError("invalid_cdr")
             dt=datetime.fromisoformat(r[3])
             if dt.tzinfo is None or int(r[4])<0: raise ValueError("invalid_cdr_time_or_duration")
             a,b="person:demo:"+r[1],"person:demo:"+r[2]
@@ -122,7 +121,7 @@ HISTORY_HEADER=['record_id','person_id','case_id','record_date','record_status',
 def history_records(content,case_id):
     for r,loc in csv_rows(content,HISTORY_HEADER):
         try:
-            if len(r)!=7 or any(not x for x in r) or r[6].strip().lower() not in ('true','1','false','0'):raise ValueError('invalid_history_record')
+            if len(r)!=7 or any(not x for x in r) or r[6].strip().lower() not in ('true','1'):raise ValueError('invalid_history_record')
             target_case=case_id or r[2]
             datetime.strptime(r[3],'%Y-%m-%d')
             pid='person:demo:'+r[1]

@@ -73,10 +73,10 @@ def build_case_1():
 
     # 3. Crime
     crimes = [
-        ["CR-VOF-501", "P501", cid, "2024-08-11", "Special Syndicate Warning", "Scotland Yard Special Branch Dossier on James Moriarty as master architect of London criminal underworld.", "false"],
-        ["CR-VOF-502", "P502", cid, "2025-01-20", "Active Charge-Sheet", "Vermissa Valley Grand Jury indictment for coal cartel extortion and armed intimidation.", "false"],
-        ["CR-VOF-503", "P503", cid, "2025-06-14", "Non-Bailable Warrant", "Arrest warrant issued for Ted Baldwin following armed assault and absconding bail.", "false"],
-        ["CR-VOF-504", "P501", cid, "2026-03-10", "Look Out Circular", "Border surveillance alert for confederates traveling between Southampton and Pennsylvania.", "false"],
+        ["CR-VOF-501", "P501", cid, "2024-08-11", "Special Syndicate Warning", "Scotland Yard Special Branch Dossier on James Moriarty as master architect of London criminal underworld.", "true"],
+        ["CR-VOF-502", "P502", cid, "2025-01-20", "Active Charge-Sheet", "Vermissa Valley Grand Jury indictment for coal cartel extortion and armed intimidation.", "true"],
+        ["CR-VOF-503", "P503", cid, "2025-06-14", "Non-Bailable Warrant", "Arrest warrant issued for Ted Baldwin following armed assault and absconding bail.", "true"],
+        ["CR-VOF-504", "P501", cid, "2026-03-10", "Look Out Circular", "Border surveillance alert for confederates traveling between Southampton and Pennsylvania.", "true"],
     ]
     with open(cdir / "crime_records.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["record_id","person_id","case_id","record_date","record_status","text","synthetic"]); w.writerows(crimes)
@@ -133,9 +133,9 @@ def build_case_2():
 
     # 3. Crimes
     crimes = [
-        ["CR-RHL-511", "P511", cid, "2023-04-18", "Prior Felony Conviction", "Scotland Yard record for royal jewel theft and forging of railway bonds.", "false"],
-        ["CR-RHL-512", "P511", cid, "2024-09-02", "Look Out Circular", "Special surveillance notice for John Clay operating under alias Vincent Spaulding.", "false"],
-        ["CR-RHL-513", "P512", cid, "2025-03-12", "Active Charge-Sheet", "City of London Police charge-sheet for leasing commercial suites under fraudulent charters.", "false"],
+        ["CR-RHL-511", "P511", cid, "2023-04-18", "Prior Felony Conviction", "Scotland Yard record for royal jewel theft and forging of railway bonds.", "true"],
+        ["CR-RHL-512", "P511", cid, "2024-09-02", "Look Out Circular", "Special surveillance notice for John Clay operating under alias Vincent Spaulding.", "true"],
+        ["CR-RHL-513", "P512", cid, "2025-03-12", "Active Charge-Sheet", "City of London Police charge-sheet for leasing commercial suites under fraudulent charters.", "true"],
     ]
     with open(cdir / "crime_records.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["record_id","person_id","case_id","record_date","record_status","text","synthetic"]); w.writerows(crimes)
@@ -191,9 +191,9 @@ def build_case_3():
 
     # 3. Crimes
     crimes = [
-        ["CR-CMC-521", "P521", cid, "2024-05-14", "Fraudulent Bankruptcy Indictment", "Tribunal de Commerce arrest warrant for embezzling hospital charity trust reserves.", "false"],
-        ["CR-CMC-522", "P521", cid, "2024-11-20", "Look Out Circular", "Border surveillance issued at Italian and Austrian frontier checkpoints.", "false"],
-        ["CR-CMC-523", "P523", cid, "2025-02-18", "Judicial Corruption Inquiry", "High Court of Justice investigation into unlawful imprisonment of political prisoners.", "false"],
+        ["CR-CMC-521", "P521", cid, "2024-05-14", "Fraudulent Bankruptcy Indictment", "Tribunal de Commerce arrest warrant for embezzling hospital charity trust reserves.", "true"],
+        ["CR-CMC-522", "P521", cid, "2024-11-20", "Look Out Circular", "Border surveillance issued at Italian and Austrian frontier checkpoints.", "true"],
+        ["CR-CMC-523", "P523", cid, "2025-02-18", "Judicial Corruption Inquiry", "High Court of Justice investigation into unlawful imprisonment of political prisoners.", "true"],
     ]
     with open(cdir / "crime_records.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["record_id","person_id","case_id","record_date","record_status","text","synthetic"]); w.writerows(crimes)
@@ -248,8 +248,8 @@ def build_case_4():
 
     # 3. Crimes
     crimes = [
-        ["CR-BC-531", "P531", cid, "2024-02-19", "Arrest Warrant", "Bow Street Warrant for defaulting on £40,000 illegal hazard betting syndicates.", "false"],
-        ["CR-BC-532", "P531", cid, "2024-07-28", "Look Out Circular", "Scotland Yard surveillance circular at Dover and Folkestone Continental packet ports.", "false"],
+        ["CR-BC-531", "P531", cid, "2024-02-19", "Arrest Warrant", "Bow Street Warrant for defaulting on £40,000 illegal hazard betting syndicates.", "true"],
+        ["CR-BC-532", "P531", cid, "2024-07-28", "Look Out Circular", "Scotland Yard surveillance circular at Dover and Folkestone Continental packet ports.", "true"],
     ]
     with open(cdir / "crime_records.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["record_id","person_id","case_id","record_date","record_status","text","synthetic"]); w.writerows(crimes)
@@ -304,8 +304,8 @@ def build_case_5():
 
     # 3. Crimes
     crimes = [
-        ["CR-BCB-541", "P541", cid, "2024-11-05", "Active Charge-Sheet", "Metropolitan Police charge for aggravated grand larceny of registered crown jewel.", "false"],
-        ["CR-BCB-542", "P543", cid, "2021-06-12", "Prior Acquittal Record", "Prior bar conviction record used by Ryder to falsely shift suspicion onto Horner.", "false"],
+        ["CR-BCB-541", "P541", cid, "2024-11-05", "Active Charge-Sheet", "Metropolitan Police charge for aggravated grand larceny of registered crown jewel.", "true"],
+        ["CR-BCB-542", "P543", cid, "2021-06-12", "Prior Acquittal Record", "Prior bar conviction record used by Ryder to falsely shift suspicion onto Horner.", "true"],
     ]
     with open(cdir / "crime_records.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(["record_id","person_id","case_id","record_date","record_status","text","synthetic"]); w.writerows(crimes)

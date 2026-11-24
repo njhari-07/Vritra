@@ -8,12 +8,9 @@ from .ingestion import node,edge,account
 
 @lru_cache(maxsize=1)
 def pipeline():
-    try:
-        import spacy
-        return spacy.load("en_core_web_sm")
-    except Exception:
-        # Fall back gracefully when spaCy binary extensions are blocked by OS Application Control
-        return None
+    import spacy
+    # Fail visibly rather than silently replacing pretrained extraction with an empty model.
+    return spacy.load("en_core_web_sm")
 
 
 def extract(doc,base,nlp=None):
@@ -50,17 +47,15 @@ def extract(doc,base,nlp=None):
         end=m.end()+len(tail)
         yield dict(locator={**base,"char_start":m.start(),"char_end":end,"line_start":text.count('\n',0,m.start())+1},passage=text[m.start():end],method="explicit-identifier-rule",facts=facts)
     model=nlp if nlp is not None else pipeline()
-    if model is not None:
-        for ent in model(text).ents:
-            kind={"PERSON":"Person","ORG":"Organization","GPE":"Location","LOC":"Location"}.get(ent.label_)
-            if not kind or any(a<=ent.start_char<b for a,b,_ in declared):continue
-            entity="mention:"+uid(did,ent.start_char,ent.end_char)
-            yield dict(locator={**base,"char_start":ent.start_char,"char_end":ent.end_char},passage=ent.text,
-                       method="spacy-en_core_web_sm",confidence=0.7,
-                       extraction_version='model:'+model.meta.get('version','unknown')+';adapter:0.1',
-                       confidence_basis='uncalibrated review-priority heuristic; model does not expose span probabilities',
-                       facts=[node(kind,entity,ent.text),edge("MENTIONED_IN",entity,did,str(ent.start_char))])
-
+    for ent in model(text).ents:
+        kind={"PERSON":"Person","ORG":"Organization","GPE":"Location","LOC":"Location"}.get(ent.label_)
+        if not kind or any(a<=ent.start_char<b for a,b,_ in declared):continue
+        entity="mention:"+uid(did,ent.start_char,ent.end_char)
+        yield dict(locator={**base,"char_start":ent.start_char,"char_end":ent.end_char},passage=ent.text,
+                   method="spacy-en_core_web_sm",confidence=0.7,
+                   extraction_version='model:'+model.meta.get('version','unknown')+';adapter:0.1',
+                   confidence_basis='uncalibrated review-priority heuristic; model does not expose span probabilities',
+                   facts=[node(kind,entity,ent.text),edge("MENTIONED_IN",entity,did,str(ent.start_char))])
 
 
 def raw_text_records(text):
@@ -95,5 +90,9 @@ def candidates(nodes,threshold=0.9):
             score=SequenceMatcher(None,' '.join(a['label'].casefold().split()),' '.join(b['label'].casefold().split())).ratio()
             if score>=threshold:
                 left,right=sorted([a['id'],b['id']])
-                result.append(dict(id=uid(left,right),left=left,right=right,left_name=a['label'],right_name=b['label'],similarity=score,state="pending",evidence_ids=sorted(set(a['evidence_ids']+b['evidence_ids']))))
+                first, second = (a, b) if left == a['id'] else (b, a)
+                result.append(dict(id=uid(left,right),left=left,right=right,left_name=first['label'],right_name=second['label'],
+                                   similarity=score,state="pending",left_evidence_ids=first['evidence_ids'],
+                                   right_evidence_ids=second['evidence_ids'],
+                                   evidence_ids=sorted(set(a['evidence_ids']+b['evidence_ids']))))
     return sorted(result,key=lambda x:(-x['similarity'],x['id']))
