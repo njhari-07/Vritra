@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../lib/utils';
 
 /* Findings review (Findings design): leads grouped by technique, each one a self-contained card.
    Every line of text is built from fields the backend returned. Nothing is inferred or invented.

@@ -1,12 +1,17 @@
-import { fileURLToPath, URL } from 'node:url';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [tailwindcss()],
   resolve: {
     // `@/` points at src/, as shadcn/ui expects (see jsconfig.json and components.json).
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) }
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
   },
   server: {
     proxy: {
