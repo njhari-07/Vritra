@@ -122,6 +122,61 @@ def test_money_flow_groups_legacy_statement_narrations_with_distinct_review_labe
         assert not client.get('/api/graph?case=CASE', headers=headers).json()['edges']
 
 
+def test_money_flow_bidirectional_counterparty_and_displayed_parties(tmp_path, monkeypatch):
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['CASE'])}
+    workbook = Workbook()
+    workbook.active.append(['Date', 'Narration', 'Debit', 'Credit', 'Sender', 'Receiver', 'Status'])
+    workbook.active.append(['15/06/2001', f'UPI / DR / {1:012d} / Example\nVendor / TEST / review83 / UPI',
+                            '8.00', None, '-', '-', 'SUCCESS'])
+    workbook.active.append(['14/06/2001', f'UPI/CR/{2:012d}/Example Vendor/TEST/review83/UPI',
+                            None, '4.00', '-', '-', 'SUCCESS'])
+    workbook.active.append(['13/06/2001', f'UPI/DR/{3:012d}/Example Vendor/TEST/review83/UPI',
+                            '2.00', None, '-', '-', 'FAILED'])
+    workbook.active.append(['12/06/2001', f'UPI/CR/{4:012d}/Wrong Direction/TEST/other91/UPI',
+                            '5.00', None, '-', '-', 'SUCCESS'])
+    workbook.active.append(['11/06/2001', f'UPI/DR/{5:012d}/Ignore Narration/TEST/other92/UPI',
+                            '1.00', None, 'Example Printed Sender', 'fixture@upi (Printed Recipient)', 'SUCCESS'])
+    content = BytesIO()
+    workbook.save(content)
+
+    with TestClient(create_app(store)) as client:
+        imported = client.post('/api/import/bank-statement/CASE', headers=headers,
+                               data={'currency': 'INR', 'date_order': 'DMY'},
+                               files={'file': ('example.xlsx', content.getvalue())})
+        assert imported.status_code == 200, imported.text
+        path = f"/api/quality/{imported.json()['import_id']}/money-flow"
+        flow = client.get(path, headers=headers, params={'status': 'all'}).json()
+        assert client.put(path + '/owner', headers=headers, json={
+            'account': flow['account'], 'name': 'Example Owner',
+        }).status_code == 200
+        assert flow['totals'] == {'credit': '4.00', 'debit': '14.00', 'net': '-10.00'}
+        party, = [item for item in flow['counterparties'] if item['kind'] == 'narration']
+        assert party['count'] == 3
+        assert party['directions'] == {'credit': {'count': 1, 'total': '4.00'}, 'debit': {'count': 1, 'total': '8.00'}}
+        selected = client.get(path, headers=headers, params={'status': 'all', 'party': party['key']}).json()
+        assert selected['row_count'] == 3
+        debit, credit, failed = selected['rows']
+        owner = {'label': 'Example Owner', 'basis': 'owner'}
+        narrator = {'label': 'Example Vendor', 'basis': 'narration'}
+        assert debit['parties'] == {'sender': owner, 'receiver': narrator}
+        assert credit['parties'] == {'sender': narrator, 'receiver': owner}
+        assert failed['payment_status'] == 'failed'
+        assert debit['fields']['receiver'] == '-'
+        unresolved, printed = flow['rows'][-2:]
+        assert unresolved['parties']['receiver'] is None
+        assert printed['parties'] == {
+            'sender': {'label': 'Example Printed Sender', 'basis': 'statement'},
+            'receiver': {'label': 'fixture@upi (Printed Recipient)', 'basis': 'statement'},
+        }
+        only_credit = client.get(path, headers=headers, params={
+            'party': party['key'], 'direction': 'credit',
+        }).json()
+        assert only_credit['row_count'] == 1
+        assert set(only_credit['counterparties'][0]['directions']) == {'credit'}
+
+
 def test_payment_export_flows_use_completed_directions_and_scoped_saved_rows(tmp_path, monkeypatch):
     from maha.ingestion import node
 

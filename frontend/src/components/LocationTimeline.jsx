@@ -1,13 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { caseTimeInput, caseTimeWithOffset, formatCaseTime } from '../case-time';
 import './location-timeline.css';
 
 const SOURCES = { gps: 'GPS', cell_tower: 'Cell tower', photo_exif: 'Claimed photo EXIF', manual: 'Manual entry' };
 const metresPerDegree = 111195;
-const utcInput = time => new Date(time).toISOString().slice(0, 19);
-const utcLabel = time => Number.isFinite(new Date(time).getTime()) ? utcInput(time).replace('T', ' ') + ' UTC' : String(time);
 const label = row => `${row.subject_id} · ${SOURCES[row.source_kind]}`;
 const inWindow = (time, start, end) => time >= start && time <= end;
+const startOfCaseDay = value => Date.parse(caseTimeWithOffset(`${value.slice(0, 10)}T00:00:00`));
+
+function eventOverlaps(event, start, end) {
+  const last = event.end_time || event.event_time;
+  if (event.time_basis === 'date_only') {
+    return startOfCaseDay(event.event_time) <= end && startOfCaseDay(last) + 86_400_000 > start;
+  }
+  return Date.parse(event.event_time) <= end && Date.parse(last) >= start;
+}
 
 function CoordinateGrid({ rows, visible, selected, onSource }) {
   const { positions, extent } = useMemo(() => {
@@ -54,8 +62,8 @@ function ProximitySearch({ api, path, subjects, from, to, onSource }) {
   async function check(event) {
     event.preventDefault();
     const params = new URLSearchParams(new FormData(event.currentTarget));
-    params.set('start', from + 'Z');
-    params.set('end', to + 'Z');
+    params.set('start', caseTimeWithOffset(from));
+    params.set('end', caseTimeWithOffset(to));
     setPending(true);
     setError('');
     setMatches(null);
@@ -127,20 +135,20 @@ export default function LocationTimeline({ events, caseId, api, onEvent, onEvide
   }, [api, path, caseId, revision]);
 
   const subjects = [...new Set(rows.map(row => row.subject_id))].sort();
-  const times = [...new Set([...rows.map(row => Date.parse(row.event_time)), ...events.flatMap(event => [
-    Date.parse(event.event_time), Date.parse(event.end_time),
-  ])])].filter(Number.isFinite).sort((a, b) => a - b);
-  const start = from || (times.length ? utcInput(times[0]) : '');
-  const end = to || (times.length ? utcInput(Math.ceil(times.at(-1) / 1000) * 1000) : '');
-  const startMs = from ? Date.parse(from + 'Z') : -Infinity;
-  const endMs = to ? Date.parse(to + 'Z') : Infinity;
+  const times = [...new Set([...rows.map(row => Date.parse(row.event_time)), ...events.flatMap(event =>
+    event.time_basis === 'date_only' ? [] : [Date.parse(event.event_time), Date.parse(event.end_time)])])]
+    .filter(Number.isFinite).sort((a, b) => a - b);
+  const start = from || (times.length ? caseTimeInput(times[0]) : '');
+  const end = to || (times.length ? caseTimeInput(Math.ceil(times.at(-1) / 1000) * 1000) : '');
+  const startMs = from ? Date.parse(caseTimeWithOffset(from)) : -Infinity;
+  const endMs = to ? Date.parse(caseTimeWithOffset(to)) : Infinity;
   const steps = times.filter(time => inWindow(time, startMs, endMs));
   const index = Math.min(cursor ?? steps.length - 1, steps.length - 1);
   const through = cursor === null ? endMs : (steps[index] ?? endMs);
   const visible = rows.filter(row => inWindow(Date.parse(row.event_time), startMs, through) && (!subject || row.subject_id === subject));
   const visibleById = new Map(visible.map(row => [row.id, row]));
   const timeline = !rows.length ? events : events.filter(event => event.kind === 'location' ? visibleById.has(event.observation_id)
-    : Date.parse(event.event_time) <= through && Date.parse(event.end_time || event.event_time) >= startMs);
+    : eventOverlaps(event, startMs, through));
 
   async function save(body, demo = false) {
     setSaving(true);
@@ -178,8 +186,8 @@ export default function LocationTimeline({ events, caseId, api, onEvent, onEvide
   }
 
   return <div className="location-timeline">
-    <section className="panel" aria-labelledby="location-heading">
-      <div className="panel-head"><h2 id="location-heading">Location observations</h2></div>
+    <details className="panel synthetic-location-tools">
+      <summary>Synthetic coordinate tools</summary>
       <p>Synthetic observations only. Circles show reported accuracy areas. Subject labels come from the source.</p>
       <form className="location-upload" onSubmit={event => {
         event.preventDefault();
@@ -200,21 +208,22 @@ export default function LocationTimeline({ events, caseId, api, onEvent, onEvide
           <label>Subject<select value={subject} onChange={event => setSubject(event.target.value)}>
             <option value="">All subjects</option>{subjects.map(item => <option key={item}>{item}</option>)}
           </select></label>
-          <label>From (UTC)<input type="datetime-local" step="1" value={from} onChange={event => { setFrom(event.target.value); setCursor(null); }} /></label>
-          <label>Through (UTC)<input type="datetime-local" step="1" value={to} onChange={event => { setTo(event.target.value); setCursor(null); }} /></label>
+          <label>From (IST)<input type="datetime-local" step="1" value={from} onChange={event => { setFrom(event.target.value); setCursor(null); }} /></label>
+          <label>Through (IST)<input type="datetime-local" step="1" value={to} onChange={event => { setTo(event.target.value); setCursor(null); }} /></label>
         </div>
-        {steps.length > 0 && <label className="location-slider">Timeline cursor · {utcLabel(steps[index])}
+        {steps.length > 0 && <label className="location-slider">Timeline cursor · {formatCaseTime(steps[index])}
           <input type="range" min="0" max={steps.length - 1} value={index} onChange={event => setCursor(Number(event.target.value))} />
         </label>}
         <CoordinateGrid rows={rows} visible={visible} selected={selected} onSource={open} />
         <ProximitySearch key={`${start}/${end}/${revision}`} api={api} path={path} subjects={subjects} from={start} to={end} onSource={open} />
       </>}
-    </section>
-    <section className="panel" aria-label="Recorded events">
+    </details>
+    <section className="panel" id="recorded-event-list" aria-label="Recorded events">
       <div className="panel-head"><h2>Recorded events ({caseId})</h2></div>
       {timeline.map(event => <article className="lead" key={event.id} data-selected={selected === event.id}>
-        <time>{event.time_basis === 'date_only' ? event.event_time.slice(0, 10) : utcLabel(event.event_time)}
-          {event.end_time && ` – ${utcLabel(event.end_time)}`}</time>
+        <span><time dateTime={event.event_time}>{formatCaseTime(event.event_time, event.time_basis)}</time>
+          {event.end_time && <> – <time dateTime={event.end_time}>{formatCaseTime(event.end_time, event.time_basis)}</time></>}
+        </span>
         <strong>{event.label}{event.end_time && <small className="location-range">Reported time range</small>}</strong>
         <button className="quiet" onClick={() => {
           if (event.kind === 'location' && visibleById.has(event.observation_id)) open(visibleById.get(event.observation_id));

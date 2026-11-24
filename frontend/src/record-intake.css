@@ -86,7 +86,7 @@
 }
 .record-fields { margin-bottom: 14px; }
 .record-intake label { min-width: 0; font-size: 13px; font-weight: 600; }
-.record-fields label:not(.record-check),
+.record-fields label,
 .record-upload form > label { display: grid; gap: 6px; }
 .record-intake :is(select, input:not([type='checkbox'], [type='file']), textarea) {
   width: 100%;
@@ -95,14 +95,6 @@
   font-size: 14px;
 }
 .record-intake :is(select, input:not([type='checkbox'], [type='file'])) { min-height: 40px; }
-.record-fields .record-check { color: var(--text-secondary); font-weight: 500; }
-.record-check input[type='checkbox'] {
-  min-height: 0;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--record-accent);
-}
 .record-text-meta { margin-bottom: 6px; }
 .record-text-meta > span { color: var(--text-muted); font-size: 12px; }
 .record-intake .record-textarea { padding: 12px 14px; line-height: 1.55; }

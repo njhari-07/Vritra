@@ -4,6 +4,7 @@ import csv
 from io import BytesIO, StringIO
 import json
 import re
+from time import monotonic
 from zipfile import BadZipFile, ZipFile
 from xml.etree.ElementTree import ParseError
 
@@ -12,6 +13,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.xml.functions import fromstring
 import pdfplumber
+from PIL import Image, ImageOps
 from pdfminer.pdfdocument import PDFPasswordIncorrect
 from pdfminer.pdfparser import PDFSyntaxError
 from pdfplumber.utils import cluster_objects
@@ -19,7 +21,10 @@ from pdfplumber.utils.exceptions import MalformedPDFException, PdfminerException
 
 from .ingestion import CDR_HEADER, HISTORY_HEADER, IBM_HEADER
 from .limits import ResourceLimitError
-from .statements import BIFF_SIGNATURES, IMAGE_EXTENSIONS, MAX_COLUMNS, OLE_SIGNATURE, header_map, positioned_header
+from .document_intake import MAX_PIXELS, render_pdf_image
+from .report_intake import raster_words, report_header
+from .statements import (BIFF_SIGNATURES, IMAGE_EXTENSIONS, MAX_COLUMNS, OLE_SIGNATURE, header_map,
+                         positioned_header, positioned_header_groups, ruled_word_cells)
 
 
 def profile(file_type, kind=None):
@@ -33,6 +38,30 @@ def text_kind(text, suffix):
     if re.search(r'\b(?:IN THE (?:HIGH COURT|COURT OF)|SUPREME COURT OF INDIA)\b', normalized):
         return 'judgment-document' if suffix == 'document' else 'judgment'
     return None
+
+
+def table_kind(cells):
+    for kind in ('calls', 'wires'):
+        if report_header(cells, kind):
+            return kind + '-document'
+    return 'bank-statement' if header_map([cell or '' for cell in cells]) else None
+
+
+def scan_kind(image):
+    if image.width * image.height > MAX_PIXELS:
+        return None
+    try:
+        words, vertical, horizontal = raster_words(image, monotonic() + 12)
+    except (OSError, ValueError, ResourceLimitError):
+        return None
+    for _, cells, _ in list(ruled_word_cells(words, vertical, horizontal))[:20]:
+        if kind := table_kind(cells):
+            return kind
+    lines = cluster_objects(words, 'top', 3)
+    for line in lines[:32]:
+        if kind := table_kind([group[0] for group in positioned_header_groups(line)]):
+            return kind
+    return text_kind(' '.join(word['text'] for word in words[:1000]), 'document')
 
 
 def profile_pdf(content):
@@ -52,9 +81,13 @@ def profile_pdf(content):
                     if not text.strip():
                         continue
                     for table in page.find_tables():
-                        if any(header_map([cell or '' for cell in row]) for row in table.extract()[:12]):
-                            return profile('Digital PDF', 'bank-statement')
+                        for row in table.extract()[:12]:
+                            if kind := table_kind(row):
+                                return profile('Digital PDF', kind)
                     lines = cluster_objects(page.extract_words(), 'top', 3)[:32]
+                    for line in lines:
+                        if kind := table_kind([group[0] for group in positioned_header_groups(line)]):
+                            return profile('Digital PDF', kind)
                     if any(positioned_header(lines, index, 6) for index in range(len(lines))):
                         return profile('Digital PDF', 'bank-statement')
                 finally:
@@ -62,7 +95,15 @@ def profile_pdf(content):
             if not samples:
                 raise ValueError('The PDF contains no pages')
             if not any(samples):
-                return profile('Scanned PDF' if has_images else 'PDF without readable text')
+                kind = None
+                first = pdf.pages[0]
+                if has_images and first.width * first.height * (180 / 72) ** 2 <= MAX_PIXELS:
+                    try:
+                        with render_pdf_image(first, resolution=180, antialias=True).original as image:
+                            kind = scan_kind(image)
+                    finally:
+                        first.close()
+                return profile('Scanned PDF' if has_images else 'PDF without readable text', kind)
             return profile('Digital PDF' if all(samples) else 'Mixed PDF', text_kind(' '.join(samples), 'document'))
     except PDFPasswordIncorrect:
         return profile('Password-protected PDF')
@@ -106,6 +147,13 @@ def inspect_intake(content):
     if content.startswith((OLE_SIGNATURE, *BIFF_SIGNATURES)):
         return profile('Legacy or password-protected Excel workbook')
     if any(content.startswith(signature) for signature in IMAGE_EXTENSIONS):
+        try:
+            with Image.open(BytesIO(content), formats=['JPEG', 'PNG']) as image:
+                if image.width * image.height <= MAX_PIXELS:
+                    with ImageOps.exif_transpose(image).convert('RGB') as rotated:
+                        return profile('Scanned image', scan_kind(rotated))
+        except OSError:
+            pass
         return profile('Scanned image')
     text = content[:32_768].decode('utf-8-sig', errors='replace')
     if not text.strip() or '\x00' in text:

@@ -1,7 +1,7 @@
 import React, { useId, useRef, useState } from 'react';
 import { IntakeIcon } from './RecordIntakeModes';
 
-export default function RecordFilePicker({ accept, label, name, required, onPick, onClear }) {
+export default function RecordFilePicker({ accept, label, name, required, disabled, onPick, onClear }) {
   const input = useRef(null);
   const hint = useId();
   const [dragging, setDragging] = useState(false);
@@ -36,13 +36,13 @@ export default function RecordFilePicker({ accept, label, name, required, onPick
         <span id={hint} className="record-upload-hint">
           {name ? 'Browse or drop one file · Up to 25 MiB' : 'Browse or drop one file'}
         </span>
-        <input ref={input} type="file" accept={accept} name={name} required={required}
+        <input ref={input} type="file" accept={accept} name={name} required={required} disabled={disabled}
           aria-label={label} aria-describedby={hint} onChange={changeFile} />
       </label>
       {fileName && (
         <div className="record-file-selection tw:mt-2 tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-2">
           <span className="tw:min-w-0 tw:truncate" title={fileName} role="status">{fileName}</span>
-          {name && <button type="button" className="record-secondary" onClick={clearFile}>Remove</button>}
+          {name && <button type="button" className="record-secondary" onClick={clearFile} disabled={disabled}>Remove</button>}
         </div>
       )}
     </div>

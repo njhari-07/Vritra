@@ -81,7 +81,7 @@ def json_row(row):
     return json.dumps(row, ensure_ascii=False)
 
 
-def narrative_records(content, nlp=None):
+def narrative_records(content, nlp=None, *, case_id=None):
     import json
     from .nlp import extract
     docs = json.loads(content)
@@ -93,7 +93,7 @@ def narrative_records(content, nlp=None):
             if any(k not in doc for k in required) or doc["synthetic"] is not True: raise ValueError("invalid_synthetic_document")
             datetime.strptime(doc["filed_date"],"%Y-%m-%d")
             if not isinstance(doc["text"],str) or not doc["text"].strip(): raise ValueError("empty_text")
-            yield from extract(doc,base,nlp)
+            yield from extract({**doc, 'case_id': case_id} if case_id is not None else doc, base, nlp)
         except (ValueError,TypeError) as e:
             yield {"locator":base,"error":str(e)}
 

@@ -17,6 +17,9 @@ maha = "maha.cli:main"
 [tool.setuptools.packages.find]
 include = ["maha*"]
 
+[tool.setuptools.package-data]
+maha = ["india_places.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

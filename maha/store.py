@@ -4,7 +4,7 @@ import json
 import os
 import secrets
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from .limits import ResourceLimitError, budget, check
@@ -89,6 +89,14 @@ class Store:
             CREATE TRIGGER IF NOT EXISTS judgment_review_retention AFTER DELETE ON evidence
             BEGIN
                 DELETE FROM judgment_reviews WHERE evidence_id=OLD.id;
+            END;
+            CREATE TABLE IF NOT EXISTS place_reviews (
+                evidence_id TEXT PRIMARY KEY,
+                data TEXT NOT NULL
+            );
+            CREATE TRIGGER IF NOT EXISTS place_review_retention AFTER DELETE ON evidence
+            BEGIN
+                DELETE FROM place_reviews WHERE evidence_id=OLD.id;
             END;
             CREATE INDEX IF NOT EXISTS evidence_case ON evidence(case_id);
             CREATE INDEX IF NOT EXISTS imports_case ON imports(case_id);
@@ -237,6 +245,21 @@ class Store:
         data.pop("review_excerpt", None)
         return data
 
+    def evidence_references(self, ids, cases):
+        if not ids or not cases:
+            return {}
+        with self.db() as db:
+            rows = db.execute("""
+                SELECT id, json_extract(data, '$.source') AS source,
+                  json_extract(data, '$.source_locator.page') AS page,
+                  json_extract(data, '$.source_locator.document_ordinal') AS document,
+                  json_extract(data, '$.event_time') AS event_time,
+                  json_extract(data, '$.ingestion_time') AS ingestion_time
+                FROM evidence WHERE id IN (SELECT value FROM json_each(?))
+                  AND case_id IN (SELECT value FROM json_each(?))
+            """, (json.dumps(sorted(ids)), json.dumps(cases))).fetchall()
+        return {row['id']: dict(row) for row in rows}
+
     def graph_revision(self, db=None):
         if db is None:
             with self.db() as connection:
@@ -274,13 +297,15 @@ class Store:
 
     def import_records(self, name, content, dataset, synthetic, case_id, records, actor="cli", *,
                        statement_settings=None, statement_scope=None, statement_name=None, recovery_batch=None,
-                       statement_destination='graph'):
+                       statement_destination='graph', report_review=None, _connection=None):
         """Records are validated by an adapter; one atomic transaction per source import."""
         source_id = hashlib.sha256(content).hexdigest()
         import_id = secrets.token_hex(16)
         evidence_only = statement_settings is not None and statement_destination == 'evidence'
         summary = {"rows_seen": 0, "accepted_new": 0, "recognized_repeat": 0, "quarantined": 0, "issues": []}
-        with self.db() as db:
+        if report_review is not None:
+            summary['report_review'] = report_review
+        with (self.db() if _connection is None else nullcontext(_connection)) as db:
             db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (case_id,))
             if statement_settings is not None:
                 if recovery_batch is not None:
@@ -341,7 +366,7 @@ class Store:
                           dataset_id=dataset, synthetic=synthetic, case_ids=[case_id], passage=record.get("passage", ""))
                 if 'review_excerpt' in record:
                     ev['review_excerpt'] = record['review_excerpt']
-                for field in ('location_observation', 'location_context'):
+                for field in ('location_observation', 'location_context', 'call_observation', 'report_fields', 'document_place'):
                     if field in record:
                         ev[field] = record[field]
                 if 'statement_correction' in record:
@@ -371,6 +396,57 @@ class Store:
             db.execute("INSERT INTO imports VALUES(?,?,?,?,?)", (import_id, source_id, case_id, now(), json.dumps(summary)))
             db.execute("INSERT INTO audit(at,actor,action,case_id,object_id) VALUES(?,?,?,?,?)", (now(), actor, "import", case_id, import_id))
         return {"import_id": import_id, "source_id": source_id, **summary}
+
+    def import_reviewed_report(self, case_id, name, content, source_id, dataset, records, review, actor):
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            for item in db.execute('SELECT summary FROM imports WHERE source_id=? AND case_id=?',
+                                   (source_id, case_id)):
+                prior = json.loads(item['summary']).get('report_review')
+                if (prior and set(prior.get('accepted_pages', prior['pages'])).intersection(review['accepted_pages'])
+                        and prior['digest'] != review['digest']):
+                    raise ImportSettingsConflict('These pages already have a saved review. Choose a non-overlapping page range.')
+            result = self.import_records(name, content, dataset, False, case_id, records, actor,
+                                         report_review=review, _connection=db)
+            if dataset == 'wire-report':
+                self._require_graph_room(db, case_id, 'Choose a smaller page range.')
+            else:
+                count = db.execute("""SELECT count(*) FROM evidence WHERE case_id=? AND source_id=?
+                    AND json_extract(data, '$.dataset_id')='call-report'""", (case_id, source_id)).fetchone()[0]
+                check(count, 'CALL_REPORT_ROWS', 5000)
+            return result
+
+    def report_evidence(self, import_id, cases, kind, dataset, limit_name):
+        with self.db() as db:
+            batch = db.execute('SELECT case_id,source_id,summary FROM imports WHERE id=?', (import_id,)).fetchone()
+            if not batch or batch['case_id'] not in cases or json.loads(batch['summary']).get('report_review', {}).get('kind') != kind:
+                raise KeyError(import_id)
+            rows = db.execute("""SELECT data FROM evidence WHERE case_id=? AND source_id=?
+                AND json_extract(data, '$.dataset_id')=? ORDER BY rowid LIMIT ?""",
+                              (batch['case_id'], batch['source_id'], dataset, budget(limit_name, 5000) + 1)).fetchall()
+        check(len(rows), limit_name, 5000)
+        return batch['case_id'], [json.loads(row[0]) for row in rows]
+
+    def import_sample_package(self, case_id, sources, actor, dataset):
+        source_ids = [hashlib.sha256(content).hexdigest() for _, content, _, _ in sources]
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            mixed = db.execute("""
+                SELECT 1 FROM evidence WHERE case_id=?
+                  AND (source_id NOT IN (SELECT value FROM json_each(?))
+                       OR json_extract(data, '$.synthetic') IS NOT 1)
+                LIMIT 1
+            """, (case_id, json.dumps(source_ids))).fetchone()
+            if mixed:
+                raise ImportSettingsConflict('Choose an empty case to load a different sample dataset.')
+            results = [
+                self.import_records(name, content, kind, True, case_id, records, actor, _connection=db)
+                for name, content, kind, records in sources
+            ]
+            self._require_graph_room(db, case_id, 'Create an empty case or check the configured graph limits.')
+            db.execute("INSERT INTO audit(at,actor,action,case_id,object_id) VALUES(?,?,?,?,?)",
+                       (now(), actor, 'seed_sample_evidence', case_id, dataset))
+            return results
 
     @staticmethod
     def _insert_fact(db, fact, evidence_id, case_id, dataset, synthetic):
@@ -414,6 +490,29 @@ class Store:
                 ORDER BY json_extract(data, '$.event_time'), id LIMIT ?""", (case_id, limit + 1)).fetchall()
         check(len(rows), 'LOCATION_RECORDS', 5000)
         return [json.loads(row[0]) for row in rows]
+
+    def document_places(self, case_id):
+        limit = budget('PLACE_MENTIONS', 5000)
+        with self.db() as db:
+            rows = db.execute("""
+                SELECT e.data, p.data AS review FROM evidence e LEFT JOIN place_reviews p ON p.evidence_id=e.id
+                WHERE e.case_id=? AND json_type(e.data, '$.document_place')='object' ORDER BY e.rowid DESC LIMIT ?
+            """, (case_id, limit + 1)).fetchall()
+        check(len(rows), 'PLACE_MENTIONS', 5000)
+        return [{**json.loads(row['data']), 'review': json.loads(row['review']) if row['review'] else None} for row in rows]
+
+    def save_place_review(self, case_id, evidence_id, review, actor):
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            exists = db.execute("""SELECT 1 FROM evidence WHERE id=? AND case_id=?
+                AND json_type(data, '$.document_place')='object'""", (evidence_id, case_id)).fetchone()
+            if not exists:
+                raise KeyError(evidence_id)
+            data = {**review, 'actor': actor, 'at': now()}
+            db.execute('INSERT OR REPLACE INTO place_reviews VALUES(?,?)', (evidence_id, json.dumps(data)))
+            db.execute("""INSERT INTO audit(at,actor,action,case_id,object_id) VALUES(?,?,?,?,?)""",
+                       (data['at'], actor, 'place_' + data['status'], case_id, evidence_id))
+        return data
 
     def check_statement_settings(self, db, source_id, case_id, settings, scope):
         accepted_pages = set((scope or {}).get('accepted_pages', []))

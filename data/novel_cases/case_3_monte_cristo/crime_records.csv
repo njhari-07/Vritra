@@ -1,4 +1,4 @@
 record_id,person_id,case_id,record_date,record_status,text,synthetic
-CR-CMC-521,P521,CASE-MONTE-CRISTO,2024-05-14,Fraudulent Bankruptcy Indictment,Tribunal de Commerce arrest warrant for embezzling hospital charity trust reserves.,false
-CR-CMC-522,P521,CASE-MONTE-CRISTO,2024-11-20,Look Out Circular,Border surveillance issued at Italian and Austrian frontier checkpoints.,false
-CR-CMC-523,P523,CASE-MONTE-CRISTO,2025-02-18,Judicial Corruption Inquiry,High Court of Justice investigation into unlawful imprisonment of political prisoners.,false
+CR-CMC-521,P521,CASE-MONTE-CRISTO,2024-05-14,Fraudulent Bankruptcy Indictment,Tribunal de Commerce arrest warrant for embezzling hospital charity trust reserves.,true
+CR-CMC-522,P521,CASE-MONTE-CRISTO,2024-11-20,Look Out Circular,Border surveillance issued at Italian and Austrian frontier checkpoints.,true
+CR-CMC-523,P523,CASE-MONTE-CRISTO,2025-02-18,Judicial Corruption Inquiry,High Court of Justice investigation into unlawful imprisonment of political prisoners.,true

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import StatementRowReview from './StatementRowReview';
@@ -6,9 +6,11 @@ import './statement-money-flow.css';
 
 const StatementFlowScene = lazy(() => import('./three/StatementFlowScene'));
 const PAGE_SIZE = 25;
-const MAX_VISIBLE_LINKS = 24;
-const DEFAULTS = { account: '', start: '', end: '', direction: 'all', status: 'completed' };
+const MAX_VISIBLE_PARTIES = 24;
+const DEFAULTS = { account: '', start: '', end: '', direction: 'all', status: 'all' };
 const money = (value, currency) => value + ' ' + currency;
+const DIRECTION = { credit: 'Incoming', debit: 'Outgoing' };
+const PARTY_BASIS = { narration: 'From narration · unconfirmed', owner: 'Confirmed owner', account: 'Statement account' };
 
 class SceneBoundary extends React.Component {
   state = { failed: false };
@@ -18,11 +20,15 @@ class SceneBoundary extends React.Component {
   }
 
   render() {
-    return this.state.failed ? <p>3D rendering is unavailable. Use the payment links and source rows below.</p> : this.props.children;
+    return this.state.failed ? <p>3D rendering is unavailable. Use the counterparty list and source rows below.</p> : this.props.children;
   }
 }
 
-function SourceTransaction({ row, api }) {
+function PartyCell({ party }) {
+  return <td>{party?.label || '—'}{PARTY_BASIS[party?.basis] && <small>{PARTY_BASIS[party.basis]}</small>}</td>;
+}
+
+function SourceTransaction({ row, api, selected, onSelect, onShowFlow }) {
   const [evidence, setEvidence] = useState(null);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
@@ -43,13 +49,19 @@ function SourceTransaction({ row, api }) {
   }
 
   return <>
-    <tr>
+    <tr className="statement-transaction" data-selected={selected} onClick={event => {
+      if (!event.target.closest('button, a, select, input')) onSelect(row);
+    }}>
       <td>{row.locator.sheet || `Page ${row.locator.page}`} · Row {row.locator.row}
         {row.locator.continuation && <small>Continued on page {row.locator.continuation.page}</small>}
       </td>
       <td>{row.event_time.slice(0, 10)}{row.printed_time && <small>{row.printed_time}</small>}</td>
-      <td>{row.fields.sender || '—'}</td><td>{row.fields.receiver || '—'}</td><td>{row.fields.narration || '—'}</td>
-      <td>{row.fields.reference || '—'}</td><td>{row.direction === 'credit' ? 'Incoming' : 'Outgoing'}</td>
+      <PartyCell party={row.parties.sender} /><PartyCell party={row.parties.receiver} /><td>{row.fields.narration || '—'}</td>
+      <td>{row.fields.reference || '—'}</td>
+      <td><span className="statement-flow-direction" data-direction={row.direction}>
+        {row.direction === 'credit' ? <ArrowDownLeft /> : <ArrowUpRight />}{DIRECTION[row.direction]}
+      </span><button type="button" className="statement-show-flow" aria-pressed={selected}
+        onClick={() => onShowFlow(row)}>{row.payment_status === 'completed' ? 'Show flow' : 'Select row'}</button></td>
       <td>{money(row.amount, row.currency)}</td><td>{row.fields.status || row.payment_status}</td>
       <td><Button type="button" size="sm" variant="outline" aria-expanded={open} onClick={toggle}>{open ? 'Close row' : 'Open source row'}</Button></td>
     </tr>
@@ -104,17 +116,19 @@ function AccountOwner({ account, people, api, path, onSaved }) {
 export default function StatementMoneyFlow({ importId, api, people, activeCase, darkMode, onBack, onOwnerSaved }) {
   const [filters, setFilters] = useState(DEFAULTS);
   const [result, setResult] = useState(null);
-  const [group, setGroup] = useState('');
-  const [linkSearch, setLinkSearch] = useState('');
+  const [party, setParty] = useState('');
+  const [partySearch, setPartySearch] = useState('');
+  const [transaction, setTransaction] = useState(null);
   const [offset, setOffset] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const scene = useRef(null);
   const path = `/quality/${encodeURIComponent(importId)}/money-flow`;
 
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams(Object.entries({ ...filters, group, offset }).filter(([, value]) => value !== ''));
+    const params = new URLSearchParams(Object.entries({ ...filters, party, offset }).filter(([, value]) => value !== ''));
     setLoading(true);
     setError('');
     api(`${path}?${params}`, { signal: controller.signal })
@@ -122,27 +136,38 @@ export default function StatementMoneyFlow({ importId, api, people, activeCase, 
       .catch(err => { if (!controller.signal.aborted) { setError(err.message); setResult(null); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [api, path, filters, group, offset, refresh]);
+  }, [api, path, filters, party, offset, refresh]);
 
   function updateFilter(event) {
     const { name, value } = event.target;
     setFilters(previous => ({ ...previous, [name]: value }));
-    setGroup('');
-    setLinkSearch('');
+    setParty('');
+    setPartySearch('');
+    setTransaction(null);
     setOffset(0);
   }
 
-  function selectGroup(key) {
-    setGroup(key);
+  function selectParty(key) {
+    setParty(key);
+    setTransaction(null);
     setOffset(0);
   }
 
   const account = result?.accounts.find(item => item.key === result.account);
-  const activeGroup = result?.groups.find(item => item.key === group);
-  const search = linkSearch.trim().toLowerCase();
-  const listed = result?.groups.filter(item => item.key === group || item.label.toLowerCase().includes(search)) || [];
-  const visible = result?.groups.slice(0, MAX_VISIBLE_LINKS) || [];
-  if (activeGroup && !visible.includes(activeGroup)) visible[visible.length - 1] = activeGroup;
+  const counterparties = result?.counterparties;
+  const selectedParty = counterparties?.find(item => item.key === party);
+  const target = transaction?.counterparty_key || party;
+  const visible = useMemo(() => {
+    const withMovement = counterparties?.filter(item => Object.keys(item.directions).length) || [];
+    const parties = withMovement.slice(0, MAX_VISIBLE_PARTIES);
+    const focused = withMovement.find(item => item.key === target);
+    if (focused && !parties.includes(focused)) parties[parties.length - 1] = focused;
+    return { parties, total: withMovement.length };
+  }, [counterparties, target]);
+  const search = partySearch.trim().toLowerCase();
+  const listed = counterparties?.filter(item => item.key === party || item.label.toLowerCase().includes(search)) || [];
+  const active = (!transaction || transaction.payment_status === 'completed') && visible.parties.some(item => item.key === target)
+    ? target : '';
 
   return (
     <main className={`statement-flow-page ${darkMode ? 'dark-theme' : ''}`}>
@@ -151,7 +176,7 @@ export default function StatementMoneyFlow({ importId, api, people, activeCase, 
         <div><h1>{result?.name || 'Statement money flow'}</h1><p>Financial transaction explorer{result?.case_id && ` · ${result.case_id}`}</p></div>
       </header>
       {loading && <p role="status">Loading saved transactions…</p>}
-      {error && <p role="alert" className="error">{error} <Button variant="outline" size="sm" onClick={() => { setFilters(DEFAULTS); setLinkSearch(''); selectGroup(''); setRefresh(value => value + 1); }}>Reset filters</Button></p>}
+      {error && <p role="alert" className="error">{error} <Button variant="outline" size="sm" onClick={() => { setFilters(DEFAULTS); setPartySearch(''); selectParty(''); setRefresh(value => value + 1); }}>Reset filters</Button></p>}
       {result && <>
         <section className="statement-flow-controls" aria-label="Filter transactions">
           <label>Account<select name="account" value={filters.account || result.account || ''} onChange={updateFilter}>
@@ -174,38 +199,54 @@ export default function StatementMoneyFlow({ importId, api, people, activeCase, 
           <div><dt><ArrowUpRight />Outgoing</dt><dd>{money(result.totals.debit, result.currency)}</dd></div>
           <div><dt><Banknote />Net movement</dt><dd>{money(result.totals.net, result.currency)}</dd></div>
         </dl>
-        <div className="statement-flow-scene" aria-label="3D graph of completed payments">
+        <div ref={scene} className="statement-flow-scene" aria-label="3D graph of completed payments">
           {account && <div className="statement-flow-account">{account.owner?.name || account.label}</div>}
-          {visible.length && account ? (
+          {visible.parties.length > 0 && account ? (
             <SceneBoundary>
               <Suspense fallback={<p role="status">Loading 3D view…</p>}>
-                <StatementFlowScene groups={visible} active={group} onSelect={selectGroup} />
+                <StatementFlowScene parties={visible.parties} active={active} direction={transaction?.direction} onSelect={selectParty} />
               </Suspense>
             </SceneBoundary>
           ) : <p>No completed payment links match these filters.</p>}
         </div>
         <section className="statement-flow-rows" aria-label="Transaction evidence">
-          <div className="statement-flow-legend"><span>Blue · Selected account</span><span>Green · Incoming</span><span>Amber · Outgoing</span>
-            <span>Diamonds · Printed UPI labels to review</span><span>Squares · Payment channels</span>
-            {result.groups.length > MAX_VISIBLE_LINKS && <span>{visible.length} of {result.groups.length} links displayed in 3D.</span>}
+          <div className="statement-flow-legend"><span data-color="account">Selected account</span><span data-color="credit">Incoming</span>
+            <span data-color="debit">Outgoing</span><span data-color="both">Both directions</span>
+            {visible.total > MAX_VISIBLE_PARTIES && <span>{visible.parties.length} of {visible.total} counterparties with completed payments shown in 3D.</span>}
           </div>
           <div className="statement-flow-link-controls">
-            {result.groups.length > 12 && <label>Search payment links
-              <input type="search" value={linkSearch} onChange={event => setLinkSearch(event.target.value)} />
+            {(counterparties?.length || 0) > 12 && <label>Search counterparties
+              <input type="search" value={partySearch} onChange={event => setPartySearch(event.target.value)} />
             </label>}
-            <label>Payment link<select value={group} onChange={event => selectGroup(event.target.value)}>
+            <label>Counterparty<select value={party} onChange={event => selectParty(event.target.value)}>
               <option value="">All matching transactions</option>
               {listed.map(item => <option key={item.key} value={item.key}>
-                {item.direction === 'credit' ? 'Incoming' : 'Outgoing'} · {item.label}{item.kind === 'narration' ? ' (review)' : ''} · {item.count} · {money(item.total, result.currency)}
+                {item.label}{item.kind === 'narration' ? ' (review)' : ''} · {item.count} {item.count === 1 ? 'transaction' : 'transactions'}
               </option>)}
             </select></label>
           </div>
-          {activeGroup && <p className="statement-flow-link-basis">{activeGroup.basis}</p>}
-          <h2>{result.row_count} {result.row_count === 1 ? 'transaction' : 'transactions'}</h2>
-          <div className="statement-preview-table" role="region" aria-label="Saved source rows" tabIndex={0}>
+          {selectedParty && <div className="statement-party-summary">
+            <p className="statement-flow-link-basis">{selectedParty.basis}</p>
+            {Object.entries(selectedParty.directions).map(([direction, totals]) => (
+              <span className="statement-flow-direction" data-direction={direction} key={direction}>
+                {DIRECTION[direction]} · {money(totals.total, result.currency)} · {totals.count}
+              </span>
+            ))}
+          </div>}
+          {transaction && <div className="statement-flow-selection" role="status">
+            <span>{DIRECTION[transaction.direction]} · {money(transaction.amount, result.currency)} · {transaction.counterparty_label}
+              {transaction.payment_status !== 'completed' && ` · ${transaction.payment_status}`}</span>
+            <button type="button" className="quiet" onClick={() => setTransaction(null)}>Clear highlight</button>
+          </div>}
+          <h2>{loading ? 'Loading transactions…' : `${result.row_count} ${result.row_count === 1 ? 'transaction' : 'transactions'}`}</h2>
+          <div className="statement-preview-table" role="region" aria-label="Saved source rows" tabIndex={0} aria-busy={loading}>
             <table>
               <thead><tr>{['Source', 'Date and printed time', 'Sender', 'Receiver', 'Details', 'Reference', 'Direction', 'Amount', 'Status', 'Evidence'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
-              <tbody>{result.rows.map(row => <SourceTransaction key={row.evidence_id} row={{ ...row, currency: result.currency }} api={api} />)}</tbody>
+              <tbody>{!loading && result.rows.map(row => <SourceTransaction key={row.evidence_id} row={{ ...row, currency: result.currency }} api={api}
+                selected={transaction?.evidence_id === row.evidence_id} onSelect={setTransaction} onShowFlow={item => {
+                  setTransaction(item);
+                  if (item.payment_status === 'completed') scene.current?.scrollIntoView({ block: 'nearest' });
+                }} />)}</tbody>
             </table>
           </div>
           {result.row_count > PAGE_SIZE && <div className="statement-ledger-paging">

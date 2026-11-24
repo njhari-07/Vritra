@@ -30,6 +30,9 @@ from .statement_flow import statement_flow, statement_flow_rows
 from .suspects import compute_suspect_dossiers
 from .ingestion import ibm_records, narrative_records, cdr_records, pdf_records, history_records, json_row
 from .intake_profile import inspect_intake
+from .report_intake import REPORT_DATASETS, report_rows
+from .places import document_place_records, lookup_place
+from .court_data import SAMPLE_PACKAGES, seed_case_evidence
 from .locations import (
     DATASET as LOCATION_DATASET, EARTH_RADIUS_M, LOCATION_HEADER, csv_bytes, location_records,
     pair_matches, place_matches, synthetic_location_scenario, timestamp, window_observations,
@@ -167,6 +170,12 @@ class Decision(BaseModel):
     reason: str=Field(min_length=3,max_length=2000)
 
 
+class PlaceReview(BaseModel):
+    status: Literal['confirmed', 'unresolved']
+    match_id: str | None = Field(None, max_length=96)
+    person_id: str | None = Field(None, max_length=160)
+
+
 class Review(BaseModel):
     state: Literal['relevant','not_relevant','insufficient_evidence']
     reason: str=Field(min_length=3,max_length=2000)
@@ -226,6 +235,22 @@ def create_app(store=None):
                 await run_in_threadpool(worker.join, 2)
 
     app=FastAPI(title='VRITRA · Evidence workspace',version='0.1.0',lifespan=lifespan)
+
+    @app.api_route('/api/map-assets/{asset}', methods=['GET', 'HEAD'], include_in_schema=False)
+    def map_asset(asset: str):
+        if asset in {'india.pmtiles', 'south-karnataka.pmtiles'}:
+            media_type = 'application/octet-stream'
+        elif re.fullmatch(r'noto-sans-\d{1,5}-\d{1,5}\.pbf', asset):
+            media_type = 'application/x-protobuf'
+        elif re.fullmatch(r'(light|dark)(@2x)?\.(json|png)', asset):
+            media_type = 'application/json' if asset.endswith('.json') else 'image/png'
+        else:
+            raise HTTPException(404, 'Map asset unavailable')
+        path = Path(__file__).resolve().parents[1] / 'data/private/map-assets' / asset
+        if not path.is_file():
+            raise HTTPException(404, 'Map asset unavailable')
+        return FileResponse(path, media_type=media_type, headers={'Cache-Control': 'public, max-age=3600'})
+
     @app.exception_handler(ResourceLimitError)
     async def resource_limit(request,exc):
         return JSONResponse(status_code=413,content={'detail':str(exc)})
@@ -345,13 +370,28 @@ def create_app(store=None):
         ledger.reset_case(case_id)
         ledger.audit(u['name'],'case_reset',case_id)
         return {'status':'reset','case_id':case_id,'case':ledger.case_status([case_id])[0]}
+    @app.get('/api/sample-datasets')
+    def sample_datasets(u=Depends(user)):
+        return [{'id': key, 'title': package[0]} for key, package in SAMPLE_PACKAGES.items()]
+
     @app.post('/api/cases/{case_id}/load-sample')
     def load_sample_endpoint(case_id:str,dataset:str|None='the_exchange',u=Depends(user)):
         if case_id not in u['cases']:raise HTTPException(403,'Case access required')
-        from .court_data import seed_case_evidence
-        res=seed_case_evidence(ledger,case_id,dataset=dataset or 'the_exchange')
-        ledger.audit(u['name'],'seed_sample_evidence',case_id)
-        return {'status':'seeded','case_id':case_id,'dataset':dataset or 'the_exchange','details':len(res),'case':ledger.case_status([case_id])[0]}
+        try:
+            dataset, title, imports = seed_case_evidence(ledger, case_id, dataset or 'the_exchange')
+        except KeyError:
+            raise HTTPException(404, 'Sample dataset unavailable') from None
+        except ImportSettingsConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except OSError:
+            raise HTTPException(503, 'The bundled sample files or local text model are unavailable.') from None
+        return {
+            'status': 'seeded', 'case_id': case_id, 'dataset': dataset, 'title': title, 'details': len(imports),
+            'accepted_new': sum(item['accepted_new'] for item in imports),
+            'recognized_repeat': sum(item['recognized_repeat'] for item in imports),
+            'quarantined': sum(item['quarantined'] for item in imports),
+            'case': ledger.case_status([case_id])[0],
+        }
     @app.post('/api/import/raw-text/{case_id}')
     def import_raw_text(case_id:str,body:RawTextImport,u=Depends(user)):
         if case_id not in u['cases']:raise HTTPException(403,'Case access required')
@@ -364,8 +404,12 @@ def create_app(store=None):
             else:
                 dataset, records = body.source_type, raw_text_records(body.text)
 
+            text_records = list(records)
+            document_text = body.text.removeprefix('\ufeff') if body.source_type == 'court_judgment' else body.text
+            text_records.extend(list(document_place_records(document_text, text_records)))
+
             def marked_records():
-                for record in records:
+                for record in text_records:
                     if body.synthetic:
                         record['locator']['synthetic_input'] = True
                     yield record
@@ -588,30 +632,45 @@ def create_app(store=None):
             del password
 
     @app.get('/api/candidates')
-    def get_candidates(u=Depends(user)):
-        raw=snapshot(ledger,u['cases'],resolve=False)
-        ds={d['id']:d for d in ledger.decisions(u['cases'])}
-        return [{**c,**({'state':ds[c['id']]['state'],'decision':ds[c['id']]} if c['id'] in ds else {})} for c in candidates(raw['nodes'])]
+    def get_candidates(case: str | None = None, u=Depends(user)):
+        scopes = case_scope(u, case)
+        raw = snapshot(ledger, scopes, resolve=False)
+        decisions = {item['id']: item for item in ledger.decisions(scopes)}
+        matches = candidates(raw['nodes'])
+        refs = ledger.evidence_references({eid for match in matches for eid in match['evidence_ids']}, scopes)
+        for match in matches:
+            legacy_id = match['id']
+            if case:
+                scoped_id = uid('case-resolution', case, legacy_id)
+                if scoped_id in decisions or legacy_id not in decisions:
+                    match['id'] = scoped_id
+            if decision := decisions.get(match['id']):
+                match.update(state=decision['state'], decision=decision)
+            match['left_sources'] = [refs[eid] for eid in match['left_evidence_ids'] if eid in refs]
+            match['right_sources'] = [refs[eid] for eid in match['right_evidence_ids'] if eid in refs]
+        return matches
     @app.post('/api/candidates/{cid}')
-    def decide(cid:str,body:Decision,u=Depends(user)):
-        options={c['id']:c for c in get_candidates(u)}
+    def decide(cid:str,body:Decision,case: str | None = None,u=Depends(user)):
+        allowed_cases = case_scope(u, case)
+        options={c['id']:c for c in get_candidates(case, u)}
         if cid not in options:raise HTTPException(404,'Candidate unavailable')
         c=options[cid]
         if body.state=='accepted':
             # Check entire existing components, so a name-only mention cannot bridge two IDs.
             import networkx as nx
-            raw=snapshot(ledger,u['cases'],resolve=False);components=nx.Graph()
+            raw=snapshot(ledger,allowed_cases,resolve=False);components=nx.Graph()
             components.add_nodes_from(n['id'] for n in raw['nodes'])
-            for decision in ledger.decisions(u['cases']):
+            for decision in ledger.decisions(allowed_cases):
                 if decision['state']=='accepted':components.add_edge(decision['left'],decision['right'])
             merged=nx.node_connected_component(components,c['left'])|nx.node_connected_component(components,c['right'])
             identifiers={a['attrs']['authoritative_id'] for n in raw['nodes'] if n['id'] in merged for a in n['assertions'] if a['attrs'].get('authoritative_id')}
             if len(identifiers)>1:raise HTTPException(409,'Conflicting authoritative identifiers; match blocked')
         if body.state=='revoked' and c['state']!='accepted':raise HTTPException(409,'Only an accepted match can be revoked')
         data={**c,'state':body.state,'reason':body.reason,'actor':u['name'],'at':now()}
-        data.pop('decision',None)
+        for field in ('decision', 'left_sources', 'right_sources'):
+            data.pop(field, None)
         # Evidence scopes, not all current user grants, determine visibility of this decision.
-        scopes=sorted({case for eid in c['evidence_ids'] for case in ledger.evidence(eid,u['cases'])['case_ids']})
+        scopes=sorted({case for eid in c['evidence_ids'] for case in ledger.evidence(eid,allowed_cases)['case_ids']})
         ledger.save_decision(data,scopes);return data
     @app.post('/api/leads/{lid}/review')
     def review(lid:str,body:Review,case:str|None=None,u=Depends(user)):
@@ -664,7 +723,8 @@ def create_app(store=None):
     def statement_money_flow(import_id: str, account: str | None = None, start: date | None = None, end: date | None = None,
                              direction: Literal['all', 'debit', 'credit'] = 'all',
                              status: Literal['all', 'completed', 'pending', 'failed', 'reversed', 'unknown'] = 'completed',
-                             group: str | None = None, offset: int = Query(default=0, ge=0, le=5000), u=Depends(user)):
+                             group: str | None = None, party: str | None = None,
+                             offset: int = Query(default=0, ge=0, le=5000), u=Depends(user)):
         if start and end and start > end:
             raise HTTPException(422, 'Start date must be on or before the end date')
         try:
@@ -674,7 +734,7 @@ def create_app(store=None):
             return {'case_id': case_id, **statement_flow(
                 summary.get('statement_name') or 'Bank statement', settings, owners, rows, account=account,
                 start=start.isoformat() if start else None, end=end.isoformat() if end else None,
-                direction=direction, status=status, group=group, offset=offset,
+                direction=direction, status=status, group=group, party=party, offset=offset,
             )}
         except KeyError:
             raise HTTPException(404, 'Statement or account unavailable') from None
@@ -813,6 +873,12 @@ def create_app(store=None):
                     continue
                 events.append({'id': row['id'], 'label': label, 'event_time': row['event_time'],
                                'time_basis': row['time_basis'], 'evidence_ids': [row['id']], **context})
+            for row in ledger.document_places(case):
+                if row['event_time'] and row['review'] and row['review']['status'] == 'confirmed':
+                    place = row['document_place']
+                    events.append({'id': row['id'], 'label': f"{place['subject'] or 'Reported place'} · {row['review']['match']['name']}",
+                                   'event_time': row['event_time'], 'time_basis': row['time_basis'],
+                                   'kind': 'document_place', 'evidence_ids': [row['id']]})
         def order(event):
             raw = event['event_time']
             try:
@@ -821,6 +887,51 @@ def create_app(store=None):
                 return True, 0, raw
             return False, value.replace(tzinfo=value.tzinfo or timezone.utc).timestamp(), raw
         return sorted(events, key=order)
+
+    def scoped_place(case_id, evidence_id, u):
+        try:
+            item = ledger.evidence(evidence_id, case_scope(u, case_id))
+            if 'document_place' not in item:
+                raise KeyError(evidence_id)
+            return item
+        except KeyError:
+            raise HTTPException(404, 'Place evidence unavailable.') from None
+
+    @app.get('/api/places/{case_id}')
+    def document_places(case_id: str, u=Depends(user)):
+        case_scope(u, case_id)
+        return JSONResponse([{
+            'id': row['id'], 'source': row['source'], 'locator': row['source_locator'], 'passage': row['passage'],
+            'place': row['document_place'], 'event_time': row['event_time'], 'review': row['review'],
+        } for row in ledger.document_places(case_id)], headers={'Cache-Control': 'no-store'})
+
+    @app.get('/api/places/{case_id}/{evidence_id}/matches')
+    def document_place_matches(case_id: str, evidence_id: str, u=Depends(user)):
+        item = scoped_place(case_id, evidence_id, u)
+        return JSONResponse(lookup_place(item['document_place']['text']), headers={'Cache-Control': 'no-store'})
+
+    @app.put('/api/places/{case_id}/{evidence_id}')
+    def review_place(case_id: str, evidence_id: str, body: PlaceReview, u=Depends(user)):
+        item = scoped_place(case_id, evidence_id, u)
+        match = person = None
+        if body.status == 'confirmed':
+            match = next((value for value in lookup_place(item['document_place']['text']) if value['id'] == body.match_id), None)
+            if not match:
+                raise HTTPException(422, 'Choose a current place match for this source.')
+            if body.person_id:
+                if item['document_place']['relation'] != 'reported_presence':
+                    raise HTTPException(422, 'A person link requires a reported presence in the source.')
+                person = next((node for node in graph(u, case_id)['nodes']
+                               if node['id'] == body.person_id and node['type'] == 'Person'), None)
+                if person is None:
+                    raise HTTPException(422, 'Choose a person from this case.')
+        try:
+            return ledger.save_place_review(case_id, evidence_id, {
+                'status': body.status, 'match': match,
+                'person': {'id': person['id'], 'label': person['label']} if person else None,
+            }, u['name'])
+        except KeyError:
+            raise HTTPException(404, 'Place evidence unavailable.') from None
     @app.get('/api/flow')
     def flow(start:str,end:str|None=None,u=Depends(user)):
         g=graph(u);ids={n['id'] for n in g['nodes']}
@@ -920,6 +1031,82 @@ def create_app(store=None):
             return await run_in_threadpool(inspect_intake, content)
         except (ValueError, csv.Error) as exc:
             raise HTTPException(422, str(exc)) from None
+
+    @app.post('/api/report-intake/{kind}/{case_id}')
+    async def import_report_document(kind: Literal['calls', 'wires'], case_id: str, request: Request,
+                                     first: int = Query(1, ge=1, le=10000),
+                                     last: int | None = Query(None, ge=1, le=10000),
+                                     offset: str = Query('', max_length=6),
+                                     date_order: Literal['DMY', 'MDY'] = 'DMY',
+                                     mapping: str = Query('', max_length=360),
+                                     dividers: str = Query('', max_length=250),
+                                     review_digest: str | None = Query(None, pattern=r'^[a-f0-9]{32}$'),
+                                     accept_partial: bool = False, u=Depends(user)):
+        case_scope(u, case_id)
+        content = await read_raw_upload(request)
+        try:
+            extension, source_id, rows, pages = await run_in_threadpool(
+                report_rows, content, kind, first, last, offset, date_order, mapping, dividers,
+            )
+            accepted = sum('error' not in row for row in rows)
+            rejected = len(rows) - accepted
+            review = {'kind': kind, 'pages': [page['page'] for page in pages],
+                      'accepted_pages': sorted({row['locator']['page'] for row in rows if 'error' not in row}),
+                      'digest': uid(case_id, source_id, kind, rows, pages)}
+            if review_digest is None:
+                return JSONResponse({'review_digest': review['digest'], 'accepted': accepted, 'rejected': rejected,
+                                     'pages': pages, 'rows': [{key: row[key] for key in ('locator', 'fields', 'error', 'event_time', 'time_basis') if key in row}
+                                                             for row in rows]}, headers={'Cache-Control': 'no-store'})
+            if review_digest != review['digest']:
+                raise HTTPException(409, 'The source or extraction changed. Preview the report again.')
+            if not accepted:
+                raise HTTPException(422, 'No valid rows are available to import.')
+            if (rejected or any(page['issue'] for page in pages)) and not accept_partial:
+                raise HTTPException(422, 'Review skipped pages and rows before saving valid records.')
+            for page in pages:
+                if page['issue']:
+                    rows.append({'locator': {'page': page['page']}, 'error': page['issue']})
+            title = 'Call detail report' if kind == 'calls' else 'Wire transfer report'
+            return await run_in_threadpool(ledger.import_reviewed_report, case_id, f'{title}.{extension}',
+                                           content, source_id, REPORT_DATASETS[kind], rows, review, u['name'])
+        except ImportSettingsConflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except FileNotFoundError:
+            raise HTTPException(503, 'The local OCR engine is unavailable.') from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.post('/api/report-intake/{case_id}/source-page/{page}')
+    async def report_review_page(case_id: str, page: int, request: Request, u=Depends(user)):
+        case_scope(u, case_id)
+        content = await read_raw_upload(request)
+        try:
+            image = await run_in_threadpool(render_source_page, content, page)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return Response(image, media_type='image/png', headers={'Cache-Control': 'no-store'})
+
+    @app.get('/api/quality/{import_id}/call-report')
+    def call_report(import_id: str, u=Depends(user)):
+        try:
+            case_id, evidence = ledger.report_evidence(import_id, u['cases'], 'calls', REPORT_DATASETS['calls'], 'CALL_REPORT_ROWS')
+        except KeyError:
+            raise HTTPException(404, 'Call report unavailable.') from None
+        calls = sorted(({'id': row['id'], 'time': row['event_time'], 'time_basis': row['time_basis'],
+                         'locator': row['source_locator'], **row['call_observation']} for row in evidence),
+                       key=lambda call: (call['time'], call['id']))
+        return JSONResponse({'case_id': case_id, 'calls': calls}, headers={'Cache-Control': 'no-store'})
+
+    @app.get('/api/quality/{import_id}/wire-report')
+    def wire_report(import_id: str, offset: int = Query(0, ge=0), u=Depends(user)):
+        try:
+            _, rows = ledger.report_evidence(import_id, u['cases'], 'wires', REPORT_DATASETS['wires'], 'GRAPH_FACTS')
+        except KeyError:
+            raise HTTPException(404, 'Wire report unavailable.') from None
+        return JSONResponse({'count': len(rows), 'rows': [
+            {'id': row['id'], 'locator': row['source_locator'], 'fields': row['report_fields']}
+            for row in rows[offset:offset + 25]
+        ]}, headers={'Cache-Control': 'no-store'})
 
     @app.post('/api/import/{kind}/{case_id}')
     async def upload(kind:Literal['ibm','narrative','cdr','pdf','history','judgment','judgment-document','fir-document'],case_id:str,request:Request,u=Depends(user)):

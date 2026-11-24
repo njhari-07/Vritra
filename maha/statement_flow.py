@@ -52,26 +52,31 @@ def narrated_upi_party(narration, direction):
         return None
     token = alias.casefold()
     if UPI_ID.fullmatch(token) and not MASK.search(token):
-        return uid('statement-counterparty', token), token, 'UPI identifier printed in narration', 'identifier'
+        return uid('statement-counterparty', token), token, 'UPI identifier printed in narration', 'identifier', label
     key = uid('statement-narration-label', label.casefold(), bank.casefold(), token)
-    return key, f'{label} · {bank.upper()}', 'Printed UPI label · identity unconfirmed', 'narration'
+    return key, f'{label} · {bank.upper()}', 'Printed UPI label · identity unconfirmed', 'narration', label
+
+
+def printed_party(value):
+    text = (value or '').strip()
+    return text if text not in {'', '-', '—', '–'} else None
 
 
 def counterparty(fields, direction):
     identity_field = 'sender' if direction == 'credit' else 'receiver'
-    label = ' '.join(fields.get(identity_field, '').split())
-    token = label.partition('(')[0].strip().casefold()
+    label = printed_party(fields.get(identity_field, ''))
+    token = (label or '').partition('(')[0].strip().casefold()
     if UPI_ID.fullmatch(token) and not MASK.search(token):
-        return uid('statement-counterparty', token), token, 'printed identifier', 'identifier'
-    if label and label not in {'-', '—'}:
-        return 'masked-counterparties', 'Unresolved payment parties', 'masked or incomplete identifiers', 'unresolved'
+        return uid('statement-counterparty', token), token, 'printed identifier', 'identifier', None
+    if label:
+        return 'masked-counterparties', 'Unresolved payment parties', 'masked or incomplete identifiers', 'unresolved', None
     narration = ' '.join(fields.get('narration', '').split())
     if party := narrated_upi_party(narration, direction):
         return party
     for marker, channel in PAYMENT_CHANNELS:
         if marker.search(narration):
-            return uid('statement-payment-channel', channel), channel, 'Payment channel from narration', 'channel'
-    return 'unknown-counterparties', 'Unknown counterparties', 'no party column or value', 'unresolved'
+            return uid('statement-payment-channel', channel), channel, 'Payment channel from narration', 'channel', None
+    return 'unknown-counterparties', 'Unknown counterparties', 'no party column or value', 'unresolved', None
 
 
 def statement_flow_rows(evidence, settings):
@@ -81,14 +86,28 @@ def statement_flow_rows(evidence, settings):
             continue
         direction, amount = next(iter(row['normalized'].items()))
         key, label = statement_account(row['fields'])
-        party, party_label, basis, party_kind = counterparty(row['fields'], direction)
+        party, party_label, basis, party_kind, narrated_name = counterparty(row['fields'], direction)
         yield {**row, 'account_key': key, 'account_label': label, 'direction': direction, 'amount': amount,
                'counterparty_key': party, 'counterparty_label': party_label, 'counterparty_basis': basis,
-               'counterparty_kind': party_kind}
+               'counterparty_kind': party_kind, 'narrated_name': narrated_name}
+
+
+def displayed_parties(row, account):
+    owner = account['owner']
+    sender, receiver = (printed_party(row['fields'].get(field, '')) for field in ('sender', 'receiver'))
+    parties = {field: {'label': label, 'basis': 'statement'} if label else None
+               for field, label in (('sender', sender), ('receiver', receiver))}
+    local, external = ('receiver', 'sender') if row['direction'] == 'credit' else ('sender', 'receiver')
+    if parties[local] is None:
+        parties[local] = {'label': owner['name'] if owner else account['label'],
+                          'basis': 'owner' if owner else 'account'}
+    if parties[external] is None and row['narrated_name']:
+        parties[external] = {'label': row['narrated_name'], 'basis': 'narration'}
+    return parties
 
 
 def statement_flow(source_name, settings, owners, rows, *, account=None, start=None, end=None,
-                   direction='all', status='completed', group=None, offset=0):
+                   direction='all', status='completed', group=None, party=None, offset=0):
     accounts = {}
     for row in rows:
         key = row['account_key']
@@ -100,6 +119,7 @@ def statement_flow(source_name, settings, owners, rows, *, account=None, start=N
     totals = {'credit': Decimal(0), 'debit': Decimal(0)}
     counts = Counter()
     groups = {}
+    counterparties = {}
     selected_rows = []
     for row in rows:
         day = row['event_time'][:10]
@@ -110,7 +130,13 @@ def statement_flow(source_name, settings, owners, rows, *, account=None, start=N
         counts[row['payment_status']] += 1
         if status != 'all' and row['payment_status'] != status:
             continue
-        group_key = uid(row['counterparty_key'], row['direction'])
+        party_key = row['counterparty_key']
+        group_key = uid(party_key, row['direction'])
+        entry = counterparties.setdefault(party_key, {
+            'key': party_key, 'label': row['counterparty_label'], 'basis': row['counterparty_basis'],
+            'kind': row['counterparty_kind'], 'count': 0, 'total': Decimal(0), 'directions': {},
+        })
+        entry['count'] += 1
         if row['payment_status'] == 'completed':
             key = row['direction']
             amount = Decimal(row['amount'])
@@ -121,11 +147,22 @@ def statement_flow(source_name, settings, owners, rows, *, account=None, start=N
                                                 'count': 0, 'total': Decimal(0)})
             link['count'] += 1
             link['total'] += amount
-        if group is None or (row['payment_status'] == 'completed' and group_key == group):
+            entry['directions'][key] = link
+            entry['total'] += amount
+        if (party is None or party_key == party) and (
+            group is None or (row['payment_status'] == 'completed' and group_key == group)
+        ):
             selected_rows.append(row)
     selected_rows.sort(key=lambda row: (row['event_time'][:10], row['printed_time'] or ''), reverse=True)
     ordered_groups = sorted(groups.values(), key=lambda item: (-item['total'], item['label'], item['direction']))
+    ordered_parties = sorted(counterparties.values(), key=lambda item: (-item['total'], item['label'], item['key']))
     return {'name': source_name, 'currency': settings['currency'], 'accounts': list(accounts.values()), 'account': account,
             'totals': {**{key: str(value) for key, value in totals.items()}, 'net': str(totals['credit'] - totals['debit'])},
             'status_counts': dict(counts), 'groups': [{**item, 'total': str(item['total'])} for item in ordered_groups],
-            'row_count': len(selected_rows), 'rows': selected_rows[offset:offset + 25]}
+            'counterparties': [{**item, 'total': str(item['total']), 'directions': {
+                key: {'count': link['count'], 'total': str(link['total'])} for key, link in item['directions'].items()
+            }} for item in ordered_parties],
+            'row_count': len(selected_rows), 'rows': [
+                {**row, 'parties': displayed_parties(row, accounts[row['account_key']])}
+                for row in selected_rows[offset:offset + 25]
+            ]}

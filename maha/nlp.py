@@ -90,5 +90,9 @@ def candidates(nodes,threshold=0.9):
             score=SequenceMatcher(None,' '.join(a['label'].casefold().split()),' '.join(b['label'].casefold().split())).ratio()
             if score>=threshold:
                 left,right=sorted([a['id'],b['id']])
-                result.append(dict(id=uid(left,right),left=left,right=right,left_name=a['label'],right_name=b['label'],similarity=score,state="pending",evidence_ids=sorted(set(a['evidence_ids']+b['evidence_ids']))))
+                first, second = (a, b) if left == a['id'] else (b, a)
+                result.append(dict(id=uid(left,right),left=left,right=right,left_name=first['label'],right_name=second['label'],
+                                   similarity=score,state="pending",left_evidence_ids=first['evidence_ids'],
+                                   right_evidence_ids=second['evidence_ids'],
+                                   evidence_ids=sorted(set(a['evidence_ids']+b['evidence_ids']))))
     return sorted(result,key=lambda x:(-x['similarity'],x['id']))
