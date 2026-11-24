@@ -1,0 +1,4 @@
+record_id,person_id,case_id,record_date,record_status,text,synthetic
+CR-RHL-511,P511,CASE-RED-LEAGUE,2023-04-18,Prior Felony Conviction,Scotland Yard record for royal jewel theft and forging of railway bonds.,false
+CR-RHL-512,P511,CASE-RED-LEAGUE,2024-09-02,Look Out Circular,Special surveillance notice for John Clay operating under alias Vincent Spaulding.,false
+CR-RHL-513,P512,CASE-RED-LEAGUE,2025-03-12,Active Charge-Sheet,City of London Police charge-sheet for leasing commercial suites under fraudulent charters.,false

@@ -26,7 +26,7 @@ def projection(graph):
     return undirected,directed
 
 
-def fund_flow(graph,start=None,end=None,max_hops=4,limit=50):
+def fund_flow(graph,start=None,end=None,max_hops=5,limit=50):
     by_source=defaultdict(list)
     for e in graph['edges']:
         if e['type']!='TRANSACTED_WITH':continue

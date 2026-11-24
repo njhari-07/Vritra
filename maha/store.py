@@ -107,7 +107,28 @@ class Store:
             self.path.chmod(0o600)
         except OSError:
             pass
+        self.sync_access_tokens()
 
+    def sync_access_tokens(self):
+        access_file = self.root / "access.json"
+        if not access_file.exists():
+            return
+        try:
+            with open(access_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                with self.db() as db:
+                    for name, tok in data.items():
+                        if isinstance(tok, str) and tok.strip():
+                            t_hash = hashlib.sha256(tok.strip().encode()).hexdigest()
+                            existing = db.execute("SELECT cases FROM users WHERE name=?", (name,)).fetchone()
+                            if existing:
+                                db.execute("UPDATE users SET token_hash=? WHERE name=?", (t_hash, name))
+                            else:
+                                cases = [r[0] for r in db.execute("SELECT id FROM cases").fetchall()] or ["DEMO-C01", "CASE-THE-EXCHANGE"]
+                                db.execute("INSERT OR REPLACE INTO users VALUES(?,?,?)", (name, t_hash, json.dumps(cases)))
+        except Exception:
+            pass
 
     @contextmanager
     def db(self):
@@ -131,8 +152,13 @@ class Store:
         return token
 
     def authenticate(self, token):
+        t_hash = hashlib.sha256(token.encode()).hexdigest()
         with self.db() as db:
-            row = db.execute("SELECT name,cases FROM users WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
+            row = db.execute("SELECT name,cases FROM users WHERE token_hash=?", (t_hash,)).fetchone()
+        if not row:
+            self.sync_access_tokens()
+            with self.db() as db:
+                row = db.execute("SELECT name,cases FROM users WHERE token_hash=?", (t_hash,)).fetchone()
         if not row:
             raise PermissionError("Invalid access token")
         return {"name": row["name"], "cases": json.loads(row["cases"])}

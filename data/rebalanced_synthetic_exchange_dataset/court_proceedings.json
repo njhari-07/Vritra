@@ -1,0 +1,9 @@
+[
+  {
+    "document_id": "CR-COURT-EXC-02",
+    "case_id": "CASE-THE-EXCHANGE",
+    "filed_date": "2026-06-20",
+    "synthetic": true,
+    "text": "FICTIONAL DATASET — NOT A REAL COURT RECORD\nSIMULATED FINANCIAL-CRIME CASE FILE: CASE-THE-EXCHANGE\n\nThis document is a synthetic evaluation artifact. It does not identify real people, events, organisations, or legal findings.\n\n1. The fictional investigation concerns repeated rapid transfers between ACC-0102, ACC-0104, ACC-0107 and intermediary accounts ACC-0201 through ACC-0206.\n2. Persons [ID:P602], [ID:P604], and [ID:P607] are fictional investigation subjects. Any inference is an allegation only, and no conviction or criminal finding is represented.\n3. Persons [ID:P601], [ID:P603], [ID:P605], [ID:P606], and [ID:P608] are included in the simulated record as witnesses, service users, or cleared review subjects.\n4. The data labels in financial_wires.csv identify a simulated analytical class. They are not legal determinations and must not be used to make decisions about real people.\n"
+  }
+]

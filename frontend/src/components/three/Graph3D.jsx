@@ -225,13 +225,43 @@ function LabelProjector({ items, els }) {
   return null;
 }
 
-/* Runs the physics, fits the camera once it settles, and flies to a focused node. */
-function Rig({ sim, nodes, flyTo, fitToken, autoRotate }) {
+/* Runs the physics, fits the camera once it settles, and exposes pan/zoom/reset controls. */
+function Rig({ sim, nodes, flyTo, fitToken, autoRotate, navRef, setFitToken }) {
   const { camera, controls } = useThree();
   const fit = useRef({ token: -1, frames: 0 });
   const aim = useRef(null);
 
   useEffect(() => { aim.current = flyTo ? { node: flyTo, frames: 50 } : null; }, [flyTo]);
+
+  // Expose precise pan, zoom, and reset functions to external UI and event handlers
+  useEffect(() => {
+    if (!navRef) return;
+    navRef.current = {
+      pan: (dx, dy) => {
+        if (!controls) return;
+        const right = new THREE.Vector3();
+        const up = new THREE.Vector3();
+        camera.matrix.extractBasis(right, up, new THREE.Vector3());
+        const dist = camera.position.distanceTo(controls.target);
+        const factor = Math.max(0.06, dist * 0.002);
+        const move = new THREE.Vector3()
+          .addScaledVector(right, dx * factor)
+          .addScaledVector(up, dy * factor);
+        camera.position.add(move);
+        controls.target.add(move);
+        controls.update();
+      },
+      zoom: (factor) => {
+        if (!controls) return;
+        const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor);
+        camera.position.copy(controls.target).add(offset);
+        controls.update();
+      },
+      reset: () => {
+        setFitToken(t => t + 1);
+      }
+    };
+  }, [camera, controls, navRef, setFitToken]);
 
   useFrame(() => {
     if (sim.alpha() > sim.alphaMin()) sim.tick();
@@ -268,10 +298,13 @@ export default function Graph3D({ graph, onSelect, height = '650px', focusId = n
   const [enabled, setEnabled] = useState(DEFAULT_TYPES);
   const [showFlow, setShowFlow] = useState(true);
   const [autoRotate, setAutoRotate] = useState(true);
+  const [dragMode, setDragMode] = useState('orbit'); // 'orbit' or 'pan'
   const [hovered, setHovered] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [fitToken, setFitToken] = useState(0);
   const labelEls = useRef({});
+  const containerRef = useRef(null);
+  const navRef = useRef({ pan: () => {}, zoom: () => {}, reset: () => {} });
 
   const typeCounts = useMemo(() => {
     const c = {};
@@ -307,6 +340,35 @@ export default function Graph3D({ graph, onSelect, height = '650px', focusId = n
   useEffect(() => { setSelectedId(null); setFitToken(t => t + 1); }, [nodes]);
   useEffect(() => { if (focusId && neighbors.has(focusId)) setSelectedId(focusId); }, [focusId, neighbors]);
 
+  // Keyboard navigation for directional scrolling and zoom
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onKeyDown = (e) => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '+', '=', '-', 'Home'].includes(e.key)) {
+        e.preventDefault();
+        if (e.key === 'ArrowLeft') navRef.current.pan?.(-45, 0);
+        else if (e.key === 'ArrowRight') navRef.current.pan?.(45, 0);
+        else if (e.key === 'ArrowUp') navRef.current.pan?.(0, 45);
+        else if (e.key === 'ArrowDown') navRef.current.pan?.(0, -45);
+        else if (e.key === '+' || e.key === '=') navRef.current.zoom?.(0.82);
+        else if (e.key === '-') navRef.current.zoom?.(1.22);
+        else if (e.key === 'Home') { setSelectedId(null); setFitToken(t => t + 1); }
+      }
+    };
+    el.addEventListener('keydown', onKeyDown);
+    return () => el.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Wheel handling: horizontal/vertical pan when in Pan mode, with Shift, or horizontal trackpad swipe
+  const handleWheel = (e) => {
+    if (dragMode === 'pan' || e.shiftKey || Math.abs(e.deltaX) > 6) {
+      e.preventDefault();
+      e.stopPropagation();
+      navRef.current.pan?.(e.deltaX * 0.75, -e.deltaY * 0.75);
+    }
+  };
+
   const selected = nodes.find(n => n.id === selectedId) || null;
   const focus = selected ? neighbors.get(selected.id) : null;
   const byType = useMemo(() => {
@@ -336,17 +398,32 @@ export default function Graph3D({ graph, onSelect, height = '650px', focusId = n
   if (!graph) return <div className="g3d-empty" style={{ height }}>Loading graph…</div>;
 
   return (
-    <div className="g3d" style={{ height }}>
+    <div
+      ref={containerRef}
+      className="g3d"
+      style={{ height }}
+      tabIndex={0}
+      onWheel={handleWheel}
+      onContextMenu={e => e.preventDefault()}
+    >
       <Canvas
         camera={{ position: [0, 0, 260], fov: 50, near: 0.5, far: 5000 }}
         dpr={[1, 1.75]}
         onPointerMissed={() => setSelectedId(null)}
-        style={{ cursor: hovered ? 'pointer' : 'grab' }}
+        style={{ cursor: hovered ? 'pointer' : dragMode === 'pan' ? 'move' : 'grab' }}
       >
         <color attach="background" args={['#0A1020']} />
         <fog attach="fog" args={['#0A1020', 300, 1400]} />
         <Stars radius={900} depth={200} count={2500} factor={18} fade speed={0.3} />
-        <Rig sim={sim} nodes={nodes} flyTo={selected} fitToken={fitToken} autoRotate={autoRotate} />
+        <Rig
+          sim={sim}
+          nodes={nodes}
+          flyTo={selected}
+          fitToken={fitToken}
+          autoRotate={autoRotate}
+          navRef={navRef}
+          setFitToken={setFitToken}
+        />
         <Edges links={links} focus={focus} />
         {showFlow && <FlowParticles links={links} focus={focus} />}
         {Object.entries(byType).map(([type, list]) => (
@@ -354,8 +431,22 @@ export default function Graph3D({ graph, onSelect, height = '650px', focusId = n
             hoveredId={hovered?.id} onHover={setHovered} onPick={pick} />
         ))}
         <LabelProjector items={labels} els={labelEls} />
-        <OrbitControls makeDefault enableDamping dampingFactor={0.08} autoRotateSpeed={0.5}
-          onStart={() => setAutoRotate(false)} />
+        <OrbitControls
+          makeDefault
+          enableDamping
+          dampingFactor={0.08}
+          enablePan={true}
+          screenSpacePanning={true}
+          panSpeed={1.5}
+          zoomSpeed={1.2}
+          autoRotateSpeed={0.5}
+          onStart={() => setAutoRotate(false)}
+          mouseButtons={{
+            LEFT: dragMode === 'pan' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN
+          }}
+        />
         <EffectComposer>
           <Bloom intensity={1.1} luminanceThreshold={0.3} luminanceSmoothing={0.25} mipmapBlur />
         </EffectComposer>
@@ -383,11 +474,116 @@ export default function Graph3D({ graph, onSelect, height = '650px', focusId = n
           ))}
         </div>
         <div className="g3d-actions">
-          <button type="button" className={`g3d-chip ${showFlow ? 'on' : ''}`} style={{ '--chip': '#7dd3fc' }}
-            aria-pressed={showFlow} onClick={() => setShowFlow(v => !v)}><i />Flow</button>
-          <button type="button" className={`g3d-chip ${autoRotate ? 'on' : ''}`} style={{ '--chip': '#a78bfa' }}
-            aria-pressed={autoRotate} onClick={() => setAutoRotate(v => !v)}><i />Orbit</button>
-          <button type="button" className="g3d-chip" onClick={() => { setSelectedId(null); setFitToken(t => t + 1); }}>Reset view</button>
+          <button
+            type="button"
+            className={`g3d-chip ${dragMode === 'orbit' ? 'on' : ''}`}
+            style={{ '--chip': '#60a5fa' }}
+            onClick={() => setDragMode('orbit')}
+            title="Orbit Mode: Left-drag to rotate in 3D, Right-drag to pan"
+          >
+            <i />Orbit
+          </button>
+          <button
+            type="button"
+            className={`g3d-chip ${dragMode === 'pan' ? 'on' : ''}`}
+            style={{ '--chip': '#38bdf8' }}
+            onClick={() => setDragMode('pan')}
+            title="Pan Mode: Left-drag & wheel to scroll horizontally and vertically"
+          >
+            <i />Pan / Scroll
+          </button>
+          <button
+            type="button"
+            className={`g3d-chip ${showFlow ? 'on' : ''}`}
+            style={{ '--chip': '#7dd3fc' }}
+            aria-pressed={showFlow}
+            onClick={() => setShowFlow(v => !v)}
+          >
+            <i />Flow
+          </button>
+          <button
+            type="button"
+            className={`g3d-chip ${autoRotate ? 'on' : ''}`}
+            style={{ '--chip': '#a78bfa' }}
+            aria-pressed={autoRotate}
+            onClick={() => setAutoRotate(v => !v)}
+          >
+            <i />Spin
+          </button>
+          <button
+            type="button"
+            className="g3d-chip"
+            onClick={() => { setSelectedId(null); setFitToken(t => t + 1); }}
+            title="Re-center and fit graph"
+          >
+            Reset view
+          </button>
+        </div>
+      </div>
+
+      {/* Floating On-Screen Directional Pan & Zoom D-Pad */}
+      <div className="g3d-navpad" aria-label="Camera navigation">
+        <div className="g3d-navpad-dpad">
+          <button
+            type="button"
+            className="g3d-nav-btn up"
+            title="Scroll Up (Pan Up) · Shortcut: ↑"
+            onClick={() => navRef.current.pan?.(0, 45)}
+          >
+            ▲
+          </button>
+          <div className="g3d-navpad-row">
+            <button
+              type="button"
+              className="g3d-nav-btn left"
+              title="Scroll Left (Pan Left) · Shortcut: ←"
+              onClick={() => navRef.current.pan?.(-45, 0)}
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              className="g3d-nav-btn center"
+              title="Center / Reset View · Shortcut: Home"
+              onClick={() => { setSelectedId(null); setFitToken(t => t + 1); }}
+            >
+              ⌖
+            </button>
+            <button
+              type="button"
+              className="g3d-nav-btn right"
+              title="Scroll Right (Pan Right) · Shortcut: →"
+              onClick={() => navRef.current.pan?.(45, 0)}
+            >
+              ▶
+            </button>
+          </div>
+          <button
+            type="button"
+            className="g3d-nav-btn down"
+            title="Scroll Down (Pan Down) · Shortcut: ↓"
+            onClick={() => navRef.current.pan?.(0, -45)}
+          >
+            ▼
+          </button>
+        </div>
+        <div className="g3d-navpad-zoom">
+          <button
+            type="button"
+            className="g3d-nav-btn zoom-in"
+            title="Zoom In · Shortcut: +"
+            onClick={() => navRef.current.zoom?.(0.8)}
+          >
+            ＋
+          </button>
+          <button
+            type="button"
+            className="g3d-nav-btn zoom-out"
+            title="Zoom Out · Shortcut: -"
+            onClick={() => navRef.current.zoom?.(1.25)}
+          >
+            －
+          </button>
         </div>
       </div>
 
@@ -401,7 +597,10 @@ export default function Graph3D({ graph, onSelect, height = '650px', focusId = n
       )}
 
       <div className="g3d-hint">
-        Drag to orbit · scroll to zoom · click an entity to focus it · {nodes.length} entities, {links.length} links
+        {dragMode === 'pan'
+          ? 'Pan Mode: Left-drag or wheel to scroll horizontal & vertical · ＋/－ or pinch to zoom'
+          : 'Orbit Mode: Left-drag to rotate · Right-drag, Shift-drag or D-pad to scroll H/V · Scroll to zoom'}
+        {' · Arrow keys: Scroll · click an entity to focus it'}
         {showFlow && ' · gold lights = money, teal = calls'}
         {loopCount > 0 && <> · <span className="g3d-loop-note">coral = money loop ({loopCount} transfers)</span></>}
       </div>

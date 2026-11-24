@@ -1,0 +1,10 @@
+FICTIONAL DATASET — NOT A REAL COMPLAINT
+SIMULATED MODEL-EVALUATION MEMORANDUM: CASE-THE-EXCHANGE
+
+This text accompanies a wholly synthetic, balanced transaction dataset. It must not be used as a factual allegation or as evidence about any person, community, or institution.
+
+The simulated inquiry tests whether a model can identify a rapid circular movement pattern across anonymized accounts. The positive class is an analytical scenario label only. It is not a finding of money laundering, fraud, or other wrongdoing.
+
+The dataset deliberately avoids nationality, ethnicity, religion, gender, and geographic identifiers. Routine transactions use the same dates, amount bands, currencies, and payment formats as the simulated pattern transfers, so those fields alone should not determine the label.
+
+Use grouped, account-disjoint train/test splits. Do not train or score a system on names, identities, or the narrative text. Review false-positive rates before using any model output, and do not use the dataset for decisions about real people.

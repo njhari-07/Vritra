@@ -1,0 +1,5 @@
+record_id,caller_person_id,callee_person_id,start_time,duration_seconds,synthetic
+CDR-VOF-501,P501,P502,2026-05-02T01:00:00+00:00,350,true
+CDR-VOF-502,P502,P503,2026-05-02T01:45:00+00:00,280,true
+CDR-VOF-503,P503,P501,2026-05-02T02:30:00+00:00,310,true
+CDR-VOF-504,P504,P505,2026-05-02T04:15:00+00:00,420,true

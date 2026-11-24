@@ -232,11 +232,11 @@ export default function App({ userSlot = null }) {
     }
   };
 
-  const handleLoadSample = async () => {
+  const handleLoadSample = async (dataset = 'the_exchange') => {
     setBusy(true);
     try {
-      await api(`/cases/${encodeURIComponent(activeCase)}/load-sample`, { method: 'POST' });
-      setNotice(`Sample Evidence Package loaded into ${activeCase} (3 Court Cases, 3 Crime FIRs, 3 CDR Calls, 3-hop Money Loop). Ready for ML Model Training!`);
+      await api(`/cases/${encodeURIComponent(activeCase)}/load-sample?dataset=${dataset}`, { method: 'POST' });
+      setNotice(`Sample Evidence Package (${dataset === 'the_exchange' ? "The Exchange: Libyan Hostage Syndicate" : "Standard"}) loaded into ${activeCase}. Ready for Case Analysis!`);
       await load(activeCase);
     } catch (e) {
       setError(e.message);
@@ -554,12 +554,15 @@ export default function App({ userSlot = null }) {
   );
 
   const dossierGroups = [
-    ['witness', 'Witnesses in source records', s => s.source_roles?.some(role => /\bwitness\b/i.test(role))],
-    ['other', 'Other people in case records', s => !s.source_roles?.some(role => /\bwitness\b/i.test(role))]
+    ['kingpin', '👑 Prime Syndicate Mastermind (Kingpin Detected)', s => s.is_kingpin],
+    ['syndicate', '⚡ Syndicate Operatives & Conduits', s => !s.is_kingpin && !s.is_witness && (s.kingpin_score >= 25 || (s.findings && s.findings.length > 0))],
+    ['witness', '👁️ Witnesses & Exonerated Persons', s => s.is_witness || s.source_roles?.some(role => /\bwitness\b/i.test(role))],
+    ['other', 'Connected Persons', s => !s.is_kingpin && !s.is_witness && (!s.findings || s.findings.length === 0) && (s.kingpin_score || 0) < 25]
   ];
   const filteredSuspects = suspects.filter(s =>
-    [s.name, s.role, s.authoritative_id].join(' ').toLowerCase().includes(search.toLowerCase())
+    [s.name, s.role, s.authoritative_id, s.syndicate_role].join(' ').toLowerCase().includes(search.toLowerCase())
   );
+  const detectedKingpin = suspects.find(s => s.is_kingpin);
 
   return (
     <div className={`shell ${darkMode ? 'dark-theme' : ''}`}>
@@ -917,6 +920,18 @@ export default function App({ userSlot = null }) {
                     >
                       Preset 3: Zenith Healthcare Syndicate (P101/P102/P103)
                     </button>
+                    <button
+                      type="button"
+                      className="btn-preset"
+                      onClick={() => {
+                        setRawSynthetic(true);
+                        setRawSourceType('court_judgment');
+                        setRawTitle(`SDNY-EXCHANGE-RANSOM-${activeCase}`);
+                        setRawText(`UNITED STATES DISTRICT COURT FOR THE SOUTHERN DISTRICT OF NEW YORK // SPECIAL GRAND JURY INDICTMENT.\nCRIMINAL DOCKET NO. CR-2026-9944: UNITED STATES OF AMERICA v. MUSTAFA AL-KHATIB, NOURA AL-FASSI, BAYKAN LANNAK ET AL.\n1. Person Mustafa Al-Khatib [ID:P601] is named as Prime Accused and head of the Saharan militant hostage syndicate in this case.\n2. Person Mustafa Al-Khatib [ID:P601] owns account [Bank:010; Account:ACC-KHATIB-LIBYA-TRIPOLI].\n3. Person Mustafa Al-Khatib [ID:P601] owns account [Bank:010; Account:ACC-SAHARA-HOLDINGS].\n4. Person Noura Al-Fassi [ID:P602] is named as Co-Accused and extortion negotiator in this case.\n5. Person Noura Al-Fassi [ID:P602] owns account [Bank:010; Account:ACC-NOURA-TANGIER].\n6. Person Baykan Lannak [ID:P603] is named as Co-Accused and construction kickback conduit in this case.\n7. Person Baykan Lannak [ID:P603] owns account [Bank:010; Account:ACC-LANNAK-ISTANBUL].\n8. Person Baykan Lannak [ID:P603] owns account [Bank:010; Account:ACC-LANNAK-GENEVA].\n9. Person Tariq Ben-Zaid [ID:P608] is named as Co-Accused and tactical desert convoy coordinator in this case.\n10. Person Tariq Ben-Zaid [ID:P608] owns account [Bank:010; Account:ACC-BENZAID-TRIPOLI].\n11. Person Mitchell Y McDeere [ID:P604] owns account [Bank:010; Account:ACC-SCULLY-ESCROW-NY] and is referenced in this case as a witness and designated ransom courier.\n12. Person Giovanna Sandroni [ID:P605] owns account [Bank:010; Account:ACC-GIOVANNA-ROME] and is referenced in this case as an abducted associate attorney and primary victim.\n13. Accused Mustafa Al-Khatib [ID:P601] demanded $100,000,000 USD ransom following the Great Gaddafi Bridge ambush, routing funds from Scully & Pershing New York escrow into Geneva Swiss accounts, Tangier, and Sahara Holdings.`);
+                      }}
+                    >
+                      Preset 4: The Exchange (Libyan Hostage Extortion)
+                    </button>
                   </div>
                   <div className="case-actions">
                     <label>Document type
@@ -1149,8 +1164,8 @@ export default function App({ userSlot = null }) {
                     </p>
                   </div>
                   <div className="train-box-actions">
-                    <button className="btn-sample" onClick={handleLoadSample} disabled={isTraining || busy}>
-                      1-Click Load Sample Package
+                    <button className="btn-sample" onClick={() => handleLoadSample('the_exchange')} disabled={isTraining || busy}>
+                      1-Click Load "The Exchange" Dataset
                     </button>
                     <button
                       className="btn-train-primary"
@@ -1178,6 +1193,79 @@ export default function App({ userSlot = null }) {
                     value={search} onChange={event => setSearch(event.target.value)} />
                   <button className="quiet" onClick={() => setShowTrainingStudio(true)}>Open case analysis</button>
                 </div>
+
+                {detectedKingpin && (
+                  <div className="kingpin-hero-card" style={{
+                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.04) 100%)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    borderRadius: '10px',
+                    padding: '16px 20px',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{
+                          background: '#ef4444',
+                          color: '#fff',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          letterSpacing: '0.04em',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase'
+                        }}>👑 KINGPIN IDENTIFIED</span>
+                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{detectedKingpin.name}</h3>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>({detectedKingpin.authoritative_id || detectedKingpin.id})</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Mastermind Risk Index:</span>
+                        <strong style={{ fontSize: '18px', color: '#ef4444' }}>{detectedKingpin.kingpin_score?.toFixed(1)} / 100</strong>
+                      </div>
+                    </div>
+
+                    <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)' }}>
+                      Hierarchy: <strong style={{ color: '#ef4444' }}>{detectedKingpin.syndicate_role}</strong>
+                      {detectedKingpin.role && <span> · Formally: {detectedKingpin.role}</span>}
+                    </p>
+
+                    {detectedKingpin.kingpin_breakdown && (
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '11px', marginTop: '2px' }}>
+                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
+                          ⚖️ Judicial: <strong>{detectedKingpin.kingpin_breakdown.judicial} / 30</strong>
+                        </span>
+                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
+                          💸 Laundering Cycles: <strong>{detectedKingpin.kingpin_breakdown.financial} / 30</strong>
+                        </span>
+                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
+                          🚨 Crime Warrants: <strong>{detectedKingpin.kingpin_breakdown.crime} / 25</strong>
+                        </span>
+                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
+                          📞 Telecom C2: <strong>{detectedKingpin.kingpin_breakdown.telecom} / 15</strong>
+                        </span>
+                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
+                          🌐 Centrality: <strong>{detectedKingpin.kingpin_breakdown.network} / 10</strong>
+                        </span>
+                      </div>
+                    )}
+
+                    {detectedKingpin.kingpin_reasons && detectedKingpin.kingpin_reasons.length > 0 && (
+                      <ul style={{ margin: '2px 0 0', paddingLeft: '18px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {detectedKingpin.kingpin_reasons.map((r, i) => (
+                          <li key={i} style={{ marginBottom: '2px' }}>{r}</li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <button className="quiet" onClick={() => selectItem(detectedKingpin)}>Review Kingpin Dossier ({detectedKingpin.evidence_ids?.length} sources) →</button>
+                      <button className="quiet" onClick={() => isolateInGraph(detectedKingpin)}>Focus Kingpin in Graph</button>
+                    </div>
+                  </div>
+                )}
+
                 {dossierGroups.map(([key, label, matches]) => {
                   const dossiers = filteredSuspects.filter(matches);
                   if (!dossiers.length) return null;
@@ -1186,8 +1274,33 @@ export default function App({ userSlot = null }) {
                       <div className="dossier-group-heading"><h3>{label}</h3><span>{dossiers.length}</span></div>
                       {dossiers.map(dossier => (
                         <article className="suspect-card" key={dossier.id}>
-                          <h3>{dossier.name}</h3>
-                          <p>{dossier.role || 'No explicit source role recorded'}</p>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {dossier.is_kingpin && (
+                                <span style={{ background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '3px' }}>
+                                  KINGPIN #1
+                                </span>
+                              )}
+                              {dossier.role_badge && !dossier.is_kingpin && (
+                                <span style={{
+                                  background: dossier.is_witness ? '#10b981' : dossier.role_badge === 'LIEUTENANT' ? '#f59e0b' : '#6b7280',
+                                  color: '#fff', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '3px'
+                                }}>
+                                  {dossier.role_badge}
+                                </span>
+                              )}
+                              <h3 style={{ margin: 0 }}>{dossier.name}</h3>
+                            </div>
+                            {dossier.kingpin_score !== undefined && (
+                              <span style={{ fontSize: '12px', fontWeight: 'bold', color: dossier.is_kingpin ? '#ef4444' : 'var(--text-secondary)' }}>
+                                Risk Index: {dossier.kingpin_score.toFixed(1)}/100
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ margin: '2px 0 8px', fontSize: '12px' }}>
+                            <strong>{dossier.syndicate_role || dossier.role || 'No explicit source role recorded'}</strong>
+                            {dossier.role && dossier.syndicate_role && <span style={{ color: 'var(--text-secondary)' }}> · Formally: {dossier.role}</span>}
+                          </p>
                           {['connection', 'flagged_behavior'].map(category => {
                             const findings = (dossier.findings || []).filter(finding => finding.category === category);
                             return findings.length > 0 && (

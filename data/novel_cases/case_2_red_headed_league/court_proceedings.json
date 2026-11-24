@@ -1,0 +1,9 @@
+[
+  {
+    "document_id": "CR-COURT-RHL-01",
+    "case_id": "CASE-RED-LEAGUE",
+    "filed_date": "2026-05-15",
+    "synthetic": true,
+    "text": "CENTRAL CRIMINAL COURT, OLD BAILEY // THE KING v. JOHN CLAY & DUNCAN ROSS.\n1. Person John Clay [ID:P511] is named as Prime Accused and mastermind of the subterranean vault intrusion.\n2. Person John Clay [ID:P511] owns account [Bank:010; Account:ACC-CLAY-DISGUISE].\n3. Charges framed under Section 420 (Cheating by Impersonation) and Section 457 (Lurking House-Trespass by Night for Bank Burglary).\n4. Person Duncan Ross [ID:P512] is named as Co-Accused and manager of the dummy Red-Headed League office.\n5. Person Duncan Ross [ID:P512] owns account [Bank:010; Account:ACC-REDLEAGUE-OFFICE].\n6. Person Jabez Wilson [ID:P513] is referenced in this case as an exploited pawn and witness.\n7. Person Jabez Wilson [ID:P513] owns account [Bank:010; Account:ACC-PAWNSHOP-WILSON].\n8. Person Peter Jones [ID:P515] is referenced as a witness and official police inspector of Scotland Yard.\n9. Prosecution proves Accused P511 wired $180,000 in French gold coins from Account 010 / ACC-CLAY-DISGUISE into Account 010 / ACC-REDLEAGUE-OFFICE to finance tunneling operations."
+  }
+]

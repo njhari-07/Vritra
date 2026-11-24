@@ -232,8 +232,43 @@ def seed_court_and_crime_data(store, ibm_path=None):
     return outputs
 
 
-def seed_case_evidence(store, case_id):
+def seed_case_evidence(store, case_id, dataset="the_exchange"):
     """Seeds a complete multi-modal investigation scenario into a specific case_id."""
+    exchange_dir = Path(__file__).resolve().parents[1] / "data/novel_dataset_the_exchange"
+    if dataset in ("the_exchange", "exchange", "default") and exchange_dir.exists():
+        outputs = []
+        # Ingest Court
+        court_file = exchange_dir / "court_proceedings.json"
+        court_content = court_file.read_text(encoding="utf-8")
+        if case_id != "CASE-THE-EXCHANGE":
+            court_content = court_content.replace('"case_id": "CASE-THE-EXCHANGE"', f'"case_id": "{case_id}"')
+            court_content = court_content.replace('"case_id":"CASE-THE-EXCHANGE"', f'"case_id":"{case_id}"')
+        court_bytes = court_content.encode("utf-8")
+        outputs.append(store.import_records(f"court_exchange_{case_id}.json", court_bytes, "court-proceedings", True,
+                                            case_id, narrative_records(court_bytes), "sample-exchange-loader"))
+
+        # Ingest Crime
+        crime_file = exchange_dir / "crime_records.csv"
+        crime_content = crime_file.read_text(encoding="utf-8")
+        if case_id != "CASE-THE-EXCHANGE":
+            crime_content = crime_content.replace(",CASE-THE-EXCHANGE,", f",{case_id},")
+        crime_bytes = crime_content.encode("utf-8")
+        outputs.append(store.import_records(f"crime_exchange_{case_id}.csv", crime_bytes, "crime-registry", True,
+                                            case_id, history_records(crime_bytes, case_id), "sample-exchange-loader"))
+
+        # Ingest Telecom
+        cdr_file = exchange_dir / "telecom_cdr.csv"
+        cdr_bytes = cdr_file.read_bytes()
+        outputs.append(store.import_records(f"telecom_exchange_{case_id}.csv", cdr_bytes, "cdr-records", True,
+                                            case_id, cdr_records(cdr_bytes), "sample-exchange-loader"))
+
+        # Ingest Wires
+        wires_file = exchange_dir / "financial_wires.csv"
+        wires_bytes = wires_file.read_bytes()
+        outputs.append(store.import_records(f"wires_exchange_{case_id}.csv", wires_bytes, "financial-wires", True,
+                                            case_id, ibm_records(wires_bytes), "sample-exchange-loader"))
+        return outputs
+
     folder = store.root / 'demo-sources'
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     outputs = []

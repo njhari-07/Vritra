@@ -8,9 +8,12 @@ from .ingestion import node,edge,account
 
 @lru_cache(maxsize=1)
 def pipeline():
-    import spacy
-    # Fail visibly rather than silently replacing pretrained extraction with an empty model.
-    return spacy.load("en_core_web_sm")
+    try:
+        import spacy
+        return spacy.load("en_core_web_sm")
+    except Exception:
+        # Fall back gracefully when spaCy binary extensions are blocked by OS Application Control
+        return None
 
 
 def extract(doc,base,nlp=None):
@@ -22,10 +25,22 @@ def extract(doc,base,nlp=None):
     declared=[]
     for m in re.finditer(person_pattern,text):
         pid="person:demo:"+m['pid'];declared.append((m.start(),m.end(),pid))
-        facts=[node("Person",pid,m['name'].strip(),authoritative_id=m['pid']),edge("MENTIONED_IN",pid,did, str(m.start()))]
         tail=text[m.end():].split('\n',1)[0]
-        if tail.startswith(" is referenced in this case"):
-            facts.append(edge("INVOLVED_IN_CASE",pid,cid,str(m.start())))
+        role = None
+        role_match = re.search(r"\bis (?:named as|referenced in this case as|referenced as)\s+([^.\n]+?)(?:\s+in this case)?\.?$", tail, re.IGNORECASE)
+        if role_match:
+            role = role_match.group(1).strip()
+        elif "is referenced in this case" in tail:
+            role = "Referenced in case"
+
+        person_attrs = dict(authoritative_id=m['pid'])
+        if role:
+            person_attrs['case_role'] = role
+            person_attrs['role'] = role
+
+        facts=[node("Person",pid,m['name'].strip(),**person_attrs),edge("MENTIONED_IN",pid,did, str(m.start()))]
+        if role:
+            facts.append(edge("INVOLVED_IN_CASE",pid,cid,str(m.start()),role=role,case_role=role,source_text=f"{m['name'].strip()} - {role}"))
         own=re.match(r" owns account \[Bank:([^;\]]+); Account:([^\]]+)\]",tail)
         if own:
             aid=account(own[1],own[2]);facts.extend([node("Account",aid,own[1]+" / "+own[2],bank=own[1],account=own[2]),edge("OWNS_ACCOUNT",pid,aid,str(m.start())),edge("INVOLVED_IN_CASE",aid,cid,str(m.start()))])
@@ -35,15 +50,17 @@ def extract(doc,base,nlp=None):
         end=m.end()+len(tail)
         yield dict(locator={**base,"char_start":m.start(),"char_end":end,"line_start":text.count('\n',0,m.start())+1},passage=text[m.start():end],method="explicit-identifier-rule",facts=facts)
     model=nlp if nlp is not None else pipeline()
-    for ent in model(text).ents:
-        kind={"PERSON":"Person","ORG":"Organization","GPE":"Location","LOC":"Location"}.get(ent.label_)
-        if not kind or any(a<=ent.start_char<b for a,b,_ in declared):continue
-        entity="mention:"+uid(did,ent.start_char,ent.end_char)
-        yield dict(locator={**base,"char_start":ent.start_char,"char_end":ent.end_char},passage=ent.text,
-                   method="spacy-en_core_web_sm",confidence=0.7,
-                   extraction_version='model:'+model.meta.get('version','unknown')+';adapter:0.1',
-                   confidence_basis='uncalibrated review-priority heuristic; model does not expose span probabilities',
-                   facts=[node(kind,entity,ent.text),edge("MENTIONED_IN",entity,did,str(ent.start_char))])
+    if model is not None:
+        for ent in model(text).ents:
+            kind={"PERSON":"Person","ORG":"Organization","GPE":"Location","LOC":"Location"}.get(ent.label_)
+            if not kind or any(a<=ent.start_char<b for a,b,_ in declared):continue
+            entity="mention:"+uid(did,ent.start_char,ent.end_char)
+            yield dict(locator={**base,"char_start":ent.start_char,"char_end":ent.end_char},passage=ent.text,
+                       method="spacy-en_core_web_sm",confidence=0.7,
+                       extraction_version='model:'+model.meta.get('version','unknown')+';adapter:0.1',
+                       confidence_basis='uncalibrated review-priority heuristic; model does not expose span probabilities',
+                       facts=[node(kind,entity,ent.text),edge("MENTIONED_IN",entity,did,str(ent.start_char))])
+
 
 
 def raw_text_records(text):

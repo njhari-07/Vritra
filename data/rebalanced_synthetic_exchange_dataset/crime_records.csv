@@ -1,0 +1,13 @@
+record_id,person_id,case_id,record_date,record_status,text,synthetic
+CR-EXC-701,P601,CASE-THE-EXCHANGE,2026-05-20,Witness Interview,Fictional investigator recorded person P601's voluntary witness interview about invoice approval controls. No criminal finding is recorded.,true
+CR-EXC-702,P602,CASE-THE-EXCHANGE,2026-05-21,Open Investigation,"Fictional case record notes that person P602 is an investigation subject. The record is an allegation, not a conviction.",true
+CR-EXC-703,P603,CASE-THE-EXCHANGE,2026-05-22,Witness Interview,Fictional investigator recorded person P603's voluntary witness interview about project-payment timing. No criminal finding is recorded.,true
+CR-EXC-704,P604,CASE-THE-EXCHANGE,2026-05-23,Open Investigation,"Fictional case record notes that person P604 is an investigation subject. The record is an allegation, not a conviction.",true
+CR-EXC-705,P605,CASE-THE-EXCHANGE,2026-05-24,Victim Support Record,Fictional victim-support team documented contact with person P605 after the simulated extortion event.,true
+CR-EXC-706,P606,CASE-THE-EXCHANGE,2026-05-25,Witness Interview,Fictional investigator recorded person P606's voluntary witness interview about message delivery. No criminal finding is recorded.,true
+CR-EXC-707,P607,CASE-THE-EXCHANGE,2026-05-26,Open Investigation,"Fictional case record notes that person P607 is an investigation subject. The record is an allegation, not a conviction.",true
+CR-EXC-708,P608,CASE-THE-EXCHANGE,2026-05-27,Witness Interview,Fictional investigator recorded person P608's voluntary witness interview about delivery records. No criminal finding is recorded.,true
+CR-EXC-709,P601,CASE-THE-EXCHANGE,2026-06-18,Case Review,Fictional review cleared person P601 of a suspected payment-routing anomaly in the simulated case.,true
+CR-EXC-710,P603,CASE-THE-EXCHANGE,2026-06-18,Case Review,Fictional review cleared person P603 of a suspected payment-routing anomaly in the simulated case.,true
+CR-EXC-711,P605,CASE-THE-EXCHANGE,2026-06-19,Case Review,Fictional review cleared person P605 of a suspected payment-routing anomaly in the simulated case.,true
+CR-EXC-712,P608,CASE-THE-EXCHANGE,2026-06-19,Case Review,Fictional review cleared person P608 of a suspected payment-routing anomaly in the simulated case.,true

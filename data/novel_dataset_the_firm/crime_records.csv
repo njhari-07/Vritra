@@ -1,0 +1,8 @@
+record_id,person_id,case_id,record_date,record_status,text,synthetic
+CR-RICO-401,P401,CASE-THE-FIRM,2024-03-10,Active Charge-Sheet,FBI Special Organized Crime Task Force Indictment: Joey Morolto charged under 18 U.S.C. 1961 (RICO) and 1956 (Money Laundering) for casino skimming.,false
+CR-LOC-402,P401,CASE-THE-FIRM,2024-06-18,Look Out Circular,Federal Look Out Circular (LOC) issued by Department of Justice at all international airports and Caribbean maritime exits.,false
+CR-SUB-403,P402,CASE-THE-FIRM,2025-01-15,Grand Jury Subpoena,Federal Grand Jury Subpoena Duces Tecum served on Oliver Lambert demanding foreign account ledgers and Cayman flight manifests.,false
+CR-HOMICIDE-404,P403,CASE-THE-FIRM,2025-04-22,Homicide Investigation,Royal Cayman Islands Police Service formal homicide inquest into suspicious scuba diving deaths of Bendini partners Marty Kozinski and Joe Hodge.,false
+CR-NBW-405,P403,CASE-THE-FIRM,2025-09-08,Non-Bailable Warrant,Federal Arrest Warrant issued by US Magistrate Judge for Nathan Locke following flight risk and witness intimidation findings.,false
+CR-DISBAR-406,P402,CASE-THE-FIRM,2026-02-12,Disbarred Attorney,Supreme Court of Tennessee Emergency Order suspending legal license of Oliver Lambert for operating fraudulent shell conduits.,false
+CR-WITSEC-407,P404,CASE-THE-FIRM,2026-03-25,Witness Protection Enrollment,"Formal enrollment of Mitchell Y. McDeere in Federal Witness Security Program (WITSEC) after surrendering 12,000 covert firm files.",false

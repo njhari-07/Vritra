@@ -1,0 +1,4 @@
+record_id,caller_person_id,callee_person_id,start_time,duration_seconds,synthetic
+CDR-BCB-541,P541,P542,2026-05-10T01:00:00+00:00,340,true
+CDR-BCB-542,P542,P541,2026-05-10T01:45:00+00:00,280,true
+CDR-BCB-543,P541,P544,2026-05-10T02:30:00+00:00,190,true
