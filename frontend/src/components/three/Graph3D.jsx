@@ -8,6 +8,7 @@ import { PanelRightClose, PanelRightOpen, RotateCcw, History } from 'lucide-reac
 import { Button } from '@/components/ui/button';
 import { findMoneyLoops, edgeTime, groupKey, groupLabel, groupCentres } from './graphData';
 import GraphPanel, { TimelineBar } from './GraphPanel';
+import { iconTexture, typeThumb } from './entityIcons';
 import './graph3d-timeline.css';
 
 // "Case File Night": each colour names one kind of entity, shared with the 2D GraphView
@@ -35,12 +36,6 @@ const FLOW = { TRANSACTED_WITH: '#FFD27A', COMMUNICATED_WITH: '#7FF0D6', SENT_TO
 const flowColor = l => (l.loop ? LOOP : FLOW[l.type]);
 const DEFAULT_TYPES = { Person: true, Account: true, Case: true, Location: true, Organization: true, Phone: true, Transaction: false, Document: false };
 
-const GEOMETRIES = {
-  sphere: () => new THREE.SphereGeometry(1, 20, 20),
-  box: () => new THREE.BoxGeometry(1.5, 1.5, 1.5),
-  octa: () => new THREE.OctahedronGeometry(1.25),
-  ico: () => new THREE.IcosahedronGeometry(1.15)
-};
 
 const tmpM = new THREE.Matrix4();
 const tmpC = new THREE.Color();
@@ -49,6 +44,20 @@ const tmpV = new THREE.Vector3();
 function nodeScale(n) {
   const t = TYPES[n.type] || FALLBACK;
   return t.size * (1 + Math.min(n.degree, 24) * 0.045);
+}
+// Entities are drawn as Ayaana's icons (entityIcons.js); this is the sprite's size in world units.
+const iconSize = n => Math.max(12, nodeScale(n) * 4.2);
+
+/* Relationship lines bend like the prototype: calls arc up, money sags down, the rest dip a little.
+   Each link gets a fixed sideways offset (l.ph) so parallel links fan out. */
+const SAG = { COMMUNICATED_WITH: 16, TRANSACTED_WITH: -18, SENT_TO: -18, SENT_FROM: -18 };
+function curvePoint(l, u, bend, out) {
+  const a = l.source, b = l.target;
+  const ax = a.x || 0, ay = a.y || 0, az = a.z || 0, bx = b.x || 0, by = b.y || 0, bz = b.z || 0;
+  if (!bend) return out.set(ax + (bx - ax) * u, ay + (by - ay) * u, az + (bz - az) * u);
+  const cx = (ax + bx) / 2 + ((l.ph ?? 0.5) - 0.5) * 30, cy = (ay + by) / 2 + (SAG[l.type] ?? -6), cz = (az + bz) / 2;
+  const m = (1 - u) * (1 - u), k = 2 * (1 - u) * u, q = u * u;
+  return out.set(m * ax + k * cx + q * bx, m * ay + k * cy + q * by, m * az + k * cz + q * bz);
 }
 
 // A link is hidden by the timeline when it has a date later than the cutoff.
@@ -158,60 +167,46 @@ function fmtTime(t, tl) {
   return d.toLocaleString('en-GB', opts) + (short ? ' UTC' : '');
 }
 
-/* One instanced mesh per entity type: cheap to animate, still clickable per instance. */
-function NodeLayer({ type, nodes, focus, hoveredId, onHover, onPick }) {
-  const ref = useRef();
-  const spec = TYPES[type] || FALLBACK;
-  const geometry = useMemo(() => GEOMETRIES[spec.shape](), [spec.shape]);
-
-  useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
+/* Every entity as a camera-facing icon (Ayaana's artwork): ring = share of the busiest entity's
+   links (coral when a finding names it), "!" badge = named in a finding. */
+function IconLayer({ nodes, focus, hoveredId, onHover, onPick, flagged, maxDegree, minFrac = 0 }) {
+  const refs = useRef([]);
+  // minFrac keeps icons readable when the camera is far away (Network view): never smaller than
+  // that share of the distance to the camera, so they stay about the same size on screen.
+  useFrame(({ camera }) => {
     nodes.forEach((n, i) => {
-      const lit = !focus || focus.has(n.id);
-      const boost = n.id === hoveredId ? 2.6 : lit ? 1.5 : 0.12;
-      mesh.setColorAt(i, tmpC.set(spec.color).multiplyScalar(boost));
+      const s = refs.current[i];
+      if (!s) return;
+      s.position.set(n.x || 0, n.y || 0, n.z || 0);
+      const k = Math.max(iconSize(n), minFrac ? camera.position.distanceTo(s.position) * minFrac : 0) * (n.id === hoveredId ? 1.3 : 1);
+      s.scale.set(k, k, 1);
     });
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [nodes, focus, hoveredId, spec.color]);
-
-  useFrame(({ clock }) => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    const t = clock.elapsedTime;
-    nodes.forEach((n, i) => {
-      const s = nodeScale(n) * (n.id === hoveredId ? 1.35 : 1);
-      tmpM.makeRotationY(spec.shape === 'sphere' ? 0 : t * 0.4 + i);
-      tmpM.scale(tmpV.set(s, s, s)).setPosition(n.x || 0, n.y || 0, n.z || 0);
-      mesh.setMatrixAt(i, tmpM);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
   });
-
-  if (!nodes.length) return null;
-  return (
-    <instancedMesh
-      ref={ref}
-      args={[geometry, undefined, nodes.length]}
-      onClick={e => { e.stopPropagation(); if (e.delta > 6) return; onPick(nodes[e.instanceId]); }}
-      onPointerMove={e => { e.stopPropagation(); onHover(nodes[e.instanceId]); }}
-      onPointerOut={() => onHover(null)}
-    >
-      <meshBasicMaterial toneMapped={false} />
-    </instancedMesh>
-  );
+  return nodes.map((n, i) => {
+    const lit = !focus || focus.has(n.id);
+    const tex = iconTexture(n, (TYPES[n.type] || FALLBACK).color, { ring: n.degree / maxDegree, flagged: flagged.has(n.id) });
+    return (
+      <sprite key={n.id} ref={el => { refs.current[i] = el; }}
+        onClick={e => { e.stopPropagation(); if (e.delta > 6) return; onPick(n); }}
+        onPointerMove={e => { e.stopPropagation(); onHover(n); }}
+        onPointerOut={() => onHover(null)}>
+        <spriteMaterial map={tex} transparent alphaTest={0.03} depthWrite={false} toneMapped={false} fog={!minFrac}
+          opacity={lit ? 1 : 0.13} color={n.id === hoveredId ? '#ffffff' : '#c8c8c8'} />
+      </sprite>
+    );
+  });
 }
 
 /* All relationships as one line batch. `litLinks` (indices) overrides node-based focus,
    `currentLink` is the hop being traced, `cutoff` hides links dated after it. */
-function Edges({ links, focus, litLinks, currentLink, cutoff }) {
+function Edges({ links, focus, litLinks, currentLink, cutoff, bend = false }) {
+  const SEG = bend ? 12 : 1;           // line pieces per link
   const geo = useMemo(() => {
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(links.length * 6), 3));
-    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(links.length * 6), 3));
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(links.length * SEG * 6), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(links.length * SEG * 6), 3));
     return g;
-  }, [links]);
+  }, [links, SEG]);
 
   useLayoutEffect(() => {
     const col = geo.attributes.color.array;
@@ -221,19 +216,21 @@ function Edges({ links, focus, litLinks, currentLink, cutoff }) {
         : !focus || (focus.has(l.source.id ?? l.source) && focus.has(l.target.id ?? l.target));
       const boost = k === currentLink ? 3 : lit ? (dimmed ? 1.6 : 0.9) : 0.07;
       tmpC.set(edgeColor(l)).multiplyScalar(boost);
-      tmpC.toArray(col, k * 6); tmpC.toArray(col, k * 6 + 3);
+      for (let j = 0; j < SEG * 2; j++) tmpC.toArray(col, (k * SEG * 2 + j) * 3);
     });
     geo.attributes.color.needsUpdate = true;
-  }, [geo, links, focus, litLinks, currentLink]);
+  }, [geo, links, focus, litLinks, currentLink, SEG]);
 
   useFrame(() => {
     const pos = geo.attributes.position.array;
     links.forEach((l, k) => {
-      const a = l.source;
-      // Collapsing both ends onto one point hides a link without rebuilding the batch.
-      const b = hiddenAt(l, cutoff) ? a : l.target;
-      pos[k * 6] = a.x || 0; pos[k * 6 + 1] = a.y || 0; pos[k * 6 + 2] = a.z || 0;
-      pos[k * 6 + 3] = b.x || 0; pos[k * 6 + 4] = b.y || 0; pos[k * 6 + 5] = b.z || 0;
+      // Collapsing a link onto its source hides it without rebuilding the batch.
+      const hide = hiddenAt(l, cutoff);
+      for (let j = 0; j < SEG; j++) {
+        const o = (k * SEG + j) * 6;
+        curvePoint(l, hide ? 0 : j / SEG, bend, tmpV).toArray(pos, o);
+        curvePoint(l, hide ? 0 : (j + 1) / SEG, bend, tmpV).toArray(pos, o + 3);
+      }
     });
     geo.attributes.position.needsUpdate = true;
     geo.computeBoundingSphere();
@@ -247,7 +244,7 @@ function Edges({ links, focus, litLinks, currentLink, cutoff }) {
 }
 
 /* Glowing particles travelling along money and communication links. */
-function FlowParticles({ links, focus, litLinks, cutoff }) {
+function FlowParticles({ links, focus, litLinks, cutoff, bend = false }) {
   const ref = useRef();
   const per = 2;
   const flows = useMemo(() => links.map((l, k) => ({ l, k })).filter(({ l }) => flowColor(l)), [links]);
@@ -258,10 +255,10 @@ function FlowParticles({ links, focus, litLinks, cutoff }) {
     if (!mesh) return;
     flows.forEach(({ l, k }, i) => {
       const lit = litLinks ? litLinks.has(k) : !focus || (focus.has(l.source.id) && focus.has(l.target.id));
-      for (let j = 0; j < per; j++) mesh.setColorAt(i * per + j, tmpC.set(flowColor(l)).multiplyScalar(lit ? 3 : 0.1));
+      for (let j = 0; j < per; j++) mesh.setColorAt(i * per + j, tmpC.set(flowColor(l)).multiplyScalar(lit ? (bend ? 1.4 : 3) : 0.1));
     });
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [flows, focus, litLinks]);
+  }, [flows, focus, litLinks, bend]);
 
   useFrame((_, dt) => {
     const mesh = ref.current;
@@ -269,12 +266,12 @@ function FlowParticles({ links, focus, litLinks, cutoff }) {
     flows.forEach(({ l }, i) => {
       const hide = hiddenAt(l, cutoff);
       // SENT_FROM points transaction -> account, so money moves target -> source.
-      const [a, b] = l.type === 'SENT_FROM' ? [l.target, l.source] : [l.source, l.target];
+      const back = l.type === 'SENT_FROM';
       for (let j = 0; j < per; j++) {
         const k = i * per + j;
         phase[k] = (phase[k] + dt * 0.35) % 1;
-        tmpV.set(a.x || 0, a.y || 0, a.z || 0).lerp({ x: b.x || 0, y: b.y || 0, z: b.z || 0 }, phase[k]);
-        const s = hide ? 0 : 0.75;
+        curvePoint(l, back ? 1 - phase[k] : phase[k], bend, tmpV);
+        const s = hide ? 0 : bend ? 0.4 : 0.75;
         tmpM.makeScale(s, s, s).setPosition(tmpV);
         mesh.setMatrixAt(k, tmpM);
       }
@@ -329,7 +326,7 @@ function LabelProjector({ items, els }) {
     items.forEach(item => {
       const el = els.current[item.key];
       if (!el) return;
-      if (item.node) v.set(item.node.x || 0, (item.node.y || 0) + nodeScale(item.node) + 1.5, item.node.z || 0);
+      if (item.node) v.set(item.node.x || 0, (item.node.y || 0) + iconSize(item.node) * 0.55 + 1, item.node.z || 0);
       else if (item.group?.centre) v.set(item.group.centre.x, item.group.centre.y + item.group.centre.r, item.group.centre.z);
       else return;
       v.project(camera);
@@ -739,7 +736,7 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
     (graph?.edges || []).forEach(e => {
       if (e.source === e.target || !byId.has(e.source) || !byId.has(e.target)) return;
       linkIndex.set(e, links.length);
-      links.push({ source: e.source, target: e.target, type: e.type, loop: loopEdges.has(e), time: edgeTime(e), edge: e });
+      links.push({ source: e.source, target: e.target, type: e.type, loop: loopEdges.has(e), time: edgeTime(e), edge: e, ph: (links.length * 0.618) % 1 });
     });
     const neighbors = new Map(nodes.map(n => [n.id, new Set([n.id])]));
     const adjacency = new Map(nodes.map(n => [n.id, []]));
@@ -864,11 +861,9 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
     }
   };
 
-  const byType = useMemo(() => {
-    const g = {};
-    nodes.forEach(n => { (g[n.type] ||= []).push(n); });
-    return g;
-  }, [nodes]);
+  // Entities named in at least one finding get the "!" badge and a coral ring.
+  const flagged = useMemo(() => new Set((analysis?.leads || []).flatMap(l => l.subject_ids || [])), [analysis]);
+  const maxDegree = useMemo(() => Math.max(1, ...nodes.map(n => n.degree)), [nodes]);
   const hubs = useMemo(() => {
     // Name cases and the best-connected people/organisations; account numbers stay unlabelled.
     const cases = nodes.filter(n => n.type === 'Case');
@@ -920,12 +915,10 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
           <Rig sim={sim} nodes={nodes} flyTo={flyTo} fitToken={fitToken} autoRotate={autoRotate && !trace} closeness={trace ? 95 : 70} rightInset={panelOpen ? 344 : 0} navRef={navRef} setFitToken={setFitToken} />
         )}
         {groupMode !== 'none' && !corridor && <GroupRegions groups={groups} active={activeGroup} />}
-        <Edges links={links} focus={focus} litLinks={traceInfo?.litLinks} currentLink={traceInfo?.currentLink} cutoff={cutoff} />
-        {showFlow && <FlowParticles links={links} focus={focus} litLinks={traceInfo?.litLinks} cutoff={cutoff} />}
-        {Object.entries(byType).map(([type, list]) => (
-          <NodeLayer key={type} type={type} nodes={list} focus={focus}
-            hoveredId={hovered?.id} onHover={setHovered} onPick={n => selectNode(n.id)} />
-        ))}
+        <Edges links={links} focus={focus} litLinks={traceInfo?.litLinks} currentLink={traceInfo?.currentLink} cutoff={cutoff} bend={corridor} />
+        {showFlow && <FlowParticles links={links} focus={focus} litLinks={traceInfo?.litLinks} cutoff={cutoff} bend={corridor} />}
+        <IconLayer nodes={nodes} focus={focus} flagged={flagged} maxDegree={maxDegree} minFrac={corridor ? 0 : 0.04}
+          hoveredId={hovered?.id} onHover={setHovered} onPick={n => selectNode(n.id)} />
         <LabelProjector items={labels} els={labelEls} />
         <OrbitControls makeDefault enabled={!corridor} enableDamping dampingFactor={0.08} enablePan={!corridor} screenSpacePanning={!corridor} panSpeed={1.5} zoomSpeed={1.2} autoRotateSpeed={0.5} onStart={() => setAutoRotate(false)} mouseButtons={{ LEFT: !corridor && dragMode === 'pan' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />
         <EffectComposer>
@@ -956,7 +949,7 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
             <button key={t} type="button" aria-pressed={!!enabled[t]}
               className={`g3d-chip ${enabled[t] ? 'on' : ''}`} style={{ '--chip': TYPES[t].color }}
               onClick={() => setEnabled(s => ({ ...s, [t]: !s[t] }))}>
-              <i />{t} <small>{typeCounts[t]}</small>
+              <img className="g3d-chip-ico" src={typeThumb(t, TYPES[t].color)} alt="" />{t} <small>{typeCounts[t]}</small>
             </button>
           ))}
         </div>
