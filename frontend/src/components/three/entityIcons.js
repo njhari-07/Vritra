@@ -202,3 +202,6 @@ export function typeThumb(type, color) {
   thumbs.set(type, url);
   return url;
 }
+
+// Shared with CaseCorridor.jsx (the full prototype view).
+export { ICON, genderOf, hash };

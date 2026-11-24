@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { findMoneyLoops, edgeTime, groupKey, groupLabel, groupCentres } from './graphData';
 import GraphPanel, { TimelineBar } from './GraphPanel';
 import { iconTexture, typeThumb } from './entityIcons';
+import CaseCorridor from './CaseCorridor';
 import './graph3d-timeline.css';
 
 // "Case File Night": each colour names one kind of entity, shared with the 2D GraphView
@@ -888,6 +889,11 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
   const clearFocus = () => { setSelectedId(null); setTrace(null); setActiveGroup(null); };
 
   if (!graph) return <div className="g3d-empty" style={{ height }}>Loading graph…</div>;
+  // Timeline layout = Ayaana's full prototype view (depth = time, icons, legend, radar, story panel).
+  if (corridor) {
+    return <CaseCorridor graph={graph} analysis={analysis} onSelect={onSelect} onLayout={switchLayout}
+      height={`max(${height}, 760px)`} />;
+  }
 
   const flyTo = traceInfo ? traceInfo.flyTo : selected;
   // Keep toolbar and hint clear of the docked panel (w-80 = 20rem, plus its 0.75rem inset).
