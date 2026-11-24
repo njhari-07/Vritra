@@ -8,6 +8,7 @@ import { PanelRightClose, PanelRightOpen, RotateCcw, History } from 'lucide-reac
 import { Button } from '@/components/ui/button';
 import { findMoneyLoops, edgeTime, groupKey, groupLabel, groupCentres } from './graphData';
 import GraphPanel, { TimelineBar } from './GraphPanel';
+import './graph3d-timeline.css';
 
 // "Case File Night": each colour names one kind of entity, shared with the 2D GraphView
 // and the landing scene. Coral is reserved for money that loops.
@@ -52,6 +53,110 @@ function nodeScale(n) {
 
 // A link is hidden by the timeline when it has a date later than the cutoff.
 const hiddenAt = (l, cutoff) => cutoff != null && l.time != null && l.time > cutoff;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ------------------------------------------------------------------ */
+/* Timeline layout: depth (z) = time, height = entity layer.           */
+/* ------------------------------------------------------------------ */
+const LAYER_Y = { Case: 52, Person: 30, Organization: 16, Account: 0, Phone: -14, Transaction: -8, Document: -24, Location: -34 };
+const LEAD = 80;            // how far in front of the camera the "current moment" sits
+const CAM_START = -110;     // camera z at the very beginning of the timeline
+const CORRIDOR_W = 170;     // half width of the time corridor
+const FLOOR_Y = -60, CEIL_Y = 100;
+const railRange = tl => [CAM_START, Math.max(CAM_START + 50, tl.L - 45)]; // stop short of the last events so they stay in view
+
+const TIME_KEYS = ['event_time', 'filed_date', 'first_seen', 'start_time', 'timestamp', 'date'];
+const toMs = v => {
+  if (v == null || v === '') return null;
+  const t = typeof v === 'number' ? v : Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+};
+const firstTime = attrs => {
+  for (const k of TIME_KEYS) { const t = toMs(attrs?.[k]); if (t != null) return t; }
+  return null;
+};
+
+/* Works out when each entity was first seen. Transfers and calls carry a timestamp; entities
+   with no date of their own take the earliest date among their neighbours. If a case has no
+   dates at all, graph distance from the case node is used so the timeline still unfolds. */
+function buildTimeline(graph) {
+  const nodes = graph?.nodes || [], edges = graph?.edges || [];
+  const time = new Map();
+  const adj = new Map(nodes.map(n => [n.id, []]));
+  const seen = (id, t) => { if (adj.has(id) && (!time.has(id) || t < time.get(id))) time.set(id, t); };
+  nodes.forEach(n => { const t = firstTime(n.attrs); if (t != null) time.set(n.id, t); });
+  edges.forEach(e => {
+    adj.get(e.source)?.push(e.target); adj.get(e.target)?.push(e.source);
+    const t = firstTime(e.attrs);
+    if (t != null) { seen(e.source, t); seen(e.target, t); }
+  });
+  for (let round = 0; round < 4; round++) {
+    let changed = false;
+    nodes.forEach(n => {
+      if (time.has(n.id)) return;
+      const ts = adj.get(n.id).map(id => time.get(id)).filter(t => t != null);
+      if (ts.length) { time.set(n.id, Math.min(...ts)); changed = true; }
+    });
+    if (!changed) break;
+  }
+
+  let mode = 'time';
+  if (new Set(time.values()).size < 2) {
+    mode = 'depth'; time.clear();
+    const roots = nodes.filter(n => n.type === 'Case').map(n => n.id);
+    if (!roots.length && nodes.length) roots.push([...nodes].sort((a, b) => adj.get(b.id).length - adj.get(a.id).length)[0].id);
+    roots.forEach(r => time.set(r, 0));
+    const queue = [...roots];
+    while (queue.length) {
+      const id = queue.shift();
+      adj.get(id).forEach(nb => { if (!time.has(nb)) { time.set(nb, time.get(id) + 1); queue.push(nb); } });
+    }
+  }
+  const known = nodes.map(n => time.get(n.id)).filter(t => t != null).sort((a, b) => a - b);
+  const median = known.length ? known[Math.floor(known.length / 2)] : 0;
+  nodes.forEach(n => { if (!time.has(n.id)) time.set(n.id, median); });
+
+  const all = nodes.map(n => time.get(n.id)).sort((a, b) => a - b);
+  const min = all[0] ?? 0, max = all[all.length - 1] ?? 0, span = max - min;
+  const L = Math.min(900, Math.max(260, nodes.length * 7));
+  // Half real time, half order of events: bursts of activity on one day stay readable.
+  const rankOf = new Map();
+  all.forEach((t, i) => { if (!rankOf.has(t)) rankOf.set(t, i); });
+  const denom = Math.max(1, all.length - 1);
+  const z = new Map(), byTime = new Map();
+  nodes.forEach(n => {
+    const t = time.get(n.id);
+    const lin = span ? (t - min) / span : 0;
+    const zz = L * (0.5 * lin + 0.5 * (rankOf.get(t) / denom));
+    z.set(n.id, zz); byTime.set(t, zz);
+  });
+  const marks = [...byTime].map(([t, zz]) => [zz, t]).sort((a, b) => a[0] - b[0]);
+  return { z, time, L, marks, mode, span };
+}
+
+function timeAtZ(tl, z) {
+  const m = tl.marks;
+  if (!m.length) return 0;
+  if (z <= m[0][0]) return m[0][1];
+  for (let i = 1; i < m.length; i++) {
+    if (z <= m[i][0]) {
+      const [z0, t0] = m[i - 1], [z1, t1] = m[i];
+      return z1 === z0 ? t1 : t0 + ((t1 - t0) * (z - z0)) / (z1 - z0);
+    }
+  }
+  return m[m.length - 1][1];
+}
+
+function fmtTime(t, tl) {
+  if (tl.mode === 'depth') return 'Hop ' + Math.round(t);
+  const d = new Date(t);
+  if (!Number.isFinite(d.getTime())) return '';
+  const short = tl.span < 36 * 3600e3;
+  const opts = short
+    ? { timeZone: 'UTC', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }
+    : { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' };
+  return d.toLocaleString('en-GB', opts) + (short ? ' UTC' : '');
+}
 
 /* One instanced mesh per entity type: cheap to animate, still clickable per instance. */
 function NodeLayer({ type, nodes, focus, hoveredId, onHover, onPick }) {
@@ -89,7 +194,7 @@ function NodeLayer({ type, nodes, focus, hoveredId, onHover, onPick }) {
     <instancedMesh
       ref={ref}
       args={[geometry, undefined, nodes.length]}
-      onClick={e => { e.stopPropagation(); onPick(nodes[e.instanceId]); }}
+      onClick={e => { e.stopPropagation(); if (e.delta > 6) return; onPick(nodes[e.instanceId]); }}
       onPointerMove={e => { e.stopPropagation(); onHover(nodes[e.instanceId]); }}
       onPointerOut={() => onHover(null)}
     >
@@ -236,7 +341,7 @@ function LabelProjector({ items, els }) {
   return null;
 }
 
-/* Runs the physics, fits the camera once it settles, flies to a focused node, and exposes pan/zoom/reset controls. */
+/* Runs the physics, fits the camera once it settles, and flies to a focused node. */
 function Rig({ sim, nodes, flyTo, fitToken, autoRotate, closeness = 70, rightInset = 0, navRef, setFitToken }) {
   const { camera, controls, size } = useThree();
 
@@ -251,7 +356,6 @@ function Rig({ sim, nodes, flyTo, fitToken, autoRotate, closeness = 70, rightIns
 
   useEffect(() => { aim.current = flyTo ? { node: flyTo, frames: 55 } : null; }, [flyTo]);
 
-  // Expose precise pan, zoom, and reset functions to external UI and event handlers
   useEffect(() => {
     if (!navRef) return;
     navRef.current = {
@@ -260,25 +364,20 @@ function Rig({ sim, nodes, flyTo, fitToken, autoRotate, closeness = 70, rightIns
         const right = new THREE.Vector3();
         const up = new THREE.Vector3();
         camera.matrix.extractBasis(right, up, new THREE.Vector3());
-        const dist = camera.position.distanceTo(controls.target);
-        const factor = Math.max(0.06, dist * 0.002);
-        const move = new THREE.Vector3()
-          .addScaledVector(right, dx * factor)
-          .addScaledVector(up, dy * factor);
+        const factor = Math.max(0.06, camera.position.distanceTo(controls.target) * 0.002);
+        const move = new THREE.Vector3().addScaledVector(right, dx * factor).addScaledVector(up, dy * factor);
         camera.position.add(move);
         controls.target.add(move);
         controls.update();
       },
-      zoom: (factor) => {
+      zoom: factor => {
         if (!controls) return;
-        const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor);
-        camera.position.copy(controls.target).add(offset);
+        camera.position.copy(controls.target).add(camera.position.clone().sub(controls.target).multiplyScalar(factor));
         controls.update();
       },
-      reset: () => {
-        setFitToken(t => t + 1);
-      }
+      reset: () => setFitToken?.(token => token + 1),
     };
+    return () => { navRef.current = {}; };
   }, [camera, controls, navRef, setFitToken]);
 
   useFrame(() => {
@@ -314,11 +413,265 @@ function Rig({ sim, nodes, flyTo, fitToken, autoRotate, closeness = 70, rightIns
   return null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Timeline camera: scroll, keys, drag-to-look, slider and autoplay.   */
+/* All input only changes the `rail` object; this component flies the  */
+/* camera along it and writes the date / counter straight into the DOM. */
+/* ------------------------------------------------------------------ */
+function TimelineRig({ tl, sim, nodes, rail, ui, flyTo, resetToken, onPlayState, rightInset = 0 }) {
+  const { camera, gl, size } = useThree();
+  const tlRef = useRef(tl); tlRef.current = tl;
+  const keys = useRef({});
+  const hover = useRef(false);
+  const shown = useRef({ label: '', ahead: -1 });
+
+  useEffect(() => {
+    camera.near = 0.5; camera.far = tl.L + 3500; camera.updateProjectionMatrix();
+  }, [camera, tl.L]);
+  // Centre the picture in the area not covered by the details panel (same as the Network layout).
+  useEffect(() => {
+    if (rightInset > 0 && size.width > rightInset * 1.6) camera.setViewOffset(size.width, size.height, rightInset / 2, 0, size.width, size.height);
+    else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
+  }, [camera, size.width, size.height, rightInset]);
+
+  const home = () => {
+    const r = rail.current;
+    r.z = r.tz = CAM_START; r.vz = 0; r.x = r.tx = 0; r.y = r.ty = 12; r.yaw = r.pitch = 0;
+  };
+  useEffect(() => { home(); rail.current.playing = false; onPlayState(false); }, [tl]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!resetToken) return;
+    const r = rail.current;
+    r.tz = CAM_START; r.tx = 0; r.ty = 12; r.yaw = r.pitch = 0; r.vz = 0;
+  }, [resetToken, rail]);
+  useEffect(() => {
+    if (!flyTo) return;
+    const r = rail.current, [a, b] = railRange(tlRef.current);
+    r.tz = clamp(flyTo.z - 60, a, b); r.tx = flyTo.x; r.ty = flyTo.y + 8; r.yaw = r.pitch = 0;
+    r.playing = false; onPlayState(false);
+  }, [flyTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const el = gl.domElement, r = rail.current;
+    const hideCue = () => ui.current.cue?.classList.add('gone');
+
+    const onWheel = e => {
+      const [a, b] = railRange(tlRef.current);
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      const settled = Math.abs(r.vz) < 0.5;
+      // at either end, let the page scroll on as normal
+      if (settled && ((r.tz <= a + 0.5 && dy < 0) || (r.tz >= b - 0.5 && dy > 0))) return;
+      e.preventDefault();
+      r.playing = false; onPlayState(false);
+      r.vz = clamp(r.vz + dy * 0.02, -9, 9); // ~17 world units per wheel notch, with inertia
+      hideCue();
+    };
+    const onDown = e => { if (e.button === 0) r.drag = { x: e.clientX, y: e.clientY }; };
+    const onMove = e => {
+      if (!r.drag) return;
+      r.yaw = clamp(r.yaw + (e.clientX - r.drag.x) * 0.004, -1.1, 1.1);
+      r.pitch = clamp(r.pitch + (e.clientY - r.drag.y) * 0.003, -0.6, 0.6);
+      r.drag = { x: e.clientX, y: e.clientY };
+    };
+    const onUp = () => { r.drag = null; };
+    const onEnter = () => { hover.current = true; };
+    const onLeave = () => { hover.current = false; };
+    const onKey = e => {
+      if (!hover.current || /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName || '')) return;
+      if (e.code === 'Space') {
+        e.preventDefault(); r.playing = !r.playing;
+        if (r.playing) { const [a, b] = railRange(tlRef.current); if (r.tz >= b - 1) r.tz = a; } // replay from the start
+        onPlayState(r.playing); hideCue(); return;
+      }
+      if (e.code.startsWith('Arrow')) e.preventDefault();
+      keys.current[e.code] = true; hideCue();
+    };
+    const onKeyUp = e => { keys.current[e.code] = false; };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointerenter', onEnter);
+    el.addEventListener('pointerleave', onLeave);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointerenter', onEnter);
+      el.removeEventListener('pointerleave', onLeave);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [gl, rail, ui, onPlayState]);
+
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 0.05);
+    if (sim.alpha() > sim.alphaMin()) sim.tick();
+    const r = rail.current, k = keys.current, T = tlRef.current, [a, b] = railRange(T);
+
+    const sp = (k.ShiftLeft || k.ShiftRight ? 170 : 70) * dt;
+    if (k.KeyW || k.ArrowUp) { r.tz += sp; if (r.playing) { r.playing = false; onPlayState(false); } }
+    if (k.KeyS || k.ArrowDown) { r.tz -= sp; if (r.playing) { r.playing = false; onPlayState(false); } }
+    if (k.KeyA || k.ArrowLeft) r.tx += sp * 0.6;
+    if (k.KeyD || k.ArrowRight) r.tx -= sp * 0.6;
+    if (k.KeyQ) r.ty -= sp * 0.5;
+    if (k.KeyE) r.ty += sp * 0.5;
+    if (r.playing) {
+      r.tz += ((b - a) / 28) * dt;
+      if (r.tz >= b) { r.tz = b; r.playing = false; onPlayState(false); }
+    }
+    r.tz += r.vz; r.vz *= 0.88; if (Math.abs(r.vz) < 0.02) r.vz = 0;
+    r.tz = clamp(r.tz, a, b); r.tx = clamp(r.tx, -400, 400); r.ty = clamp(r.ty, FLOOR_Y + 8, CEIL_Y + 200);
+
+    const ease = 1 - Math.exp(-dt * 6);
+    r.z += (r.tz - r.z) * ease; r.x += (r.tx - r.x) * ease; r.y += (r.ty - r.y) * ease;
+    camera.position.set(r.x, r.y, r.z);
+    const cp = Math.cos(r.pitch);
+    camera.lookAt(r.x + Math.sin(r.yaw) * cp * 100, r.y + Math.sin(r.pitch) * 100, r.z + Math.cos(r.yaw) * cp * 100);
+
+    // heads-up display, written directly to the DOM (no React re-render per frame)
+    const U = ui.current, focus = r.z + LEAD;
+    const text = fmtTime(timeAtZ(T, focus), T);
+    if (U.date && text !== shown.current.label) { shown.current.label = text; U.date.textContent = text; }
+    if (U.slider && !r.sliding) U.slider.value = String(Math.round(clamp((r.z - a) / (b - a), 0, 1) * 1000));
+    let ahead = 0;
+    for (const n of nodes) if (n.fz > focus) ahead++;
+    if (U.ahead && ahead !== shown.current.ahead) { shown.current.ahead = ahead; U.ahead.textContent = ahead + ' entities ahead'; }
+  });
+  return null;
+}
+
+/* Floor grid, time gates and rails: the corridor the timeline runs through. */
+function Corridor({ L }) {
+  const grid = useRef();
+  const { rings, rails } = useMemo(() => {
+    const W = CORRIDOR_W, y0 = FLOOR_Y, y1 = CEIL_Y, step = L / 12, z0 = -step * 2, z1 = L + step * 3;
+    const rings = [], rails = [];
+    for (let z = z0; z <= z1; z += step) rings.push(-W, y0, z, W, y0, z, W, y0, z, W, y1, z, W, y1, z, -W, y1, z, -W, y1, z, -W, y0, z);
+    [[-W, y0], [W, y0], [W, y1], [-W, y1]].forEach(([x, y]) => rails.push(x, y, z0, x, y, z1));
+    return { rings: new Float32Array(rings), rails: new Float32Array(rails) };
+  }, [L]);
+  useEffect(() => {
+    const m = grid.current?.material;
+    (Array.isArray(m) ? m : [m]).filter(Boolean).forEach(x => { x.transparent = true; x.opacity = 0.5; x.toneMapped = false; });
+  }, [L]);
+  const size = L + 1600;
+  return (
+    <group>
+      <gridHelper ref={grid} args={[size, Math.round(size / 28), '#1c3aa8', '#10205a']} position={[0, FLOOR_Y, L / 2]} />
+      <lineSegments>
+        <bufferGeometry><bufferAttribute attach="attributes-position" args={[rings, 3]} /></bufferGeometry>
+        <lineBasicMaterial color="#3f64ff" transparent opacity={0.26} toneMapped={false} />
+      </lineSegments>
+      <lineSegments>
+        <bufferGeometry><bufferAttribute attach="attributes-position" args={[rails, 3]} /></bufferGeometry>
+        <lineBasicMaterial color="#4d6dff" transparent opacity={0.32} toneMapped={false} />
+      </lineSegments>
+    </group>
+  );
+}
+
+/* Date labels standing on the floor along the corridor. */
+function TickLabels({ ticks, els }) {
+  const v = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ camera, size }) => {
+    ticks.forEach(({ key, z }) => {
+      const el = els.current[key];
+      if (!el) return;
+      v.set(-CORRIDOR_W, FLOOR_Y + 1, z).project(camera);
+      const visible = v.z < 1 && v.z > -1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
+      el.style.opacity = visible ? '' : '0';
+      el.style.transform = `translate(${((v.x + 1) / 2) * size.width}px, ${((1 - v.y) / 2) * size.height}px) translate(-50%, -50%)`;
+    });
+  });
+  return null;
+}
+
+/* Background: a deep gradient sky, soft aurora glows, drifting dust and stars.
+   Everything follows the camera, so it works in both Timeline and Network layouts. */
+function Backdrop() {
+  const dome = useRef(), sky = useRef(), starsRef = useRef(), dust = useRef();
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+    uniforms: { top: { value: new THREE.Color('#3a2a8f') }, mid: { value: new THREE.Color('#101c4a') }, bot: { value: new THREE.Color('#04060f') } },
+    vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform vec3 top; uniform vec3 mid; uniform vec3 bot; varying vec3 vP; void main(){ float h = vP.y * 0.5 + 0.5; vec3 c = h > 0.5 ? mix(mid, top, (h - 0.5) * 2.0) : mix(bot, mid, h * 2.0); gl_FragColor = vec4(c, 1.0); }'
+  }), []);
+  const glowTex = useMemo(() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }, []);
+  const glows = useMemo(() => [
+    { dir: [-0.55, 0.45, 0.7], color: '#5b3fe0', s: 0.8 }, { dir: [0.75, 0.15, 0.65], color: '#1a8fd6', s: 0.7 },
+    { dir: [0.05, 0.85, -0.5], color: '#c02a8c', s: 0.65 }, { dir: [-0.6, 0.2, -0.75], color: '#2f56d9', s: 0.7 }
+  ], []);
+  const DUST = 420;
+  const dustPos = useMemo(() => {
+    const a = new Float32Array(DUST * 3);
+    for (let i = 0; i < DUST; i++) { a[i * 3] = (Math.random() - 0.5) * 260; a[i * 3 + 1] = (Math.random() - 0.5) * 160; a[i * 3 + 2] = (Math.random() - 0.5) * 260; }
+    return a;
+  }, []);
+
+  useFrame(({ camera, clock }, delta) => {
+    const R = Math.max(80, camera.far * 0.45);
+    if (dome.current) { dome.current.position.copy(camera.position); dome.current.scale.setScalar(R); }
+    if (sky.current) {
+      sky.current.position.copy(camera.position);
+      sky.current.children.forEach((s, i) => {
+        const g = glows[i];
+        s.position.set(g.dir[0] * R * 0.9, g.dir[1] * R * 0.9, g.dir[2] * R * 0.9);
+        s.scale.setScalar(R * g.s);
+        s.material.opacity = 0.3 + Math.sin(clock.elapsedTime * 0.3 + i * 1.7) * 0.08;
+      });
+    }
+    if (starsRef.current) starsRef.current.position.copy(camera.position);
+    if (dust.current) {
+      dust.current.position.copy(camera.position);
+      const arr = dust.current.geometry.attributes.position.array, dt = Math.min(delta, 0.05);
+      for (let i = 0; i < DUST; i++) { arr[i * 3 + 1] += dt * 3; if (arr[i * 3 + 1] > 80) arr[i * 3 + 1] = -80; }
+      dust.current.geometry.attributes.position.needsUpdate = true;
+    }
+  });
+
+  return (
+    <>
+      <mesh ref={dome} renderOrder={-100} frustumCulled={false}>
+        <sphereGeometry args={[1, 32, 20]} />
+        <primitive object={material} attach="material" />
+      </mesh>
+      <group ref={sky}>
+        {glows.map((g, i) => (
+          <sprite key={i} renderOrder={-90}>
+            <spriteMaterial map={glowTex} color={g.color} transparent depthWrite={false} blending={THREE.AdditiveBlending}
+              fog={false} toneMapped={false} opacity={0.3} />
+          </sprite>
+        ))}
+      </group>
+      <group ref={starsRef}>
+        <Stars radius={900} depth={200} count={2500} factor={18} fade speed={0.3} />
+      </group>
+      <points ref={dust} frustumCulled={false}>
+        <bufferGeometry><bufferAttribute attach="attributes-position" args={[dustPos, 3]} /></bufferGeometry>
+        <pointsMaterial size={1.3} color="#8fb4ff" transparent opacity={0.5} depthWrite={false}
+          blending={THREE.AdditiveBlending} toneMapped={false} sizeAttenuation fog={false} />
+      </points>
+    </>
+  );
+}
+
 export default function Graph3D({ graph, analysis, onSelect, height = '650px', focusId = null }) {
   const [enabled, setEnabled] = useState(DEFAULT_TYPES);
   const [showFlow, setShowFlow] = useState(true);
   const [autoRotate, setAutoRotate] = useState(true);
-  const [dragMode, setDragMode] = useState('orbit'); // 'orbit' or 'pan'
+  const [dragMode, setDragMode] = useState('orbit');
   const [hovered, setHovered] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [fitToken, setFitToken] = useState(0);
@@ -331,7 +684,22 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
   const [timeline, setTimeline] = useState({ on: false, t: null, playing: false });
   const labelEls = useRef({});
   const containerRef = useRef(null);
-  const navRef = useRef({ pan: () => {}, zoom: () => {}, reset: () => {} });
+  const navRef = useRef({});
+  // Layout: "timeline" (depth = time, scroll to travel) or "network" (force layout + orbit).
+  const [layout, setLayout] = useState(() => {
+    try { return localStorage.getItem('maha_graph_layout') || 'timeline'; } catch { return 'timeline'; }
+  });
+  const corridor = layout === 'timeline';
+  const [playing, setPlaying] = useState(false);
+  const [resetToken, setResetToken] = useState(0);
+  const tickEls = useRef({});
+  const ui = useRef({});
+  const rail = useRef({ z: CAM_START, tz: CAM_START, vz: 0, x: 0, tx: 0, y: 12, ty: 12, yaw: 0, pitch: 0, playing: false, sliding: false, drag: null });
+  const switchLayout = m => {
+    setLayout(m);
+    setTimeline({ on: false, t: null, playing: false }); // the time filter belongs to the Network layout
+    try { localStorage.setItem('maha_graph_layout', m); } catch { /* storage unavailable */ }
+  };
 
   // Default to community grouping once the analysis (with communities) arrives.
   const groupDefaulted = useRef(false);
@@ -345,6 +713,13 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
     return c;
   }, [graph]);
 
+  // When each entity was first seen; keeps its place on the time axis whichever types are switched on.
+  const tl = useMemo(() => buildTimeline(graph), [graph]);
+  const ticks = useMemo(() => Array.from({ length: 6 }, (_, i) => {
+    const z = (tl.L * i) / 5;
+    return { key: 't' + i, z, text: fmtTime(timeAtZ(tl, z), tl) };
+  }), [tl]);
+
   // Money loops, computed on the full graph so they match the backend's finding.
   const loops = useMemo(() => findMoneyLoops(graph?.edges || []), [graph]);
 
@@ -353,7 +728,9 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
     const metrics = analysis?.metrics || {};
     const nodes = (graph?.nodes || []).filter(n => enabled[n.type] ?? true).map(n => ({
       id: n.id, type: n.type, label: n.label || n.id, raw: n, degree: 0,
-      community: metrics[n.id]?.community ?? null, cases: n.case_ids || []
+      community: metrics[n.id]?.community ?? null, cases: n.case_ids || [],
+      // Timeline layout pins every entity to its moment in time (z); physics only spreads x and y.
+      ...(corridor ? { z: tl.z.get(n.id) ?? 0, fz: tl.z.get(n.id) ?? 0 } : {})
     }));
     const byId = new Map(nodes.map(n => [n.id, n]));
     const loopEdges = new Set(loops.flat());
@@ -387,14 +764,21 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
     // Only groups of 3+ get their own spot on the ring; pairs and singletons stay near the middle.
     const centres = groupCentres(groups.filter(g => g.members.length >= 3).map(g => g.key));
 
-    const sim = forceSimulation(nodes, 3)
+    const sim = corridor
+      ? forceSimulation(nodes, 3)
+        .force('link', forceLink(links).id(d => d.id).distance(30).strength(0.12))
+        .force('charge', forceManyBody().strength(-80).distanceMax(160))
+        .force('x', forceX(0).strength(0.03))
+        .force('y', forceY(d => LAYER_Y[d.type] ?? 0).strength(0.14))
+      : forceSimulation(nodes, 3)
       .force('link', forceLink(links).id(d => d.id).distance(l => (l.type === 'INVOLVED_IN_CASE' ? 45 : 22)).strength(l => {
         if (groupMode === 'none') return 0.6;
         // Links across groups pull weakly, so each group can settle into its own region.
         return groupKey(l.source, groupMode) === groupKey(l.target, groupMode) ? 0.5 : 0.04;
       }))
       .force('charge', forceManyBody().strength(-55).distanceMax(400));
-    if (groupMode === 'none' || groups.length < 2) sim.force('center', forceCenter());
+    if (corridor) { /* time pins z; layers set y */ }
+    else if (groupMode === 'none' || groups.length < 2) sim.force('center', forceCenter());
     else {
       const at = (n, axis) => centres.get(groupKey(n, groupMode))?.[axis] ?? 0;
       const pull = n => (centres.has(groupKey(n, groupMode)) ? 0.2 : 0.02);
@@ -405,13 +789,13 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
     sim.stop();
     // Ungrouped: start partly unfolded and animate the rest. Grouped: settle most of the
     // layout up front, so communities open already separated (cheap for case-sized graphs).
-    const warmup = groupMode === 'none' ? 25 : 220;
+    const warmup = corridor ? 90 : groupMode === 'none' ? 25 : 220;
     for (let i = 0; i < warmup; i++) sim.tick();
 
     const times = links.map(l => l.time).filter(t => t != null);
     const range = times.length ? { min: Math.min(...times), max: Math.max(...times), dated: times.length } : null;
     return { nodes, byId, links, linkIndex, neighbors, adjacency, groups: groups.filter(g => g.members.length >= 3), allGroups: groups, sim, range };
-  }, [graph, enabled, loops, analysis, groupMode]);
+  }, [graph, enabled, loops, analysis, groupMode, corridor, tl]);
 
   const { nodes, byId, links, linkIndex, neighbors, adjacency, groups, allGroups, sim, range } = data;
   const loopLinkCount = links.filter(l => l.loop).length;
@@ -456,34 +840,30 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
   }, [activeGroup, allGroups]);
   const focus = traceInfo ? traceInfo.nodeIds : selected ? neighbors.get(selected.id) : groupFocus;
 
-  // Keyboard navigation for directional scrolling and zoom
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
-    const onKeyDown = (e) => {
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '+', '=', '-', 'Home'].includes(e.key)) {
-        e.preventDefault();
-        if (e.key === 'ArrowLeft') navRef.current.pan?.(-45, 0);
-        else if (e.key === 'ArrowRight') navRef.current.pan?.(45, 0);
-        else if (e.key === 'ArrowUp') navRef.current.pan?.(0, 45);
-        else if (e.key === 'ArrowDown') navRef.current.pan?.(0, -45);
-        else if (e.key === '+' || e.key === '=') navRef.current.zoom?.(0.82);
-        else if (e.key === '-') navRef.current.zoom?.(1.22);
-        else if (e.key === 'Home') { setSelectedId(null); setFitToken(t => t + 1); }
-      }
+    if (!el || corridor) return;
+    const onKeyDown = event => {
+      const pan = navRef.current.pan;
+      if (event.key === 'ArrowLeft') { event.preventDefault(); pan?.(-45, 0); }
+      else if (event.key === 'ArrowRight') { event.preventDefault(); pan?.(45, 0); }
+      else if (event.key === 'ArrowUp') { event.preventDefault(); pan?.(0, 45); }
+      else if (event.key === 'ArrowDown') { event.preventDefault(); pan?.(0, -45); }
+      else if (event.key === '+' || event.key === '=') { event.preventDefault(); navRef.current.zoom?.(0.82); }
+      else if (event.key === '-') { event.preventDefault(); navRef.current.zoom?.(1.22); }
+      else if (event.key === 'Home') { event.preventDefault(); clearFocus(); setFitToken(token => token + 1); }
     };
     el.addEventListener('keydown', onKeyDown);
     return () => el.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [corridor]);
 
-  // Wheel handling: horizontal/vertical pan when in Pan mode, with Shift, or horizontal trackpad swipe
-  const handleWheel = (e) => {
-    if (dragMode === 'pan' || e.shiftKey || Math.abs(e.deltaX) > 6) {
-      e.preventDefault();
-      e.stopPropagation();
-      navRef.current.pan?.(e.deltaX * 0.75, -e.deltaY * 0.75);
+  const handleWheel = event => {
+    if (!corridor && (dragMode === 'pan' || event.shiftKey || Math.abs(event.deltaX) > 6)) {
+      event.preventDefault();
+      navRef.current.pan?.(event.deltaX * 0.75, -event.deltaY * 0.75);
     }
   };
+
   const byType = useMemo(() => {
     const g = {};
     nodes.forEach(n => { (g[n.type] ||= []).push(n); });
@@ -519,35 +899,27 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
   const besidePanel = panelOpen ? 'tw:right-[21.5rem]' : '';
 
   return (
-    <div
-      ref={containerRef}
-      className="g3d"
-      style={{ height }}
-      tabIndex={0}
-      onWheel={handleWheel}
-      onContextMenu={e => e.preventDefault()}
-    >
+    <div ref={containerRef} className="g3d" style={{ height }} tabIndex={0} onWheel={handleWheel}>
       <Canvas
         camera={{ position: [0, 0, 260], fov: 50, near: 0.5, far: 5000 }}
         dpr={[1, 1.75]}
         onPointerMissed={clearFocus}
-        style={{ cursor: hovered ? 'pointer' : dragMode === 'pan' ? 'move' : 'grab' }}
+        style={{ cursor: hovered ? 'pointer' : !corridor && dragMode === 'pan' ? 'move' : 'grab' }}
       >
         <color attach="background" args={['#0A1020']} />
         <fog attach="fog" args={['#0A1020', 300, 1400]} />
-        <Stars radius={900} depth={200} count={2500} factor={18} fade speed={0.3} />
-        <Rig
-          sim={sim}
-          nodes={nodes}
-          flyTo={flyTo}
-          fitToken={fitToken}
-          autoRotate={autoRotate && !trace}
-          closeness={trace ? 95 : 70}
-          rightInset={panelOpen ? 344 : 0}
-          navRef={navRef}
-          setFitToken={setFitToken}
-        />
-        {groupMode !== 'none' && <GroupRegions groups={groups} active={activeGroup} />}
+        <Backdrop />
+        {corridor ? (
+          <>
+            <TimelineRig tl={tl} sim={sim} nodes={nodes} rail={rail} ui={ui} flyTo={flyTo}
+              resetToken={resetToken} onPlayState={setPlaying} rightInset={panelOpen ? 344 : 0} />
+            <Corridor L={tl.L} />
+            <TickLabels ticks={ticks} els={tickEls} />
+          </>
+        ) : (
+          <Rig sim={sim} nodes={nodes} flyTo={flyTo} fitToken={fitToken} autoRotate={autoRotate && !trace} closeness={trace ? 95 : 70} rightInset={panelOpen ? 344 : 0} navRef={navRef} setFitToken={setFitToken} />
+        )}
+        {groupMode !== 'none' && !corridor && <GroupRegions groups={groups} active={activeGroup} />}
         <Edges links={links} focus={focus} litLinks={traceInfo?.litLinks} currentLink={traceInfo?.currentLink} cutoff={cutoff} />
         {showFlow && <FlowParticles links={links} focus={focus} litLinks={traceInfo?.litLinks} cutoff={cutoff} />}
         {Object.entries(byType).map(([type, list]) => (
@@ -555,22 +927,7 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
             hoveredId={hovered?.id} onHover={setHovered} onPick={n => selectNode(n.id)} />
         ))}
         <LabelProjector items={labels} els={labelEls} />
-        <OrbitControls
-          makeDefault
-          enableDamping
-          dampingFactor={0.08}
-          enablePan={true}
-          screenSpacePanning={true}
-          panSpeed={1.5}
-          zoomSpeed={1.2}
-          autoRotateSpeed={0.5}
-          onStart={() => setAutoRotate(false)}
-          mouseButtons={{
-            LEFT: dragMode === 'pan' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
-            MIDDLE: THREE.MOUSE.DOLLY,
-            RIGHT: THREE.MOUSE.PAN
-          }}
-        />
+        <OrbitControls makeDefault enabled={!corridor} enableDamping dampingFactor={0.08} enablePan={!corridor} screenSpacePanning={!corridor} panSpeed={1.5} zoomSpeed={1.2} autoRotateSpeed={0.5} onStart={() => setAutoRotate(false)} mouseButtons={{ LEFT: !corridor && dragMode === 'pan' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />
         <EffectComposer>
           <Bloom intensity={1.1} luminanceThreshold={0.3} luminanceSmoothing={0.25} mipmapBlur />
         </EffectComposer>
@@ -581,8 +938,15 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
           <div key={item.key} ref={el => { if (el) labelEls.current[item.key] = el; else delete labelEls.current[item.key]; }}
             className={`g3d-label g3d-label-${item.variant}`}>
             {item.variant === 'group' ? <span>{item.text}</span> : <b>{item.node.label}</b>}
-            {(item.variant === 'selected' || item.variant === 'hover') && <span>{item.node.type} · {item.node.degree} links</span>}
+            {(item.variant === 'selected' || item.variant === 'hover') && (
+              <span>{item.node.type} · {item.node.degree} links
+                {corridor && tl.time.has(item.node.id) && <> · first seen {fmtTime(tl.time.get(item.node.id), tl)}</>}</span>
+            )}
           </div>
+        ))}
+        {corridor && ticks.map(t => (
+          <div key={t.key} ref={el => { if (el) tickEls.current[t.key] = el; else delete tickEls.current[t.key]; }}
+            className="g3d-tick">{t.text}</div>
         ))}
       </div>
 
@@ -597,37 +961,31 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
           ))}
         </div>
         <div className="g3d-actions">
-          <button
-            type="button"
-            className={`g3d-chip ${dragMode === 'orbit' ? 'on' : ''}`}
-            style={{ '--chip': '#60a5fa' }}
-            onClick={() => setDragMode('orbit')}
-            title="Orbit Mode: Left-drag to rotate in 3D, Right-drag to pan"
-          >
-            <i />Orbit
-          </button>
-          <button
-            type="button"
-            className={`g3d-chip ${dragMode === 'pan' ? 'on' : ''}`}
-            style={{ '--chip': '#38bdf8' }}
-            onClick={() => setDragMode('pan')}
-            title="Pan Mode: Left-drag & wheel to scroll horizontally and vertically"
-          >
-            <i />Pan / Scroll
-          </button>
+          {[['timeline', 'Timeline'], ['network', 'Network']].map(([m, label]) => (
+            <button key={m} type="button" className={`g3d-chip ${layout === m ? 'on' : ''}`} style={{ '--chip': '#5AA9FF' }}
+              aria-pressed={layout === m} onClick={() => switchLayout(m)}><i />{label}</button>
+          ))}
+          {!corridor && <>
+            <button type="button" className={`g3d-chip ${dragMode === 'orbit' ? 'on' : ''}`} style={{ '--chip': '#60a5fa' }}
+              aria-pressed={dragMode === 'orbit'} onClick={() => setDragMode('orbit')}><i />Orbit</button>
+            <button type="button" className={`g3d-chip ${dragMode === 'pan' ? 'on' : ''}`} style={{ '--chip': '#38bdf8' }}
+              aria-pressed={dragMode === 'pan'} onClick={() => setDragMode('pan')}><i />Pan</button>
+          </>}
           <button type="button" className={`g3d-chip ${showFlow ? 'on' : ''}`} style={{ '--chip': '#FFD27A' }}
             aria-pressed={showFlow} onClick={() => setShowFlow(v => !v)}><i />Flow</button>
-          <button type="button" className={`g3d-chip ${autoRotate ? 'on' : ''}`} style={{ '--chip': '#A98BFF' }}
-            aria-pressed={autoRotate} onClick={() => setAutoRotate(v => !v)}><i />Spin</button>
-          {range && (
+          {!corridor && (
+            <button type="button" className={`g3d-chip ${autoRotate ? 'on' : ''}`} style={{ '--chip': '#A98BFF' }}
+              aria-pressed={autoRotate} onClick={() => setAutoRotate(v => !v)}><i />Orbit</button>
+          )}
+          {range && !corridor && (
             <button type="button" className={`g3d-chip ${timeline.on ? 'on' : ''}`} style={{ '--chip': '#3DD6B5' }}
               aria-pressed={timeline.on}
               onClick={() => setTimeline(tl => (tl.on ? { on: false, t: null, playing: false } : { on: true, t: range.min, playing: true }))}>
-              <History className="tw:size-3.5" />Timeline
+              <History className="tw:size-3.5" />Time filter
             </button>
           )}
           <Button variant="outline" size="sm" className="tw:h-7 tw:min-h-0 tw:rounded-full tw:px-3 tw:text-xs"
-            onClick={() => { clearFocus(); setFitToken(t => t + 1); }}>
+            onClick={() => { clearFocus(); setFitToken(t => t + 1); setResetToken(t => t + 1); }}>
             <RotateCcw />Reset
           </Button>
           <Button variant="outline" size="sm" className="tw:h-7 tw:min-h-0 tw:rounded-full tw:px-3 tw:text-xs"
@@ -637,71 +995,23 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
         </div>
       </div>
 
-      {/* Floating On-Screen Directional Pan & Zoom D-Pad */}
-      <div className="g3d-navpad" aria-label="Camera navigation">
-        <div className="g3d-navpad-dpad">
-          <button
-            type="button"
-            className="g3d-nav-btn up"
-            title="Scroll Up (Pan Up) · Shortcut: ↑"
-            onClick={() => navRef.current.pan?.(0, 45)}
-          >
-            ▲
-          </button>
-          <div className="g3d-navpad-row">
-            <button
-              type="button"
-              className="g3d-nav-btn left"
-              title="Scroll Left (Pan Left) · Shortcut: ←"
-              onClick={() => navRef.current.pan?.(-45, 0)}
-            >
-              ◀
-            </button>
-            <button
-              type="button"
-              className="g3d-nav-btn center"
-              title="Center / Reset View · Shortcut: Home"
-              onClick={() => { clearFocus(); setFitToken(t => t + 1); }}
-            >
-              ⌖
-            </button>
-            <button
-              type="button"
-              className="g3d-nav-btn right"
-              title="Scroll Right (Pan Right) · Shortcut: →"
-              onClick={() => navRef.current.pan?.(45, 0)}
-            >
-              ▶
-            </button>
+      {!corridor && (
+        <div className="g3d-navpad" aria-label="Camera navigation">
+          <div className="g3d-navpad-dpad">
+            <button type="button" className="g3d-nav-btn up" title="Pan up" onClick={() => navRef.current.pan?.(0, 45)}>▲</button>
+            <div className="g3d-navpad-row">
+              <button type="button" className="g3d-nav-btn left" title="Pan left" onClick={() => navRef.current.pan?.(-45, 0)}>◀</button>
+              <button type="button" className="g3d-nav-btn center" title="Reset view" onClick={() => { clearFocus(); setFitToken(token => token + 1); }}>⌖</button>
+              <button type="button" className="g3d-nav-btn right" title="Pan right" onClick={() => navRef.current.pan?.(45, 0)}>▶</button>
+            </div>
+            <button type="button" className="g3d-nav-btn down" title="Pan down" onClick={() => navRef.current.pan?.(0, -45)}>▼</button>
           </div>
-          <button
-            type="button"
-            className="g3d-nav-btn down"
-            title="Scroll Down (Pan Down) · Shortcut: ↓"
-            onClick={() => navRef.current.pan?.(0, -45)}
-          >
-            ▼
-          </button>
+          <div className="g3d-navpad-zoom">
+            <button type="button" className="g3d-nav-btn zoom-in" title="Zoom in" onClick={() => navRef.current.zoom?.(0.8)}>＋</button>
+            <button type="button" className="g3d-nav-btn zoom-out" title="Zoom out" onClick={() => navRef.current.zoom?.(1.25)}>－</button>
+          </div>
         </div>
-        <div className="g3d-navpad-zoom">
-          <button
-            type="button"
-            className="g3d-nav-btn zoom-in"
-            title="Zoom In · Shortcut: +"
-            onClick={() => navRef.current.zoom?.(0.8)}
-          >
-            ＋
-          </button>
-          <button
-            type="button"
-            className="g3d-nav-btn zoom-out"
-            title="Zoom Out · Shortcut: -"
-            onClick={() => navRef.current.zoom?.(1.25)}
-          >
-            －
-          </button>
-        </div>
-      </div>
+      )}
 
       {panelOpen && (
         <GraphPanel
@@ -719,12 +1029,49 @@ export default function Graph3D({ graph, analysis, onSelect, height = '650px', f
         <TimelineBar range={range} timeline={timeline} setTimeline={setTimeline} links={links} cutoff={cutoff} className={besidePanel} />
       )}
 
+      {corridor && (
+        <div className={`g3d-timebar ${besidePanel}`}>
+          <button type="button" className="g3d-play" aria-label={playing ? 'Pause' : 'Play through time'}
+            onClick={() => {
+              const r = rail.current; r.playing = !r.playing;
+              if (r.playing) { const [a, b] = railRange(tl); if (r.tz >= b - 1) r.tz = a; } // replay from the start
+              setPlaying(r.playing);
+              ui.current.cue?.classList.add('gone');
+            }}>
+            {playing ? '❚❚' : '▶'}
+          </button>
+          <input ref={el => { ui.current.slider = el; }} type="range" min="0" max="1000" defaultValue="0"
+            aria-label="Scrub through time"
+            onPointerDown={() => { rail.current.sliding = true; }}
+            onPointerUp={() => { rail.current.sliding = false; }}
+            onPointerCancel={() => { rail.current.sliding = false; }}
+            onChange={e => {
+              const [a, b] = railRange(tl), r = rail.current;
+              r.playing = false; setPlaying(false); r.vz = 0;
+              r.tz = a + (e.target.value / 1000) * (b - a);
+            }} />
+          <div className="g3d-timeread">
+            <b ref={el => { ui.current.date = el; }} />
+            <small ref={el => { ui.current.ahead = el; }} />
+          </div>
+        </div>
+      )}
+      {corridor && nodes.length > 0 && (
+        <div className="g3d-cue" ref={el => { ui.current.cue = el; }}><i /><span>Scroll to travel through time</span></div>
+      )}
+      {!graph.nodes?.length && (
+        <div className={`tw:pointer-events-none tw:absolute tw:inset-x-3 tw:top-1/2 tw:z-[2] tw:-translate-y-1/2 tw:text-center ${besidePanel}`}>
+          <p className="tw:m-0 tw:font-display tw:text-lg tw:font-semibold tw:text-ink">No entities in this case yet</p>
+          <p className="tw:m-0 tw:mt-1 tw:text-sm tw:text-ink-3">Import records or load the sample data to see its timeline.</p>
+        </div>
+      )}
+
       {!timeline.on && (
         <div className={`g3d-hint ${besidePanel}`}>
-          {dragMode === 'pan'
-            ? 'Pan Mode: Left-drag or wheel to scroll horizontal & vertical · ＋/－ or pinch to zoom'
-            : 'Orbit Mode: Left-drag to rotate · Right-drag, Shift-drag or D-pad to scroll H/V · Scroll to zoom'}
-          {' · Arrow keys: Scroll · click an entity for details'}
+          {corridor
+            ? 'Scroll to travel through time · drag to look · W/S move · A/D strafe · Space plays · click an entity for details · '
+            : 'Drag to orbit · scroll to zoom · click an entity for details · '}
+          {nodes.length} entities, {links.length} links
           {showFlow && ' · gold lights = money, teal = calls'}
           {loopLinkCount > 0 && <> · <span className="g3d-loop-note">coral = money loop ({loopLinkCount} transfers)</span></>}
         </div>

@@ -8,9 +8,10 @@ import re
 from pathlib import Path
 import shutil
 import subprocess
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
 from time import monotonic
 
+import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 import pdfplumber
 from pdfminer.pdfdocument import PDFPasswordIncorrect
@@ -25,6 +26,13 @@ MAX_PIXELS = 20_000_000
 MAX_PAGES = 20
 MAX_CHARACTERS = 100_000
 _slots = BoundedSemaphore(1)
+# PDFium's native rendering and text APIs require process-wide serialization.
+pdfium_lock = Lock()
+
+
+def render_pdf_image(page, **options):
+    with pdfium_lock:
+        return page.to_image(**options)
 
 
 def _ocr(image, deadline, *, words=False):
@@ -70,7 +78,7 @@ def ocr_pdf_word_band(page, top, bottom, deadline):
         raise ResourceLimitError('Local OCR is busy. Retry the statement upload.')
     try:
         try:
-            raster = page.to_image(resolution=resolution, antialias=True)
+            raster = render_pdf_image(page, resolution=resolution, antialias=True)
         except MalformedPDFException as exc:
             raise ValueError('The statement header could not be rendered for OCR') from exc
         origin_x, origin_y = raster.bbox[:2]
@@ -84,6 +92,10 @@ def ocr_pdf_word_band(page, top, bottom, deadline):
                 data = _ocr(band, deadline, words=True)
     finally:
         _slots.release()
+    return positioned_ocr_words(data, origin_x, origin_y + start / scale, scale)
+
+
+def positioned_ocr_words(data, origin_x=0, origin_y=0, scale=1):
     words = []
     for item in csv.DictReader(StringIO(data), delimiter='\t'):
         if item['level'] != '5' or not item['text'] or not item['text'].strip():
@@ -91,8 +103,70 @@ def ocr_pdf_word_band(page, top, bottom, deadline):
         x, y = int(item['left']), int(item['top'])
         w, h = int(item['width']), int(item['height'])
         words.append({'text': item['text'], 'x0': origin_x + x / scale, 'x1': origin_x + (x + w) / scale,
-                      'top': origin_y + (start + y) / scale, 'bottom': origin_y + (start + y + h) / scale})
+                      'top': origin_y + y / scale, 'bottom': origin_y + (y + h) / scale})
     return words
+
+
+def raster_table_rules(image):
+    """Find thin, long rules in a scanned table using their pixel coverage."""
+    with image.convert('L') as grayscale:
+        ink = np.asarray(grayscale) < 205
+
+    def thin_runs(coverage, threshold):
+        edges = np.flatnonzero(np.diff(np.r_[False, coverage >= threshold, False]))
+        return [float((first + last - 1) / 2) for first, last in zip(edges[::2], edges[1::2])
+                if last - first <= max(5, image.width * .004)]
+
+    horizontal = thin_runs(ink.mean(axis=1), .38)
+    if len(horizontal) < 3:
+        return [], []
+    table_ink = ink[int(horizontal[0]):int(horizontal[-1]) + 1]
+    vertical = thin_runs(table_ink.mean(axis=0), .58)
+    return vertical, horizontal
+
+
+def statement_deskew_angle(image):
+    """Estimate a small tilt by finding the angle that concentrates ink into rows."""
+    with image.convert('L') as sample:
+        sample.thumbnail((720, 720))
+        if min(sample.size) < 80:
+            return 0
+
+        def row_score(candidate):
+            coverage = np.mean(np.asarray(candidate) < 190, axis=1)
+            return float(np.sum(coverage ** 4)), float(coverage.max())
+
+        baseline, _ = row_score(sample)
+        best_angle, best_score, best_peak = 0, baseline, 0
+        for half_degree in range(-12, 13):
+            if half_degree == 0:
+                continue
+            angle = half_degree / 2
+            with sample.rotate(angle, resample=Image.Resampling.BILINEAR, fillcolor=255) as rotated:
+                score, peak = row_score(rotated)
+            if score > best_score:
+                best_angle, best_score, best_peak = angle, score, peak
+        if best_peak >= .28 and best_score > baseline * 1.20:
+            return best_angle
+    return 0
+
+
+def ocr_statement_image(image, deadline):
+    if image.width * image.height > MAX_PIXELS:
+        raise ResourceLimitError('Statement image exceeds the OCR size limit')
+    if not _slots.acquire(blocking=False):
+        raise ResourceLimitError('Local OCR is busy. Retry the statement upload.')
+    try:
+        words = positioned_ocr_words(_ocr(image, deadline, words=True))
+        vertical, horizontal = raster_table_rules(image)
+        # OCR sometimes recognizes the ruling itself as an isolated pipe.
+        words = [word for word in words if not (
+            word['text'] in {'|', '¦', '│'}
+            and any(word['x0'] <= x <= word['x1'] for x in vertical)
+        )]
+        return words, vertical, horizontal
+    finally:
+        _slots.release()
 
 
 def _usable(text):
@@ -121,7 +195,7 @@ def _pdf_pages(content, deadline, wanted=None):
                     width, height = page.width * 200 / 72, page.height * 200 / 72
                     if min(width, height) <= 0 or width * height > MAX_PIXELS:
                         raise ResourceLimitError('PDF page exceeds the OCR image size limit')
-                    with page.to_image(resolution=200).original as image:
+                    with render_pdf_image(page, resolution=200).original as image:
                         yield number, _ocr(image, deadline), 'tesseract-eng'
                 finally:
                     page.close()
@@ -161,7 +235,7 @@ def render_source_page(content, page_number):
                         width, height = page.width * 120 / 72, page.height * 120 / 72
                         if min(width, height) <= 0 or width * height > MAX_PIXELS:
                             raise ResourceLimitError('Source page exceeds the preview size limit')
-                        with page.to_image(resolution=120).original as image:
+                        with render_pdf_image(page, resolution=120).original as image:
                             image.save(output, format='PNG')
                 except (PDFPasswordIncorrect, PDFSyntaxError) as exc:
                     raise ValueError('Source PDF cannot be previewed') from exc

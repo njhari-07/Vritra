@@ -3,6 +3,13 @@ import { Link } from 'react-router-dom';
 import GraphView from './components/GraphView';
 import JudgmentReview from './components/JudgmentReview';
 import SourcePage from './components/SourcePage';
+import RecordIntakeModes from './components/RecordIntakeModes';
+import RecordFilePicker from './components/RecordFilePicker';
+import StatementRowReview from './components/StatementRowReview';
+import StatementImportRows from './components/StatementImportRows';
+import StatementPageCoverage from './components/StatementPageCoverage';
+import BrandMark from './components/BrandMark';
+import DynamicBrand from './components/DynamicBrand';
 import LeadsPanel from './components/LeadsPanel';
 import ResolutionTab from './components/ResolutionTab';
 import TimelineTab from './components/TimelineTab';
@@ -11,8 +18,11 @@ import QualityTab from './components/QualityTab';
 import AuditTab from './components/AuditTab';
 import BenchmarksTab from './components/BenchmarksTab';
 import EvidenceDrawer from './components/EvidenceDrawer';
+import FindingsReview from './components/FindingsReview';
 import GraphExplorerTab from './components/GraphExplorerTab';
-import './style.css';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+// Styles (style.css, record-intake.css, Tailwind) are loaded once from index.css in main.jsx.
 
 const HeroScene = lazy(() => import('./components/three/HeroScene'));
 
@@ -61,10 +71,14 @@ export default function App({ userSlot = null }) {
   const [selected, setSelected] = useState(null);
   const [ev, setEv] = useState(null);
   const [search, setSearch] = useState('');
-  const [list, setList] = useState([]);
+  // Rows for the Resolution / Timeline / Quality / Audit / Benchmarks tabs, tagged with the tab they were
+  // loaded for. Each tab only renders its own rows, so switching tabs never draws another tab's data.
+  const [listState, setListState] = useState({ tab: null, rows: [] });
+  const list = listState.tab === tab && Array.isArray(listState.rows) ? listState.rows : [];
   const [notice, setNotice] = useState('');
   const sessionToken = useRef('');
   const caseRequest = useRef(null);
+  const casePreference = useRef(Promise.resolve());
   const evidenceRequest = useRef(null);
   const drawerClose = useRef(null);
 
@@ -84,6 +98,23 @@ export default function App({ userSlot = null }) {
   const [rawTitle, setRawTitle] = useState('FIR-CRIME-REGISTRY-01');
   const [rawSourceType, setRawSourceType] = useState('police_fir');
   const [rawSynthetic, setRawSynthetic] = useState(false);
+  const [uploadKind, setUploadKind] = useState('ibm');
+  const [uploadFeedback, setUploadFeedback] = useState(null);
+  const [statementPage, setStatementPage] = useState(null);
+  const [statementDividers, setStatementDividers] = useState('');
+  const [statementCorrections, setStatementCorrections] = useState({});
+  const uploading = uploadFeedback?.status === 'pending';
+
+  useEffect(() => {
+    if (!statementPage) return;
+    return () => URL.revokeObjectURL(statementPage.url);
+  }, [statementPage]);
+
+  useEffect(() => {
+    setStatementPage(null);
+    setStatementCorrections({});
+    setUploadFeedback(null);
+  }, [activeCase, tab]);
 
   // Feature 4: ML Tuning & Weights
 
@@ -93,7 +124,7 @@ export default function App({ userSlot = null }) {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templates, setTemplates] = useState(null);
 
-  const api = async (path, options = {}) => {
+  const api = async (path, { raw = false, ...options } = {}) => {
     const r = await fetch('/api' + path, {
       ...options,
       headers: { Authorization: 'Bearer ' + token, ...options.headers }
@@ -102,7 +133,7 @@ export default function App({ userSlot = null }) {
       const d = await r.json().catch(() => ({ detail: r.statusText }));
       throw Error(d.detail || 'Request failed');
     }
-    return r.json();
+    return raw ? r : r.json();
   };
 
   const load = async targetCase => {
@@ -116,10 +147,24 @@ export default function App({ userSlot = null }) {
     try {
       const [m, cList] = await Promise.all([api('/me', options), api('/cases', options)]);
       if (controller.signal.aborted) return;
-      setMe(m);
-      setCasesList(cList);
-      const preferred = targetCase || activeCase;
+      const preferred = targetCase || m.active_case || activeCase;
       const selCase = cList.find(item => item.case_id === preferred)?.case_id || cList[0]?.case_id || '';
+      if (selCase && selCase !== m.active_case) {
+        // Queue writes so switching cases cannot leave an older choice saved last.
+        const save = casePreference.current.catch(() => {}).then(async () => {
+          if (!controller.signal.aborted) {
+            await api('/workspace/case', {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ case_id: selCase }),
+            });
+          }
+        });
+        casePreference.current = save;
+        await save;
+      }
+      if (controller.signal.aborted) return;
+      setMe({ ...m, active_case: selCase || null });
+      setCasesList(cList);
       setActiveCase(selCase);
       if (selCase !== activeCase || !selCase) {
         setGraph(null);
@@ -171,7 +216,7 @@ export default function App({ userSlot = null }) {
 
   useEffect(() => {
     selectItem(null);
-    setList([]);
+    setListState({ tab: null, rows: [] });
     if (!me || !activeCase) return;
     let current = true;
     const paths = {
@@ -181,7 +226,7 @@ export default function App({ userSlot = null }) {
       Audit: '/audit?case=' + encodeURIComponent(activeCase),
       Benchmarks: '/benchmarks'
     };
-    if (paths[tab]) api(paths[tab]).then(data => { if (current) setList(data); })
+    if (paths[tab]) api(paths[tab]).then(data => { if (current) setListState({ tab, rows: data }); })
       .catch(error => { if (current) setError(error.message); });
     return () => { current = false; };
   }, [tab, me, activeCase]);
@@ -190,7 +235,6 @@ export default function App({ userSlot = null }) {
     selectItem(null);
     setGraph(null);
     setAnalysis(null);
-    setActiveCase(cId);
     setShowTrainingStudio(false);
     load(cId);
   };
@@ -232,11 +276,11 @@ export default function App({ userSlot = null }) {
     }
   };
 
-  const handleLoadSample = async (dataset = 'the_exchange') => {
+  const handleLoadSample = async () => {
     setBusy(true);
     try {
-      await api(`/cases/${encodeURIComponent(activeCase)}/load-sample?dataset=${dataset}`, { method: 'POST' });
-      setNotice(`Sample Evidence Package (${dataset === 'the_exchange' ? "The Exchange: Libyan Hostage Syndicate" : "Standard"}) loaded into ${activeCase}. Ready for Case Analysis!`);
+      await api(`/cases/${encodeURIComponent(activeCase)}/load-sample`, { method: 'POST' });
+      setNotice(`Sample Evidence Package loaded into ${activeCase} (3 Court Cases, 3 Crime FIRs, 3 CDR Calls, 3-hop Money Loop). Ready for ML Model Training!`);
       await load(activeCase);
     } catch (e) {
       setError(e.message);
@@ -397,7 +441,7 @@ export default function App({ userSlot = null }) {
         body: JSON.stringify({ state, reason })
       });
       await load(activeCase);
-      setList(await api('/candidates'));
+      setListState({ tab: 'Resolution', rows: await api('/candidates') });
       setNotice('Resolution decision saved');
     } catch (e) {
       setError(e.message);
@@ -406,23 +450,101 @@ export default function App({ userSlot = null }) {
 
   const upload = async e => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget),
+    if (uploading) return;
+    const form = e.currentTarget;
+    const f = new FormData(form),
       file = f.get('file');
-    if (!file?.size) return;
+    if (!file?.size) {
+      setUploadFeedback({ status: 'error', message: 'Choose a file that is not empty.' });
+      return;
+    }
+    const kind = f.get('kind'), caseId = f.get('case');
+    const statement = kind === 'bank-statement';
+    const preview = statement && e.nativeEvent.submitter?.value === 'statement-preview';
+    const viewPage = statement && e.nativeEvent.submitter?.value === 'statement-page';
+    const selectedFile = form.elements.file.files[0];
+    const savedPreview = uploadFeedback?.rows ? uploadFeedback : null;
+    if (statement) {
+      const columns = {};
+      for (const [name, value] of [...f.entries()]) {
+        if (name.startsWith('map_column_')) {
+          if (value !== '') columns[name.slice('map_column_'.length)] = Number(value);
+          f.delete(name);
+        }
+      }
+      const dividers = f.get('map_dividers')?.trim();
+      f.delete('map_dividers');
+      if (!viewPage && (Object.keys(columns).length || dividers)) {
+        const separators = dividers ? dividers.split(',').map(value => Number(value.trim())) : [];
+        f.set('column_mapping', JSON.stringify({ columns, separators }));
+      }
+      if (!viewPage && Object.keys(statementCorrections).length) {
+        f.set('row_corrections', JSON.stringify(statementCorrections));
+      }
+      form.elements.password.value = '';
+      f.delete('kind');
+      f.delete('case');
+    }
     setBusy(true);
+    setUploadFeedback({ ...savedPreview, status: 'pending', message: viewPage ? 'Rendering statement page…' : statement ? 'Reading statement rows… This may take a moment.' : 'Importing records…' });
     try {
-      const r = await api(`/import/${f.get('kind')}/${encodeURIComponent(f.get('case'))}`, {
+      const action = viewPage ? '?layout_page=true' : preview ? '?preview=true' : '';
+      const r = await api(`/import/${kind}/${encodeURIComponent(caseId)}${action}`, {
         method: 'POST',
-        body: file
+        body: statement ? f : file,
+        raw: viewPage,
       });
-      setNotice(`${r.accepted_new} accepted · ${r.recognized_repeat} repeated · ${r.quarantined} quarantined`);
-      await load(f.get('case'));
+      if (token !== sessionToken.current) return;
+      if (viewPage) {
+        const image = await r.blob();
+        if (token !== sessionToken.current) return;
+        if (form.isConnected && form.elements.file.files[0] === selectedFile && form.elements.case.value === caseId
+          && form.elements.pdf_pages?.value === f.get('pdf_pages')) {
+          setStatementPage({ url: URL.createObjectURL(image), number: r.headers.get('X-Statement-Page') });
+        }
+        setUploadFeedback(savedPreview);
+        return;
+      }
+      if (preview) {
+        setUploadFeedback({
+          status: 'preview',
+          message: `${r.accepted} valid · ${r.rejected} rejected · Showing ${r.rows.length} candidates. Nothing imported.`,
+          rows: r.rows,
+          inferredPages: r.balance_inferred_pages,
+          inferredSheets: r.balance_inferred_sheets,
+          pageCoverage: r.page_coverage,
+          pageRange: r.page_range,
+          recoveredLayoutRows: r.recovered_layout_rows,
+        });
+        return;
+      }
+      setUploadFeedback({
+        status: 'success',
+        message: `${r.accepted_new} accepted · ${r.recognized_repeat} repeated · ${r.quarantined} quarantined${statement ? '. Open Quality to review statement rows.' : ''}`,
+        pageCoverage: r.statement_scope?.coverage,
+        pageRange: r.statement_scope?.requested,
+      });
+      setStatementCorrections({});
+      await load(caseId);
     } catch (e) {
-      setError(e.message);
+      if (token === sessionToken.current) setUploadFeedback({ ...savedPreview, status: 'error', message: e.message });
     } finally {
-      setBusy(false);
+      if (token === sessionToken.current) setBusy(false);
     }
   };
+
+  function statementField(row, field, label, fallback) {
+    if (!row.repairable?.includes(field)) return fallback || '—';
+    return <input type="text" maxLength={64} data-statement-edit="true"
+      className="statement-preview-input" aria-label={`${label} for source row ${row.locator.row}`}
+      disabled={uploading} value={statementCorrections[row.candidate_id]?.[field] ?? row.fields[field] ?? ''}
+      onChange={event => {
+        const value = event.target.value;
+        setStatementCorrections(previous => ({
+          ...previous, [row.candidate_id]: { ...previous[row.candidate_id], [field]: value },
+        }));
+      }} />;
+  }
 
   const askCopilot = async qText => {
     const q = (qText || copilotQuery).trim();
@@ -467,72 +589,69 @@ export default function App({ userSlot = null }) {
   if (!me)
     return (
       <div className="login-stage">
-        <div className="login-stage-bg" aria-hidden="true">
-          <Suspense fallback={null}><HeroScene dim /></Suspense>
-        </div>
-        <main className={`login ${darkMode ? 'dark-theme' : ''}`}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <Link to="/" className="login-back">← Home</Link>
-            {userSlot && <div className="clerk-user-slot">{userSlot}</div>}
-            <button
-              type="button"
-              className="theme-toggle-btn"
-              onClick={() => setDarkMode(prev => !prev)}
-              title={darkMode ? "Switch to light canvas" : "Switch to dark canvas"}
-            >
-              {darkMode ? 'Light mode' : 'Dark mode'}
-            </button>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-            <span className="badge" style={{ background: 'rgba(56,189,248,0.12)', color: 'var(--accent-cyan)', borderColor: 'rgba(56,189,248,0.3)' }}>
-              NCRB PS 26189 · PMLA 2002
-            </span>
-            <span className="badge" style={{ background: 'rgba(16,185,129,0.12)', color: 'var(--accent-emerald)', borderColor: 'rgba(16,185,129,0.3)' }}>
-              ● LEDGER ONLINE
-            </span>
-          </div>
-          <div className="wordmark">
-            <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 18L12 5l7 13H5Z" />
-              <circle cx="5" cy="18" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="18" r="2" />
-            </svg> MAHA
-          </div>
-          <p className="eyebrow">LOCAL EVIDENCE WORKSPACE</p>
-          <h1>
-            Open your workspace
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', margin: '0 0 24px' }}>
-            Explore case records, trace connections, and review source evidence.
-          </p>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              sessionToken.current = input;
-              if (input === token) load();
-              else setToken(input);
-            }}
+      <div className="login-stage-bg" aria-hidden="true">
+        <Suspense fallback={null}><HeroScene dim /></Suspense>
+      </div>
+      <main className={`login ${darkMode ? 'dark-theme' : ''}`}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <Link to="/" className="login-back">← Home</Link>
+          {userSlot && <div className="clerk-user-slot">{userSlot}</div>}
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            onClick={() => setDarkMode(prev => !prev)}
+            title={darkMode ? "Switch to light canvas" : "Switch to dark canvas"}
           >
-            <input
-              type="password"
-              aria-label="Access token"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              placeholder="Local access token"
-              required
-            />
-            <button disabled={busy}>{busy ? 'Opening…' : 'Open workspace →'}</button>
-          </form>
-          {error && (
-            <p role="alert" className="error">
-              {error}
-            </p>
-          )}
-          <small>
-            Token file: data/private/runtime/access.json
-            <br />
-            Synthetic demonstration · Decision support, never a verdict
-          </small>
-        </main>
+            {darkMode ? 'Light mode' : 'Dark mode'}
+          </button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+          <span className="badge" style={{ background: 'rgba(56,189,248,0.12)', color: 'var(--accent-cyan)', borderColor: 'rgba(56,189,248,0.3)' }}>
+            NCRB PS 26189 · PMLA 2002
+          </span>
+          <span className="badge" style={{ background: 'rgba(16,185,129,0.12)', color: 'var(--accent-emerald)', borderColor: 'rgba(16,185,129,0.3)' }}>
+            ● LEDGER ONLINE
+          </span>
+        </div>
+        <div className="wordmark">
+          <DynamicBrand size={28} />
+        </div>
+        <p className="eyebrow">LOCAL EVIDENCE WORKSPACE</p>
+        <h1>
+          Open your workspace
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', margin: '0 0 24px' }}>
+          Explore case records, trace connections, and review source evidence.
+        </p>
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            sessionToken.current = input;
+            if (input === token) load();
+            else setToken(input);
+          }}
+        >
+          <input
+            type="password"
+            aria-label="Access token"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Local access token"
+            required
+          />
+          <button disabled={busy}>{busy ? 'Opening…' : 'Open workspace →'}</button>
+        </form>
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <small>
+          Token file: data/private/runtime/access.json
+          <br />
+          Synthetic demonstration · Decision support, never a verdict
+        </small>
+      </main>
       </div>
     );
 
@@ -549,29 +668,20 @@ export default function App({ userSlot = null }) {
   const suspects = analysis?.suspects || [];
 
   const leads = tab === 'Flagged behavior' ? behavior : connections;
-  const filtered = leads.filter(l =>
-    (l.reason + ' ' + l.subject_ids.map(id => graph?.nodes?.find(n => n.id === id)?.label).join(' ')).toLowerCase().includes(search.toLowerCase())
-  );
 
   const dossierGroups = [
-    ['kingpin', '👑 Prime Syndicate Mastermind (Kingpin Detected)', s => s.is_kingpin],
-    ['syndicate', '⚡ Syndicate Operatives & Conduits', s => !s.is_kingpin && !s.is_witness && (s.kingpin_score >= 25 || (s.findings && s.findings.length > 0))],
-    ['witness', '👁️ Witnesses & Exonerated Persons', s => s.is_witness || s.source_roles?.some(role => /\bwitness\b/i.test(role))],
-    ['other', 'Connected Persons', s => !s.is_kingpin && !s.is_witness && (!s.findings || s.findings.length === 0) && (s.kingpin_score || 0) < 25]
+    ['witness', 'Witnesses in source records', s => s.source_roles?.some(role => /\bwitness\b/i.test(role))],
+    ['other', 'Other people in case records', s => !s.source_roles?.some(role => /\bwitness\b/i.test(role))]
   ];
   const filteredSuspects = suspects.filter(s =>
-    [s.name, s.role, s.authoritative_id, s.syndicate_role].join(' ').toLowerCase().includes(search.toLowerCase())
+    [s.name, s.role, s.authoritative_id].join(' ').toLowerCase().includes(search.toLowerCase())
   );
-  const detectedKingpin = suspects.find(s => s.is_kingpin);
 
   return (
     <div className={`shell ${darkMode ? 'dark-theme' : ''}`}>
       <aside className="sidebar">
         <div className="wordmark">
-          <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 18L12 5l7 13H5Z" />
-            <circle cx="5" cy="18" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="18" r="2" />
-          </svg> MAHA
+          <DynamicBrand size={28} />
         </div>
         <p className="eyebrow">EVIDENCE WORKSPACE</p>
         <nav>
@@ -633,6 +743,10 @@ export default function App({ userSlot = null }) {
               setBusy(false);
               setError('');
               setNotice('');
+              setUploadFeedback(null);
+              setStatementPage(null);
+              setStatementDividers('');
+              setStatementCorrections({});
               setRawText('');
               setCopilotQuery('');
               setCopilotResult(null);
@@ -711,19 +825,21 @@ export default function App({ userSlot = null }) {
               {tab === 'Overview'
                 ? 'Case overview'
                 : tab === 'Dossiers'
-                  ? isTrained && !showTrainingStudio
-                    ? 'Dossiers'
-                    : 'Case analysis'
-                  : tab}
+                ? isTrained && !showTrainingStudio
+                  ? 'Dossiers'
+                  : 'Case analysis'
+                : tab}
             </h1>
             <p>
               {tab === 'Overview'
                 ? 'Explore relationships. Review unusual activity. Keep every source within reach.'
                 : tab === 'Dossiers'
-                  ? isTrained && !showTrainingStudio
-                    ? 'Synthesized across judicial proceedings, financial layering cycles, prior FIR records, and telecom communications.'
-                    : 'Import structured evidence and run case analysis.'
-                  : 'Findings are for investigator review. A connection does not establish wrongdoing.'}
+                ? isTrained && !showTrainingStudio
+                  ? 'Synthesized across judicial proceedings, financial layering cycles, prior FIR records, and telecom communications.'
+                  : 'Import structured evidence and run case analysis.'
+                : tab === 'Import records'
+                ? 'Add source evidence from a file or paste case text for extraction.'
+                : 'Findings are for investigator review. A connection does not establish wrongdoing.'}
             </p>
           </div>
           <button className="quiet" onClick={() => load(activeCase)} disabled={busy}>
@@ -876,285 +992,8 @@ export default function App({ userSlot = null }) {
                   </div>
                 </div>
 
-                {/* Feature 3: Paste case text */}
-                <div className="raw-text-panel">
-                  <h3>Paste case text</h3>
-                  <p>
-                    Choose the document type. Judgment text uses legal entity extraction. FIR and other text use general entity extraction. Review the results under Quality.
-                  </p>
-                  <div className="raw-text-presets">
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', alignSelf: 'center' }}>Sample Presets:</span>
-                    <button
-                      type="button"
-                      className="btn-preset"
-                      onClick={() => {
-                        setRawSynthetic(true);
-                        setRawSourceType('police_fir');
-                        setRawTitle('ED-PMLA-COMPLAINT-142');
-                        setRawText(`IN THE SPECIAL COURT FOR PMLA OFFENSES: Directorate of Enforcement vs. Vikram Singhania [ID:P001] & Ors.\nPrime Accused Vikram Singhania operates HDFC Bank account 001928374 for layering procurement fraud kickbacks of ₹14,200,000.\nCo-conspirator Rajesh Sharma operates ICICI Bank account 009847261 as hawala mule routing pass-through tranches.\nCharges registered under PMLA Section 3 & 4 and IPC Section 420 and 120B.\nNon-Bailable Warrant issued by EOW.`);
-                      }}
-                    >
-                      Preset 1: PMLA Procurement FIR
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-preset"
-                      onClick={() => {
-                        setRawSynthetic(true);
-                        setRawSourceType('police_fir');
-                        setRawTitle('CYBER-PS-FIR-204');
-                        setRawText(`CYBER CRIME POLICE STATION: State vs. Dev Shah [ID:P003] & Associates.\nAccused Dev Shah operates darknet crypto conversion infrastructure and Axis Bank account 005511223.\nMule coordinator Vikas Agarwal routed funds through Axis Bank and ICICI Bank.\nFIR No. 204/2023 under IT Act Section 66D and IPC Section 420. Look-Out Circular (LOC) active at international airports.`);
-                      }}
-                    >
-                      Preset 2: Cyber Financial Fraud FIR
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-preset"
-                      onClick={() => {
-                        setRawSynthetic(true);
-                        setRawSourceType('police_fir');
-                        setRawTitle(`EOW-FIR-144-${activeCase}`);
-                        setRawText(`POLICE STATION: Economic Offenses Wing (EOW), Mandir Marg, New Delhi\nFIR No: 144/2026 | Date: 12-03-2026\nActs & Sections: Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), read with Section 3 & 4 of Prevention of Money Laundering Act, 2002 (PMLA).\n(i) Accused Vikram Malhotra [ID:P101], Managing Director, Zenith Health Ventures Ltd. Role: Prime Syndicate Mastermind and beneficial owner of destination fund accounts.\n(ii) Accused Sanjay Agarwal [ID:P102], Financial Consultant & Hawala Remittance Mule Coordinator. Operates account ACC-AGARWAL-882 at Bank 010.\n(iii) Accused Karan Singhania [ID:P103], Dummy Director, Apex Logistics Front Corp. Operates account ACC-APEXSHELL-993 at Bank 010.\n(iv) Accused Rohit Verma [ID:P104], Operator of unauthorized digital escrow and crypto mixing channels, account ACC-VERMA-104 at Bank 010.\nAllegations: Accused Vikram Malhotra [ID:P101] utilized shell corporate vehicles to route approximately $750,000 USD of misappropriated funds through closed-loop layering transfers. Primary layering was executed through bank account 010 / ACC-MALHOTRA-771 into mule account 010 / ACC-AGARWAL-882, which was then layered into shell account 010 / ACC-APEXSHELL-993 before returning into primary beneficiary accounts under the guise of dividend reinvestment.`);
-                      }}
-                    >
-                      Preset 3: Zenith Healthcare Syndicate (P101/P102/P103)
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-preset"
-                      onClick={() => {
-                        setRawSynthetic(true);
-                        setRawSourceType('court_judgment');
-                        setRawTitle(`SDNY-EXCHANGE-RANSOM-${activeCase}`);
-                        setRawText(`UNITED STATES DISTRICT COURT FOR THE SOUTHERN DISTRICT OF NEW YORK // SPECIAL GRAND JURY INDICTMENT.\nCRIMINAL DOCKET NO. CR-2026-9944: UNITED STATES OF AMERICA v. MUSTAFA AL-KHATIB, NOURA AL-FASSI, BAYKAN LANNAK ET AL.\n1. Person Mustafa Al-Khatib [ID:P601] is named as Prime Accused and head of the Saharan militant hostage syndicate in this case.\n2. Person Mustafa Al-Khatib [ID:P601] owns account [Bank:010; Account:ACC-KHATIB-LIBYA-TRIPOLI].\n3. Person Mustafa Al-Khatib [ID:P601] owns account [Bank:010; Account:ACC-SAHARA-HOLDINGS].\n4. Person Noura Al-Fassi [ID:P602] is named as Co-Accused and extortion negotiator in this case.\n5. Person Noura Al-Fassi [ID:P602] owns account [Bank:010; Account:ACC-NOURA-TANGIER].\n6. Person Baykan Lannak [ID:P603] is named as Co-Accused and construction kickback conduit in this case.\n7. Person Baykan Lannak [ID:P603] owns account [Bank:010; Account:ACC-LANNAK-ISTANBUL].\n8. Person Baykan Lannak [ID:P603] owns account [Bank:010; Account:ACC-LANNAK-GENEVA].\n9. Person Tariq Ben-Zaid [ID:P608] is named as Co-Accused and tactical desert convoy coordinator in this case.\n10. Person Tariq Ben-Zaid [ID:P608] owns account [Bank:010; Account:ACC-BENZAID-TRIPOLI].\n11. Person Mitchell Y McDeere [ID:P604] owns account [Bank:010; Account:ACC-SCULLY-ESCROW-NY] and is referenced in this case as a witness and designated ransom courier.\n12. Person Giovanna Sandroni [ID:P605] owns account [Bank:010; Account:ACC-GIOVANNA-ROME] and is referenced in this case as an abducted associate attorney and primary victim.\n13. Accused Mustafa Al-Khatib [ID:P601] demanded $100,000,000 USD ransom following the Great Gaddafi Bridge ambush, routing funds from Scully & Pershing New York escrow into Geneva Swiss accounts, Tangier, and Sahara Holdings.`);
-                      }}
-                    >
-                      Preset 4: The Exchange (Libyan Hostage Extortion)
-                    </button>
-                  </div>
-                  <div className="case-actions">
-                    <label>Document type
-                      <select value={rawSourceType} onChange={event => setRawSourceType(event.target.value)}>
-                        <option value="police_fir">Police FIR</option>
-                        <option value="court_judgment">English Indian court judgment</option>
-                        <option value="other">Other English text</option>
-                      </select>
-                    </label>
-                    <label>Source title
-                      <input value={rawTitle} maxLength={120} onChange={event => setRawTitle(event.target.value)} />
-                    </label>
-                    <label><input type="checkbox" checked={rawSynthetic}
-                      onChange={event => setRawSynthetic(event.target.checked)} /> Synthetic example</label>
-                  </div>
-                  <textarea
-                    className="raw-text-area"
-                    aria-label="Case text"
-                    maxLength={50000}
-                    placeholder="Paste raw police FIR, prosecution complaint, or interrogation transcript here..."
-                    value={rawText}
-                    onChange={e => setRawText(e.target.value)}
-                  />
-                  <div className="raw-text-footer">
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      Case Scope: <strong style={{ color: 'var(--text-primary)' }}>{activeCase}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      className="btn-parse-nlp"
-                      disabled={!rawText.trim() || busy}
-                      onClick={handleRawTextImport}
-                    >
-                      Extract mentions
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4 Modality Intake Cards */}
-                <div className="intake-grid">
-                  {/* 1. Court Cases */}
-                  <div className="intake-card">
-                    <div>
-                      <div className="intake-card-top">
-
-                        <div>
-                          <h3 className="intake-card-title">Court Proceedings</h3>
-                          <span className="intake-card-format">Legal Narrative JSON</span>
-                        </div>
-                      </div>
-                      <p className="intake-card-desc">
-                        Judicial orders, charge sheets, bail transcripts, and legal proceedings mentioning accused parties.
-                      </p>
-                    </div>
-                    <div>
-                      <span className="intake-card-count">Case Scope: {activeCase}</span>
-                      <div className="intake-card-actions">
-                        <label className="file-upload-btn">
-                          <span>↑ Upload JSON</span>
-                          <input
-                            type="file"
-                            accept=".json"
-                            onChange={e => {
-                              if (e.target.files[0]) handleDirectUpload('narrative', e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="btn-tmpl"
-                          onClick={() => {
-                            downloadFile(
-                              'court_cases_template.json',
-                              JSON.stringify([
-                                {
-                                  document_id: `COURT-${activeCase}-01`,
-                                  case_id: activeCase,
-                                  filed_date: '2026-03-15',
-                                  synthetic: true,
-                                  text: `In the Special Court for PMLA Offenses: Directorate of Enforcement vs. Vikram Singhania [ID:P001]. Accused P001 operated account DEMO/A as primary layering pool.`
-                                }
-                              ], null, 2),
-                              'json'
-                            );
-                          }}
-                        >
-                          Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. Financial Transactions */}
-                  <div className="intake-card">
-                    <div>
-                      <div className="intake-card-top">
-
-                        <div>
-                          <h3 className="intake-card-title">Financial Wires</h3>
-                          <span className="intake-card-format">Transactions CSV</span>
-                        </div>
-                      </div>
-                      <p className="intake-card-desc">
-                        High-velocity bank transfers, RTGS/NEFT wires, foreign remittances, and hawala smurfing logs.
-                      </p>
-                    </div>
-                    <div>
-                      <span className="intake-card-count">Case Scope: {activeCase}</span>
-                      <div className="intake-card-actions">
-                        <label className="file-upload-btn">
-                          <span>↑ Upload CSV</span>
-                          <input
-                            type="file"
-                            accept=".csv"
-                            onChange={e => {
-                              if (e.target.files[0]) handleDirectUpload('ibm', e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="btn-tmpl"
-                          onClick={() => {
-                            downloadFile(
-                              'transactions_template.csv',
-                              "Timestamp,From Bank,Account,To Bank,Account,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering\n2026/03/10 10:15,DEMO,A,DEMO,B,100000.00,US Dollar,100000.00,US Dollar,ACH,1\n2026/03/10 11:30,DEMO,B,DEMO,C,107000.00,US Dollar,107000.00,US Dollar,ACH,1\n2026/03/10 12:45,DEMO,C,DEMO,A,114000.00,US Dollar,114000.00,US Dollar,ACH,1\n",
-                              'csv'
-                            );
-                          }}
-                        >
-                          Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 3. Crime FIR History */}
-                  <div className="intake-card">
-                    <div>
-                      <div className="intake-card-top">
-
-                        <div>
-                          <h3 className="intake-card-title">Crime FIR Records</h3>
-                          <span className="intake-card-format">History Registry CSV</span>
-                        </div>
-                      </div>
-                      <p className="intake-card-desc">
-                        Police station FIRs, Look Out Circulars (LOC), prior arrest records, and CBI/ED charges.
-                      </p>
-                    </div>
-                    <div>
-                      <span className="intake-card-count">Case Scope: {activeCase}</span>
-                      <div className="intake-card-actions">
-                        <label className="file-upload-btn">
-                          <span>↑ Upload CSV</span>
-                          <input
-                            type="file"
-                            accept=".csv"
-                            onChange={e => {
-                              if (e.target.files[0]) handleDirectUpload('history', e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="btn-tmpl"
-                          onClick={() => {
-                            downloadFile(
-                              'crime_firs_template.csv',
-                              `record_id,person_id,case_id,record_date,record_status,text,synthetic\nFIR-01,P001,${activeCase},2026-01-14,Active Charge-Sheet,FIR No. 44/2026 under IPC 420/120B and PMLA Section 3 for syndicate fraud,true\nFIR-02,P002,${activeCase},2026-02-02,Look Out Circular,LOC Issued at International Airports for evasion of summons,true\n`,
-                              'csv'
-                            );
-                          }}
-                        >
-                          Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 4. Telecom CDR */}
-                  <div className="intake-card">
-                    <div>
-                      <div className="intake-card-top">
-
-                        <div>
-                          <h3 className="intake-card-title">Telecom CDR Calls</h3>
-                          <span className="intake-card-format">CDR Intercepts CSV</span>
-                        </div>
-                      </div>
-                      <p className="intake-card-desc">
-                        Encrypted burner phone call logs, durations, tower timestamps, and syndicate communications.
-                      </p>
-                    </div>
-                    <div>
-                      <span className="intake-card-count">Case Scope: {activeCase}</span>
-                      <div className="intake-card-actions">
-                        <label className="file-upload-btn">
-                          <span>↑ Upload CSV</span>
-                          <input
-                            type="file"
-                            accept=".csv"
-                            onChange={e => {
-                              if (e.target.files[0]) handleDirectUpload('cdr', e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                        <button
-                          className="btn-tmpl"
-                          onClick={() => {
-                            downloadFile(
-                              'cdr_calls_template.csv',
-                              "record_id,caller_person_id,callee_person_id,start_time,duration_seconds,synthetic\nCALL-101,P001,P002,2026-03-10T09:45:00+00:00,420,true\nCALL-102,P002,P003,2026-03-10T12:10:00+00:00,185,true\nCALL-103,P003,P001,2026-03-10T15:00:00+00:00,310,true\n",
-                              'csv'
-                            );
-                          }}
-                        >
-                          Template
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="case-actions" style={{ marginTop: '12px' }}>
-                    <button className="quiet" onClick={() => setTab('Import records')}>Open Import records</button>
-                  </div>
+                <div className="case-actions">
+                  <button className="quiet" onClick={() => setTab('Import records')}>Open Import records</button>
                 </div>
 
                 {/* Training Trigger Box */}
@@ -1168,8 +1007,8 @@ export default function App({ userSlot = null }) {
                     </p>
                   </div>
                   <div className="train-box-actions">
-                    <button className="btn-sample" onClick={() => handleLoadSample('the_exchange')} disabled={isTraining || busy}>
-                      1-Click Load "The Exchange" Dataset
+                    <button className="btn-sample" onClick={handleLoadSample} disabled={isTraining || busy}>
+                      1-Click Load Sample Package
                     </button>
                     <button
                       className="btn-train-primary"
@@ -1197,79 +1036,6 @@ export default function App({ userSlot = null }) {
                     value={search} onChange={event => setSearch(event.target.value)} />
                   <button className="quiet" onClick={() => setShowTrainingStudio(true)}>Open case analysis</button>
                 </div>
-
-                {detectedKingpin && (
-                  <div className="kingpin-hero-card" style={{
-                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.04) 100%)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    borderRadius: '10px',
-                    padding: '16px 20px',
-                    marginBottom: '20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{
-                          background: '#ef4444',
-                          color: '#fff',
-                          fontSize: '11px',
-                          fontWeight: '700',
-                          letterSpacing: '0.04em',
-                          padding: '3px 8px',
-                          borderRadius: '4px',
-                          textTransform: 'uppercase'
-                        }}>👑 KINGPIN IDENTIFIED</span>
-                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{detectedKingpin.name}</h3>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>({detectedKingpin.authoritative_id || detectedKingpin.id})</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Mastermind Risk Index:</span>
-                        <strong style={{ fontSize: '18px', color: '#ef4444' }}>{detectedKingpin.kingpin_score?.toFixed(1)} / 100</strong>
-                      </div>
-                    </div>
-
-                    <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)' }}>
-                      Hierarchy: <strong style={{ color: '#ef4444' }}>{detectedKingpin.syndicate_role}</strong>
-                      {detectedKingpin.role && <span> · Formally: {detectedKingpin.role}</span>}
-                    </p>
-
-                    {detectedKingpin.kingpin_breakdown && (
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '11px', marginTop: '2px' }}>
-                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                          ⚖️ Judicial: <strong>{detectedKingpin.kingpin_breakdown.judicial} / 30</strong>
-                        </span>
-                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                          💸 Laundering Cycles: <strong>{detectedKingpin.kingpin_breakdown.financial} / 30</strong>
-                        </span>
-                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                          🚨 Crime Warrants: <strong>{detectedKingpin.kingpin_breakdown.crime} / 25</strong>
-                        </span>
-                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                          📞 Telecom C2: <strong>{detectedKingpin.kingpin_breakdown.telecom} / 15</strong>
-                        </span>
-                        <span style={{ padding: '3px 8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                          🌐 Centrality: <strong>{detectedKingpin.kingpin_breakdown.network} / 10</strong>
-                        </span>
-                      </div>
-                    )}
-
-                    {detectedKingpin.kingpin_reasons && detectedKingpin.kingpin_reasons.length > 0 && (
-                      <ul style={{ margin: '2px 0 0', paddingLeft: '18px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        {detectedKingpin.kingpin_reasons.map((r, i) => (
-                          <li key={i} style={{ marginBottom: '2px' }}>{r}</li>
-                        ))}
-                      </ul>
-                    )}
-
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                      <button className="quiet" onClick={() => selectItem(detectedKingpin)}>Review Kingpin Dossier ({detectedKingpin.evidence_ids?.length} sources) →</button>
-                      <button className="quiet" onClick={() => isolateInGraph(detectedKingpin)}>Focus Kingpin in Graph</button>
-                    </div>
-                  </div>
-                )}
-
                 {dossierGroups.map(([key, label, matches]) => {
                   const dossiers = filteredSuspects.filter(matches);
                   if (!dossiers.length) return null;
@@ -1278,33 +1044,8 @@ export default function App({ userSlot = null }) {
                       <div className="dossier-group-heading"><h3>{label}</h3><span>{dossiers.length}</span></div>
                       {dossiers.map(dossier => (
                         <article className="suspect-card" key={dossier.id}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {dossier.is_kingpin && (
-                                <span style={{ background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '3px' }}>
-                                  KINGPIN #1
-                                </span>
-                              )}
-                              {dossier.role_badge && !dossier.is_kingpin && (
-                                <span style={{
-                                  background: dossier.is_witness ? '#10b981' : dossier.role_badge === 'LIEUTENANT' ? '#f59e0b' : '#6b7280',
-                                  color: '#fff', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '3px'
-                                }}>
-                                  {dossier.role_badge}
-                                </span>
-                              )}
-                              <h3 style={{ margin: 0 }}>{dossier.name}</h3>
-                            </div>
-                            {dossier.kingpin_score !== undefined && (
-                              <span style={{ fontSize: '12px', fontWeight: 'bold', color: dossier.is_kingpin ? '#ef4444' : 'var(--text-secondary)' }}>
-                                Risk Index: {dossier.kingpin_score.toFixed(1)}/100
-                              </span>
-                            )}
-                          </div>
-                          <p style={{ margin: '2px 0 8px', fontSize: '12px' }}>
-                            <strong>{dossier.syndicate_role || dossier.role || 'No explicit source role recorded'}</strong>
-                            {dossier.role && dossier.syndicate_role && <span style={{ color: 'var(--text-secondary)' }}> · Formally: {dossier.role}</span>}
-                          </p>
+                          <h3>{dossier.name}</h3>
+                          <p>{dossier.role || 'No explicit source role recorded'}</p>
                           {['connection', 'flagged_behavior'].map(category => {
                             const findings = (dossier.findings || []).filter(finding => finding.category === category);
                             return findings.length > 0 && (
@@ -1335,38 +1076,23 @@ export default function App({ userSlot = null }) {
 
         {/* OTHER TABS */}
         {['Connections', 'Flagged behavior'].includes(tab) && (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>{leads.length} findings</h2>
-              <input
-                aria-label="Search findings"
-                placeholder="Search entities or findings…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-            {filtered.map(l => (
-              <article className="lead" key={l.id}>
-                <div>
-                  <span className={'tag ' + (l.category === 'connection' ? '' : 'amber')}>{l.techniques.join(' · ')}</span>
-                  <h3>{l.subject_ids.map(id => graph?.nodes?.find(n => n.id === id)?.label || id).join(' → ')}</h3>
-                  <p>{l.reason}</p>
-                  <small>
-                    {l.evidence_ids.length} source references · {l.review_state}
-                  </small>
-                </div>
-                <button className="quiet" onClick={() => selectItem(l)}>
-                  Review evidence →
-                </button>
-              </article>
-            ))}
-            {!filtered.length && <p className="empty">No findings match this view.</p>}
-          </section>
+          <FindingsReview
+            leads={leads}
+            allLeads={analysis?.leads}
+            graph={graph}
+            analysis={analysis}
+            tabLabel={tab === 'Flagged behavior' ? 'Flagged behaviour' : 'Connections'}
+            search={search}
+            setSearch={setSearch}
+            onReview={review}
+            onOpen={selectItem}
+          />
         )}
 
         {tab === 'Graph explorer' && (
           <GraphExplorerTab
             graph={graph}
+            analysis={analysis}
             activeCase={activeCase}
             search={search}
             setSearch={setSearch}
@@ -1420,7 +1146,7 @@ export default function App({ userSlot = null }) {
             </div>
             {list.map(n => (
               <article className="lead" key={n.id}>
-                <time>{new Date(n.event_time).toLocaleString()}</time>
+                <time>{n.time_basis === 'date_only' ? n.event_time.slice(0, 10) : new Date(n.event_time).toLocaleString()}</time>
                 <strong>{n.label}</strong>
                 <button className="quiet" onClick={() => selectItem(n)}>
                   View source →
@@ -1431,40 +1157,427 @@ export default function App({ userSlot = null }) {
         )}
 
         {tab === 'Import records' && (
-          <section className="panel import-panel">
-            <h2>Add evidence to a case</h2>
-            <p>Upload English FIRs and judgments as PDF or images. Scanned pages use local OCR. Demo formats are for synthetic records. Maximum file size: 25 MiB.</p>
-            <form onSubmit={upload}>
-              <label>
-                Authorized case
-                <select key={activeCase} name="case" aria-label="Authorized case" defaultValue={activeCase}>
-                  {casesList.map(c => (
-                    <option key={c.case_id} value={c.case_id}>
-                      {c.case_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Record format
-                <select name="kind" aria-label="Record format">
-                  <option value="ibm">IBM HI-Small CSV</option>
-                  <option value="narrative">Synthetic narrative JSON</option>
-                  <option value="judgment">English Indian court judgment (.txt)</option>
-                  <option value="judgment-document">English Indian court judgment (PDF or image)</option>
-                  <option value="fir-document">English police FIR (PDF or image)</option>
-                  <option value="cdr">Synthetic CDR CSV</option>
-                  <option value="history">Synthetic case-history CSV</option>
-                  <option value="pdf">MAHA fixed-layout PDF v1</option>
-                </select>
-              </label>
-              <label>
-                Source file
-                <input name="file" type="file" accept=".csv,.json,.pdf,.txt,.png,.jpeg,.jpg" required />
-              </label>
-              <button disabled={!activeCase || busy}>Validate and import →</button>
-            </form>
-          </section>
+          <div className="record-intake tw:grid tw:min-w-0 tw:items-start tw:gap-5 tw:min-[1160px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <RecordIntakeModes>
+              <section className="record-card record-paste" aria-labelledby="record-paste-title">
+                <h2 id="record-paste-title">Paste case text</h2>
+                <p>
+                  Extract mentions from English case text and review them in Quality.
+                </p>
+                <div className="record-presets tw:flex tw:flex-wrap tw:items-center tw:gap-1.5">
+                  <span>Try an example</span>
+                  <button
+                    type="button"
+                    className="record-chip"
+                    onClick={() => {
+                      setRawSynthetic(true);
+                      setRawSourceType('police_fir');
+                      setRawTitle('ED-PMLA-COMPLAINT-142');
+                      setRawText(`IN THE SPECIAL COURT FOR PMLA OFFENSES: Directorate of Enforcement vs. Vikram Singhania [ID:P001] & Ors.\nPrime Accused Vikram Singhania operates HDFC Bank account 001928374 for layering procurement fraud kickbacks of ₹14,200,000.\nCo-conspirator Rajesh Sharma operates ICICI Bank account 009847261 as hawala mule routing pass-through tranches.\nCharges registered under PMLA Section 3 & 4 and IPC Section 420 and 120B.\nNon-Bailable Warrant issued by EOW.`);
+                    }}
+                  >
+                    Procurement FIR
+                  </button>
+                  <button
+                    type="button"
+                    className="record-chip"
+                    onClick={() => {
+                      setRawSynthetic(true);
+                      setRawSourceType('police_fir');
+                      setRawTitle('CYBER-PS-FIR-204');
+                      setRawText(`CYBER CRIME POLICE STATION: State vs. Dev Shah [ID:P003] & Associates.\nAccused Dev Shah operates darknet crypto conversion infrastructure and Axis Bank account 005511223.\nMule coordinator Vikas Agarwal routed funds through Axis Bank and ICICI Bank.\nFIR No. 204/2023 under IT Act Section 66D and IPC Section 420. Look-Out Circular (LOC) active at international airports.`);
+                    }}
+                  >
+                    Cyber fraud FIR
+                  </button>
+                  <button
+                    type="button"
+                    className="record-chip"
+                    onClick={() => {
+                      setRawSynthetic(true);
+                      setRawSourceType('police_fir');
+                      setRawTitle(`EOW-FIR-144-${activeCase}`);
+                      setRawText(`POLICE STATION: Economic Offenses Wing (EOW), Mandir Marg, New Delhi\nFIR No: 144/2026 | Date: 12-03-2026\nActs & Sections: Section 420 IPC (Cheating), Section 120B IPC (Criminal Conspiracy), read with Section 3 & 4 of Prevention of Money Laundering Act, 2002 (PMLA).\n(i) Accused Vikram Malhotra [ID:P101], Managing Director, Zenith Health Ventures Ltd. Role: Prime Syndicate Mastermind and beneficial owner of destination fund accounts.\n(ii) Accused Sanjay Agarwal [ID:P102], Financial Consultant & Hawala Remittance Mule Coordinator. Operates account ACC-AGARWAL-882 at Bank 010.\n(iii) Accused Karan Singhania [ID:P103], Dummy Director, Apex Logistics Front Corp. Operates account ACC-APEXSHELL-993 at Bank 010.\n(iv) Accused Rohit Verma [ID:P104], Operator of unauthorized digital escrow and crypto mixing channels, account ACC-VERMA-104 at Bank 010.\nAllegations: Accused Vikram Malhotra [ID:P101] utilized shell corporate vehicles to route approximately $750,000 USD of misappropriated funds through closed-loop layering transfers. Primary layering was executed through bank account 010 / ACC-MALHOTRA-771 into mule account 010 / ACC-AGARWAL-882, which was then layered into shell account 010 / ACC-APEXSHELL-993 before returning into primary beneficiary accounts under the guise of dividend reinvestment.`);
+                    }}
+                  >
+                    Zenith healthcare FIR
+                  </button>
+                </div>
+                <div className="record-fields tw:grid tw:gap-3 tw:sm:grid-cols-2">
+                  <label>Document type
+                    <select value={rawSourceType} onChange={event => setRawSourceType(event.target.value)}>
+                      <option value="police_fir">Police FIR</option>
+                      <option value="court_judgment">English Indian court judgment</option>
+                      <option value="other">Other English text</option>
+                    </select>
+                  </label>
+                  <label>Source title
+                    <input value={rawTitle} maxLength={120} onChange={event => setRawTitle(event.target.value)} />
+                  </label>
+                  <label className="record-check tw:col-span-full tw:flex tw:items-center tw:gap-2"><input type="checkbox" checked={rawSynthetic}
+                    onChange={event => setRawSynthetic(event.target.checked)} /> Synthetic example</label>
+                </div>
+                <div className="record-text-meta tw:flex tw:flex-wrap tw:items-baseline tw:justify-between tw:gap-x-3">
+                  <label htmlFor="import-case-text">Case text</label>
+                  <span>{rawText.length.toLocaleString()} / 50,000 characters</span>
+                </div>
+                <textarea
+                  id="import-case-text"
+                  className="record-textarea tw:block tw:min-h-[238px] tw:w-full tw:resize-y"
+                  maxLength={50000}
+                  placeholder="Paste an FIR, judgment, or other case text here…"
+                  value={rawText}
+                  onChange={e => setRawText(e.target.value)}
+                />
+                <div className="record-actions tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+                  <span className="record-scope">Active case <strong>{activeCase || 'No case selected'}</strong></span>
+                  <button
+                    type="button"
+                    className="record-primary"
+                    disabled={!rawText.trim() || busy}
+                    onClick={handleRawTextImport}
+                  >
+                    Extract mentions
+                  </button>
+                </div>
+              </section>
+              <section className="record-card record-upload" aria-labelledby="record-upload-title">
+                <h2 id="record-upload-title">Upload a file</h2>
+                <p>Select the case and format before uploading. Scanned English FIRs and judgments use local OCR.</p>
+                <form className="tw:grid tw:gap-4" onSubmit={upload}
+                  onChange={event => {
+                    if (event.target.name === 'password' || event.target.dataset.statementEdit) return;
+                    if (!uploading) setUploadFeedback(null);
+                    setStatementCorrections({});
+                    if (['case', 'file', 'kind', 'pdf_pages'].includes(event.target.name)) setStatementPage(null);
+                  }}>
+                  <label>
+                    Authorized case
+                    <select key={activeCase} name="case" aria-label="Authorized case" defaultValue={activeCase}>
+                      {casesList.map(c => (
+                        <option key={c.case_id} value={c.case_id}>
+                          {c.case_id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Record format
+                    <select name="kind" aria-label="Record format" value={uploadKind}
+                      onChange={event => setUploadKind(event.target.value)}>
+                      <option value="ibm">IBM HI-Small CSV</option>
+                      <option value="bank-statement">Bank statement (PDF, Excel, or scan)</option>
+                      <option value="narrative">Synthetic narrative JSON</option>
+                      <option value="judgment">English Indian court judgment (.txt)</option>
+                      <option value="judgment-document">English Indian court judgment (PDF or image)</option>
+                      <option value="fir-document">English police FIR (PDF or image)</option>
+                      <option value="cdr">Synthetic CDR CSV</option>
+                      <option value="history">Synthetic case-history CSV</option>
+                      <option value="pdf">VRITRA fixed-layout PDF v1</option>
+                    </select>
+                  </label>
+                  {uploadKind === 'bank-statement' && (
+                    <>
+                      <div className="record-fields tw:grid tw:gap-3 tw:sm:grid-cols-2">
+                        <label>Statement currency
+                          <select name="currency" defaultValue="INR">
+                            {['INR', 'USD', 'GBP', 'EUR', 'AUD', 'CAD', 'SGD', 'AED', 'JPY', 'CHF']
+                              .map(code => <option key={code}>{code}</option>)}
+                          </select>
+                        </label>
+                        <label>Numeric date order
+                          <select name="date_order" defaultValue="DMY">
+                            <option value="DMY">Day / month / year</option>
+                            <option value="MDY">Month / day / year</option>
+                          </select>
+                        </label>
+                      </div>
+                      <label>PDF or TIFF pages (optional)
+                        <input type="text" name="pdf_pages" placeholder="e.g. 1-10" maxLength={32}
+                          aria-describedby="statement-pages-hint" />
+                        <small id="statement-pages-hint">Leave blank to read the whole file. Enter a page or range to read only those pages.</small>
+                      </label>
+                      <label>File password (if protected)
+                        <input type="password" name="password" autoComplete="off" maxLength={1024}
+                          aria-describedby="statement-password-hint" />
+                        <small id="statement-password-hint">Used for one upload. Re-enter it before retrying a protected file.</small>
+                      </label>
+                      <details className="statement-column-mapping">
+                        <summary>Map columns manually</summary>
+                        <p>Count columns left to right from 1. Enter the transaction date and either both debit and credit columns or a signed amount column. Leave all fields blank for automatic detection.</p>
+                        <div className="record-fields grid gap-3 sm:grid-cols-3">
+                          {[
+                            ['date', 'Transaction date'], ['debit', 'Debit'], ['credit', 'Credit'],
+                            ['amount', 'Signed amount'], ['direction', 'Debit or credit indicator'],
+                            ['value_date', 'Value date'], ['narration', 'Details'],
+                            ['reference', 'Reference'], ['balance', 'Running balance'],
+                          ].map(([field, label]) => (
+                            <label key={field}>{label}
+                              <input name={`map_column_${field}`} type="number" min="1" max="48" placeholder="Column number" />
+                            </label>
+                          ))}
+                        </div>
+                        <button type="submit" className="record-secondary" value="statement-page" disabled={!activeCase || busy || uploading}>View PDF or scan page</button>
+                        {statementPage && (
+                          <figure className="statement-layout-view">
+                            <figcaption>Page {statementPage.number}. Click between columns to place a divider, or enter the percentages below.</figcaption>
+                            <div className="statement-layout-page" onClick={event => {
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const percentage = Math.round(1000 * (event.clientX - rect.left) / rect.width) / 10;
+                              if (uploading || percentage <= 0 || percentage >= 100) return;
+                              const values = statementDividers.split(',').map(Number).filter(value => value > 0 && value < 100);
+                              if (values.length < 47) {
+                                setStatementDividers([...new Set([...values, percentage])].sort((a, b) => a - b).join(', '));
+                                setUploadFeedback(null);
+                                setStatementCorrections({});
+                              }
+                            }}>
+                              <img src={statementPage.url} alt={`Statement page ${statementPage.number}`} draggable={false} />
+                              {statementDividers.split(',').map(Number).filter(value => value > 0 && value < 100).map((value, index) => (
+                                <span key={index} className="statement-layout-divider" style={{ left: `${value}%` }} aria-hidden />
+                              ))}
+                            </div>
+                          </figure>
+                        )}
+                        <label>PDF or image column dividers (optional)
+                          <input name="map_dividers" type="text" maxLength={300} value={statementDividers}
+                            onChange={event => setStatementDividers(event.target.value)} placeholder="e.g. 12, 24, 61, 74, 87" aria-describedby="statement-dividers-hint" />
+                          <small id="statement-dividers-hint">For borderless tables, enter each divider as a percentage of the page width from the left. Leave blank when the table has visible borders.</small>
+                        </label>
+                      </details>
+                    </>
+                  )}
+                  <RecordFilePicker name="file"
+                    accept={uploadKind === 'bank-statement' ? '.pdf,.xlsx,.xls,.png,.jpeg,.jpg,.tif,.tiff' : '.csv,.json,.pdf,.txt,.png,.jpeg,.jpg'}
+                    label="Source file" onClear={() => { setStatementPage(null); setUploadFeedback(null); setStatementCorrections({}); }} required />
+                  <div className="flex flex-wrap items-center gap-2">
+                    {uploadKind === 'bank-statement' && (
+                      <button className="record-secondary" value="statement-preview" disabled={!activeCase || busy || uploading}>
+                        Preview transactions
+                      </button>
+                    )}
+                    <button className="record-primary" disabled={!activeCase || busy || uploading}>
+                      {uploading ? 'Reading…' : 'Validate and import'}
+                    </button>
+                  </div>
+                  {uploadFeedback && (
+                    <div className="record-upload-feedback" data-status={uploadFeedback.status}
+                      role={uploadFeedback.status === 'error' ? 'alert' : 'status'}>
+                      {uploadFeedback.message}
+                    </div>
+                  )}
+                  {uploadFeedback?.inferredPages?.length > 0 && (
+                    <p>Column mapping was inferred from matching running balances on {uploadFeedback.inferredPages.length > 1 ? 'pages' : 'page'} {uploadFeedback.inferredPages.join(', ')}.</p>
+                  )}
+                  <StatementPageCoverage pages={uploadFeedback?.pageCoverage} pageRange={uploadFeedback?.pageRange} />
+                  {uploadFeedback?.recoveredLayoutRows > 0 && (
+                    <p>Another reader recovered {uploadFeedback.recoveredLayoutRows} {uploadFeedback.recoveredLayoutRows === 1 ? 'row' : 'rows'} after checking for agreement with the first reader.</p>
+                  )}
+                  {uploadFeedback?.inferredSheets?.length > 0 && (
+                    <p>Column mapping was inferred from matching running balances in {uploadFeedback.inferredSheets.join(', ')}.</p>
+                  )}
+                  {!!Object.keys(statementCorrections).length && (
+                    <div className="statement-ledger-paging">
+                      <span>{Object.keys(statementCorrections).length} rows edited. Preview again to check the changes.</span>
+                      <Button type="button" size="sm" variant="outline" disabled={uploading} onClick={() => {
+                        setStatementCorrections({});
+                        setUploadFeedback(null);
+                      }}>Clear edits</Button>
+                    </div>
+                  )}
+                  {uploadFeedback?.rows?.length > 0 && (
+                    <div className="statement-preview-table" role="region" aria-label="Statement transaction preview" tabIndex={0}>
+                      <table>
+                        <thead><tr>{['Source', 'Transaction date', 'Value date', 'Details', 'Reference', 'Debit', 'Credit', 'Raw amount', 'Balance', 'Review'].map(label => (
+                          <th key={label} scope="col">{label}</th>
+                        ))}</tr></thead>
+                        <tbody>{uploadFeedback.rows.map((row, index) => {
+                          const { locator, fields, normalized, error, balance_check, corrected } = row;
+                          return (
+                          <tr key={index}>
+                            <td>{locator.sheet || `Page ${locator.page}`} · row {locator.row}
+                              {locator.header_page && <div>Headings from page {locator.header_page}</div>}
+                            </td>
+                            <td>{statementField(row, 'date', 'Transaction date', fields.date)}</td>
+                            <td>{fields.value_date || '—'}</td>
+                            <td>{fields.narration || '—'}</td>
+                            <td>{fields.reference || '—'}</td>
+                            <td>{statementField(row, 'debit', 'Debit', normalized?.debit ?? fields.debit)}</td>
+                            <td>{statementField(row, 'credit', 'Credit', normalized?.credit ?? fields.credit)}</td>
+                            <td>{statementField(row, 'amount', 'Amount', fields.amount)}
+                              {row.repairable?.includes('direction') && (
+                                <div>{statementField(row, 'direction', 'Debit or credit indicator', fields.direction)}</div>
+                              )}
+                            </td>
+                            <td>{fields.balance || '—'}</td>
+                            <td>{error || balance_check}{corrected && <small>Reviewed correction</small>}</td>
+                          </tr>
+                          );
+                        })}</tbody>
+                      </table>
+                    </div>
+                  )}
+                </form>
+              </section>
+            </RecordIntakeModes>
+            <section className="record-shortcuts tw:min-w-0" aria-labelledby="record-quick-title">
+              <h2 id="record-quick-title">Structured imports</h2>
+              <p>Files selected here import directly into the active case. Download a template for the format you need.</p>
+              <div className="tw:grid tw:grid-cols-1 tw:gap-3 tw:sm:grid-cols-2">
+                {/* 1. Court Cases */}
+                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
+                  <div>
+                    <div className="record-quick-heading">
+
+                      <div>
+                        <h3>Court proceedings</h3>
+                        <span className="record-format">Synthetic narrative</span>
+                      </div>
+                    </div>
+                    <p>
+                      Legal narratives in the synthetic case format.
+                    </p>
+                  </div>
+                  <div>
+
+                    <div className="tw:grid tw:min-w-0 tw:gap-2">
+                      <RecordFilePicker accept=".json" label="Upload court proceedings JSON"
+                        onPick={file => handleDirectUpload('narrative', file)} />
+                      <button
+                        type="button"
+                        className="record-secondary"
+                        onClick={() => {
+                          downloadFile(
+                            'court_cases_template.json',
+                            JSON.stringify([
+                              {
+                                document_id: `COURT-${activeCase}-01`,
+                                case_id: activeCase,
+                                filed_date: '2026-03-15',
+                                synthetic: true,
+                                text: `In the Special Court for PMLA Offenses: Directorate of Enforcement vs. Vikram Singhania [ID:P001]. Accused P001 operated account DEMO/A as primary layering pool.`
+                              }
+                            ], null, 2),
+                            'json'
+                          );
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Financial Transactions */}
+                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
+                  <div>
+                    <div className="record-quick-heading">
+
+                      <div>
+                        <h3>Financial wires</h3>
+                        <span className="record-format">IBM HI-Small</span>
+                      </div>
+                    </div>
+                    <p>
+                      Transactions in the IBM HI-Small CSV layout.
+                    </p>
+                  </div>
+                  <div>
+
+                    <div className="tw:grid tw:min-w-0 tw:gap-2">
+                      <RecordFilePicker accept=".csv" label="Upload financial wires CSV"
+                        onPick={file => handleDirectUpload('ibm', file)} />
+                      <button
+                        type="button"
+                        className="record-secondary"
+                        onClick={() => {
+                          downloadFile(
+                            'transactions_template.csv',
+                            "Timestamp,From Bank,Account,To Bank,Account,Amount Received,Receiving Currency,Amount Paid,Payment Currency,Payment Format,Is Laundering\n2026/03/10 10:15,DEMO,A,DEMO,B,100000.00,US Dollar,100000.00,US Dollar,ACH,1\n2026/03/10 11:30,DEMO,B,DEMO,C,107000.00,US Dollar,107000.00,US Dollar,ACH,1\n2026/03/10 12:45,DEMO,C,DEMO,A,114000.00,US Dollar,114000.00,US Dollar,ACH,1\n",
+                            'csv'
+                          );
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Crime FIR History */}
+                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
+                  <div>
+                    <div className="record-quick-heading">
+
+                      <div>
+                        <h3>FIR history</h3>
+                        <span className="record-format">History Registry CSV</span>
+                      </div>
+                    </div>
+                    <p>
+                      Structured prior records with a status and date.
+                    </p>
+                  </div>
+                  <div>
+
+                    <div className="tw:grid tw:min-w-0 tw:gap-2">
+                      <RecordFilePicker accept=".csv" label="Upload FIR history CSV"
+                        onPick={file => handleDirectUpload('history', file)} />
+                      <button
+                        type="button"
+                        className="record-secondary"
+                        onClick={() => {
+                          downloadFile(
+                            'crime_firs_template.csv',
+                            `record_id,person_id,case_id,record_date,record_status,text,synthetic\nFIR-01,P001,${activeCase},2026-01-14,Active Charge-Sheet,FIR No. 44/2026 under IPC 420/120B and PMLA Section 3 for syndicate fraud,true\nFIR-02,P002,${activeCase},2026-02-02,Look Out Circular,LOC Issued at International Airports for evasion of summons,true\n`,
+                            'csv'
+                          );
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Telecom CDR */}
+                <div className="record-card record-quick tw:flex tw:min-w-0 tw:flex-col tw:justify-between tw:gap-4">
+                  <div>
+                    <div className="record-quick-heading">
+
+                      <div>
+                        <h3>Telecom calls</h3>
+                        <span className="record-format">Synthetic CDR</span>
+                      </div>
+                    </div>
+                    <p>
+                      Caller, callee, timestamp, and call duration.
+                    </p>
+                  </div>
+                  <div>
+
+                    <div className="tw:grid tw:min-w-0 tw:gap-2">
+                      <RecordFilePicker accept=".csv" label="Upload telecom CDR CSV"
+                        onPick={file => handleDirectUpload('cdr', file)} />
+                      <button
+                        type="button"
+                        className="record-secondary"
+                        onClick={() => {
+                          downloadFile(
+                            'cdr_calls_template.csv',
+                            "record_id,caller_person_id,callee_person_id,start_time,duration_seconds,synthetic\nCALL-101,P001,P002,2026-03-10T09:45:00+00:00,420,true\nCALL-102,P002,P003,2026-03-10T12:10:00+00:00,185,true\nCALL-103,P003,P001,2026-03-10T15:00:00+00:00,310,true\n",
+                            'csv'
+                          );
+                        }}
+                      >
+                        Download template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
         )}
 
         {tab === 'Quality' && (
@@ -1473,7 +1586,7 @@ export default function App({ userSlot = null }) {
               <h2>Import quality ledger</h2>
             </div>
             {list.map(r => (
-              <article className="lead" key={r.id}>
+              <article className={r.summary.statement_settings ? 'lead statement-import-card' : 'lead'} key={r.id}>
                 <div>
                   <h3>
                     {r.case_id} · {r.id.slice(0, 8)}
@@ -1502,6 +1615,14 @@ export default function App({ userSlot = null }) {
                         }}>{label} ↗</button>
                       ))}
                     </details>
+                  )}
+                  {r.summary.statement_settings && (
+                    <StatementImportRows batch={r} api={api} onEvidence={(id, label) => {
+                      selectItem({ label, reason: 'Bank statement transaction as recorded in the source' });
+                      evidence(id);
+                    }} onRecovered={() => {
+                      if (sessionToken.current === token) load(activeCase);
+                    }} />
                   )}
                   {r.summary.issues.map((x, i) => (
                     <p key={i} className="error">
@@ -1583,19 +1704,19 @@ export default function App({ userSlot = null }) {
               <h2>Activity history</h2>
             </div>
             {list.map(r => (
-              <article className="lead" key={r.id}>
-                <strong>{r.action.replaceAll('_', ' ')}</strong>
-                <span>
+              <article className="lead tw:flex tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-1" key={r.id}>
+                <strong className="tw:capitalize">{(r.action || '').replaceAll('_', ' ')}</strong>
+                <span className="tw:font-mono tw:text-[13px] tw:opacity-75">
                   {r.actor} · {r.case_id}
                 </span>
-                <time>{new Date(r.at).toLocaleString()}</time>
+                <time className="tw:ml-auto tw:text-[13px] tw:opacity-75 tw:tabular-nums">{new Date(r.at).toLocaleString()}</time>
               </article>
             ))}
           </section>
         )}
 
         <footer>
-          MAHA / Evidence workspace <span>{graph?.backend} · Projection v0.1 · Evidence coverage is not evidence correctness</span>
+          VRITRA / Evidence workspace <span>{graph?.backend} · Projection v0.1 · Evidence coverage is not evidence correctness</span>
         </footer>
       </main>
 
@@ -1651,11 +1772,16 @@ export default function App({ userSlot = null }) {
                   <button className="quiet" onClick={() => downloadOriginal(ev)}>Download original document</button>
                 </div>
               )}
-              <blockquote>{ev.passage}</blockquote>
+              {ev.extraction_method === 'bank-statement-row' ? (
+                <>
+                  <button className="quiet" onClick={() => downloadOriginal(ev)}>Download original statement</button>
+                  <StatementRowReview key={ev.id} evidence={ev} api={api} />
+                </>
+              ) : <blockquote>{ev.passage}</blockquote>}
               <small>
                 {ev.extraction_method} · v{ev.extraction_version}
                 <br />
-                Event: {ev.event_time || 'Not supplied'}
+                Event: {ev.time_basis === 'date_only' ? ev.event_time.slice(0, 10) + ' (date only)' : ev.event_time || 'Not supplied'}
                 <br />
                 Imported: {ev.ingestion_time}
               </small>
@@ -1679,76 +1805,58 @@ export default function App({ userSlot = null }) {
         </aside>
       )}
 
-      {/* Create New Case Modal */}
-      {showNewCaseModal && (
-        <div className="modal-overlay" onClick={() => setShowNewCaseModal(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="modal-head">
-              <h3>Create New Investigation Case</h3>
-              <button className="close" style={{ position: 'static' }} onClick={() => setShowNewCaseModal(false)}>
-                ×
-              </button>
-            </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Create an isolated investigation container. The case will start completely clean with 0 facts and un-trained models.
-            </p>
-            <form onSubmit={handleCreateCase}>
-              <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Case Identifier / Number:
-                <input
-                  placeholder="e.g. CASE-2026-X1"
-                  value={newCaseInput}
-                  onChange={e => setNewCaseInput(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </label>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button type="button" className="quiet" onClick={() => setShowNewCaseModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={busy}>
-                  Create Case →
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Create New Case dialog (shadcn) */}
+      <Dialog open={showNewCaseModal} onOpenChange={setShowNewCaseModal}>
+        <DialogContent className={`tw:sm:max-w-[440px] ${darkMode ? 'dark-theme' : ''}`}>
+          <DialogHeader>
+            <DialogTitle>Create a new investigation case</DialogTitle>
+            <DialogDescription>
+              The case starts empty, with no facts and no analysis run yet.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateCase} className="tw:grid tw:gap-5">
+            <label className="tw:grid tw:gap-1.5 tw:text-xs tw:font-semibold tw:text-foreground">
+              Case ID
+              <input
+                placeholder="e.g. CASE-2026-X1"
+                value={newCaseInput}
+                onChange={e => setNewCaseInput(e.target.value)}
+                required
+                autoFocus
+              />
+            </label>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowNewCaseModal(false)}>Cancel</Button>
+              <Button type="submit" disabled={busy}>Create case</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      {/* Templates Modal */}
-      {showTemplateModal && templates && (
-        <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <h3>Evidence Modality Schemas & Downloadable Templates</h3>
-              <button className="close" style={{ position: 'static' }} onClick={() => setShowTemplateModal(false)}>
-                ×
-              </button>
+      {/* Data templates dialog (shadcn) */}
+      <Dialog open={Boolean(showTemplateModal && templates)} onOpenChange={setShowTemplateModal}>
+        <DialogContent className={`tw:sm:max-w-2xl ${darkMode ? 'dark-theme' : ''}`}>
+          <DialogHeader>
+            <DialogTitle>Import formats and templates</DialogTitle>
+            <DialogDescription>
+              Use these exact file formats and headers to import real or synthetic records for court hearings, bank transactions, police FIRs and telecom calls.
+            </DialogDescription>
+          </DialogHeader>
+          {Object.entries(templates || {}).map(([key, t]) => (
+            <div className="template-item" key={key}>
+              <h4>
+                <span>{t.title}</span>
+                <Button variant="outline" size="sm" className="tw:h-7 tw:min-h-0 tw:text-[11px]"
+                  onClick={() => downloadFile(t.filename, t.content, t.format)}>
+                  Download {t.filename}
+                </Button>
+              </h4>
+              <p>{t.description}</p>
+              <pre>{t.content.slice(0, 320) + (t.content.length > 320 ? '\n...' : '')}</pre>
             </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Use these exact file formats and headers to ingest real or synthetic records for court hearings, bank transactions, police FIRs, and telecom calls.
-            </p>
-
-            {Object.entries(templates).map(([key, t]) => (
-              <div className="template-item" key={key}>
-                <h4>
-                  <span>{t.title}</span>
-                  <button
-                    className="quiet"
-                    style={{ fontSize: '10px', padding: '4px 10px' }}
-                    onClick={() => downloadFile(t.filename, t.content, t.format)}
-                  >
-                    Download {t.filename}
-                  </button>
-                </h4>
-                <p>{t.description}</p>
-                <pre>{t.content.slice(0, 320) + (t.content.length > 320 ? '\n...' : '')}</pre>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+          ))}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

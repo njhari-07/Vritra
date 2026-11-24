@@ -1,4 +1,4 @@
-# MAHA · Evidence workspace
+# VRITRA · Evidence workspace
 
 A runnable local academic prototype for the BAI506 criminal-network analysis project.
 FastAPI + React/vis-network + Neo4j, with an immutable SQLite evidence ledger.
@@ -18,6 +18,11 @@ The local app runs at **http://127.0.0.1:8765**. Access tokens are stored privat
 `data/private/runtime/access.json`: `investigator` has three demo cases; `restricted`
 has only DEMO-C01. Paste a token into the login screen. Tokens are kept in browser memory
 only and cleared by Lock workspace or a reload.
+
+Case files, evidence, and findings are saved in the private SQLite ledger at
+`data/private/runtime/ledger.sqlite3`. VRITRA also saves the last active case for
+each user and reopens it after the workspace is unlocked. Creating a new case
+keeps existing cases in the case selector.
 
 If the service has stopped, from this folder:
 
@@ -160,22 +165,44 @@ still use their existing structured adapters.
 ### Bank statements
 
 Create or select a case and open **Import records → Upload file**. Choose
-**Bank statement (PDF or Excel .xlsx)**, confirm the currency and numeric date
+**Bank statement (PDF, Excel, or scan)**, confirm the currency and numeric date
 order, attach your file, and enter its password if protected. The adapter
-supports text PDF tables and Excel .xlsx worksheets with a recognized date and
-debit/credit or amount header. `Post Date` and `Value Date` are supported date
+supports text and scanned PDFs, PNG, JPEG, and multipage TIFF scans, and Excel .xlsx and .xls worksheets
+with a recognized date and debit/credit or amount header. `Post Date` and `Value Date` are supported date
 headers. If those are the only two date columns, the importer uses `Post Date`
 for the timeline and preserves both source cells in the row evidence.
-If a PDF has selectable transaction rows but its headings are drawn into the
-page, local OCR can recover the debit and credit headings above the first row.
-Transaction values still come from the PDF text layer.
-In an amount column without a direction column,
-positive values are credits and negative values are debits. Image-only bank
-statement PDFs and legacy .xls files require a supported export format.
+When the primary PDF reader cannot recover transaction cells, a second local
+PDF text reader tries the embedded text before OCR. Local OCR can recover
+headings or full scanned rows. For sideways, upside-down, and slightly tilted
+scans, it can correct the orientation and still record each row's position on
+the original page.
+When the first reader accepts some rows and rejects others with readable dates,
+another reader can recover a rejected row if both readers agree on a transaction
+on the page and the replacement matches one source location.
+The scanner uses ruling lines to keep wrapped details inside the same transaction. When only a signed
+amount column is available, explicit Dr/Cr markers set direction. Without a
+marker, positive values are credits and negative values are debits. The
+parser accepts comma decimals with two fractional digits and validates their
+digit grouping. Save encrypted legacy .xls files as .xlsx before uploading.
 
-A statement upload can read up to 200 PDF pages, separate from the 20-page
+**Preview transactions** shows up to 25 extracted rows, validation errors, and
+checks of adjacent running balances. It leaves the case ledger untouched.
+For a ruled two-date, seven-column table with unreadable headers, the preview
+can recover the layout when at least three transactions reconcile. Different
+date values require readable date labels for that recovery.
+If the headings are unfamiliar, open **Map columns manually** and enter the
+column numbers from left to right. For borderless PDFs or scans, supply column
+dividers as percentages of the page width or place them on **View PDF or scan page**.
+Preview the result before importing.
+For ruled PDFs and TIFFs, the importer can reuse a verified mapping from a nearby
+page when the column borders match. Preview identifies the page that provided the
+mapping. Only selected pages provide imported transactions. Rejected rows with
+mapped cells can be corrected in the preview. The evidence drawer records the
+extracted and corrected values with the reviewer.
+
+A statement upload can read up to 200 PDF or TIFF pages, separate from the 20-page
 document OCR limit. The default record limit is 5,000 per upload and the case
-graph has a separate default limit of 2,000 nodes. Use **PDF pages** to select a
+graph has a separate default limit of 2,000 nodes. Use **PDF or TIFF pages** to select a
 page or range such as `1-10` when testing a layout or importing a large file.
 Overlapping ranges of the same source count as repeats. Each import retains the
 full original file and uses its original page numbers in the evidence. If the
@@ -183,7 +210,12 @@ import would exceed the case's graph capacity, MAHA rejects the whole batch.
 The upload form shows progress and errors next to **Validate and import**.
 
 After upload, the confirmation shows accepted, repeated, and quarantined counts.
-**Quality** lists rejected row reasons and links to the first 25 extracted rows.
+**Quality** lists rejected row reasons and the page coverage of each statement
+batch. The expandable transaction table shows both dates, narration, reference,
+debit, credit, balance, and original row evidence.
+For a saved PDF or TIFF, **Recover another page from this statement** previews
+and imports a selected page from the retained source. Protected PDFs require
+the original password for each request.
 **Timeline** shows recognized transaction dates, with date-only records displayed
 as dates. **Run case analysis** can rank unusual amounts in groups of at least
 eight date-only transactions. These statement rows do not create account links

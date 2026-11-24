@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from threading import Event, Thread
 from typing import Literal
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
@@ -27,7 +27,11 @@ from .document_intake import extract_document, render_source_page
 from .judgment_review import ReviewConflict, load_review, save_review
 from .suspects import compute_suspect_dossiers
 from .ingestion import ibm_records, narrative_records, cdr_records, pdf_records, history_records, json_row
-from .statements import CURRENCIES, MAX_BYTES, METHOD as STATEMENT_METHOD, STATEMENT_DATASET, statement_records, statement_rows
+from .statements import (
+    CURRENCIES, IMAGE_EXTENSIONS, MAX_BYTES, METHOD as STATEMENT_METHOD, STATEMENT_DATASET,
+    statement_layout_page, statement_page_coverage, statement_preview, statement_records, statement_rows, stored_statement_row,
+    validate_statement_layout,
+)
 
 
 class StatementRequestTooLarge(MultiPartException):
@@ -35,7 +39,7 @@ class StatementRequestTooLarge(MultiPartException):
 
 
 async def read_statement_form(request, *, with_file):
-    limit = MAX_BYTES + 16 * 1024 if with_file else 16 * 1024
+    limit = MAX_BYTES + 32 * 1024 if with_file else 16 * 1024
 
     async def bounded_stream():
         size = 0
@@ -50,7 +54,7 @@ async def read_statement_form(request, *, with_file):
     try:
         form = await MultiPartParser(
             request.headers, bounded_stream(), max_files=int(with_file),
-            max_fields=4 if with_file else 1, max_part_size=4096,
+            max_fields=6 if with_file else 1, max_part_size=16 * 1024 if with_file else 4096,
         ).parse()
     except StatementRequestTooLarge as exc:
         raise HTTPException(413, exc.message) from None
@@ -68,27 +72,55 @@ async def read_statement_form(request, *, with_file):
             raise HTTPException(422, 'Choose a statement file')
         if not isinstance(currency, str) or currency not in CURRENCIES or date_order not in ('DMY', 'MDY'):
             raise HTTPException(422, 'Choose a statement currency and date order')
+        raw_layout = form.get('column_mapping', '')
+        manual = None
+        if raw_layout:
+            try:
+                if not isinstance(raw_layout, str):
+                    raise ValueError('Invalid statement column mapping')
+                try:
+                    layout = json.loads(raw_layout)
+                except (json.JSONDecodeError, RecursionError):
+                    raise ValueError('Invalid statement column mapping') from None
+                manual = validate_statement_layout(layout)
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
+        raw_corrections = form.get('row_corrections', '')
+        corrections = {}
+        if raw_corrections:
+            try:
+                if not isinstance(raw_corrections, str):
+                    raise ValueError
+                corrections = json.loads(raw_corrections)
+            except (ValueError, RecursionError):
+                raise HTTPException(422, 'Invalid statement row corrections') from None
         pages = form.get('pdf_pages', '')
         if not isinstance(pages, str) or len(pages) > 32:
-            raise HTTPException(422, 'Enter a PDF page or range such as 1 or 1-10')
+            raise HTTPException(422, 'Enter a PDF or TIFF page range such as 1 or 1-10')
         page_range = None
         if pages.strip():
             match = re.fullmatch(r'\s*([0-9]+)(?:\s*[-–]\s*([0-9]+))?\s*', pages)
             if match is None:
-                raise HTTPException(422, 'Enter a PDF page or range such as 1 or 1-10')
+                raise HTTPException(422, 'Enter a PDF or TIFF page range such as 1 or 1-10')
             start = int(match[1])
             end = int(match[2] or match[1])
             if not 1 <= start <= end:
-                raise HTTPException(422, 'PDF page numbers must start at 1 or later and be in ascending order')
+                raise HTTPException(422, 'Page numbers must start at 1 or later and be in ascending order')
             page_range = (start, end)
         content = await source.read(MAX_BYTES + 1)
         if len(content) > MAX_BYTES:
             raise HTTPException(413, '25 MiB upload limit exceeded')
         filename = Path((source.filename or '').replace('\\', '/')).name
-        extension = '.pdf' if content.startswith(b'%PDF-') else '.xlsx'
-        if Path(filename).suffix.lower() != extension or len(filename) > 120:
+        extension = '.pdf' if content.startswith(b'%PDF-') else next(
+            (suffix for signature, suffix in IMAGE_EXTENSIONS.items() if content.startswith(signature)), '.xlsx')
+        valid_suffixes = {'.jpg', '.jpeg'} if extension == '.jpg' else {extension}
+        if extension == '.xlsx':
+            valid_suffixes.add('.xls')
+        if extension == '.tiff':
+            valid_suffixes.add('.tif')
+        if Path(filename).suffix.lower() not in valid_suffixes or len(filename) > 120:
             filename = 'bank-statement' + extension
-        return content, filename, password, currency, date_order, page_range
+        return content, filename, password, currency, date_order, page_range, manual, corrections
     finally:
         await form.close()
 
@@ -155,7 +187,7 @@ def create_app(store=None):
             if worker:
                 await run_in_threadpool(worker.join, 2)
 
-    app=FastAPI(title='MAHA · Evidence workspace',version='0.1.0',lifespan=lifespan)
+    app=FastAPI(title='VRITRA · Evidence workspace',version='0.1.0',lifespan=lifespan)
     @app.exception_handler(ResourceLimitError)
     async def resource_limit(request,exc):
         return JSONResponse(status_code=413,content={'detail':str(exc)})
@@ -236,7 +268,18 @@ def create_app(store=None):
     @app.get('/api/health')
     def health():return {'status':'ok','version':'0.1.0'}
     @app.get('/api/me')
-    def me(u=Depends(user)):return u
+    def me(u=Depends(user)):
+        return {**u, 'active_case': ledger.workspace_case(u['name'], u['cases'])}
+
+    @app.put('/api/workspace/case')
+    def remember_case(body: CreateCase, u=Depends(user)):
+        try:
+            ledger.remember_workspace_case(u['name'], body.case_id)
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc)) from None
+        except KeyError:
+            raise HTTPException(404, 'Case unavailable') from None
+        return {'active_case': body.case_id}
     @app.get('/api/cases')
     def get_cases(u=Depends(user)):
         return ledger.case_status(u['cases'])
@@ -246,12 +289,12 @@ def create_app(store=None):
         if not 2 <= len(cid) <= 64:
             raise HTTPException(422,'Case identifier must be 2–64 characters')
         try:
-            ledger.add_case_to_user(u['name'],cid)
+            cases=ledger.add_case_to_user(u['name'],cid)
+        except PermissionError as exc:
+            raise HTTPException(403,str(exc)) from None
         except ValueError as exc:
             raise HTTPException(409,str(exc)) from exc
-        if cid not in u['cases']:
-            u['cases'].append(cid)
-        return {'status':'created','case_id':cid,'cases':ledger.case_status(u['cases'])}
+        return {'status':'created','case_id':cid,'cases':ledger.case_status(cases)}
     @app.post('/api/cases/{case_id}/reset')
     def reset_case_endpoint(case_id:str,u=Depends(user)):
         if case_id not in u['cases']:raise HTTPException(403,'Case access required')
@@ -489,8 +532,9 @@ def create_app(store=None):
         def verify():
             source_locator = item['source_locator']
             page = source_locator.get('page')
-            page_range = (page, page) if source_locator['format'] == 'pdf' else None
-            with closing(statement_rows(content, password, page_range=page_range)) as rows:
+            page_range = (page, page) if source_locator['format'] in {'pdf', 'tiff'} else None
+            with closing(statement_rows(content, password, page_range=page_range,
+                                        manual=source_locator.get('statement_layout'))) as rows:
                 for locator, headers, cells, _ in rows:
                     if locator == source_locator:
                         ledger.audit(u['name'], 'statement_row_verified', item['case_ids'][0], eid)
@@ -548,6 +592,23 @@ def create_app(store=None):
     @app.get('/api/quality')
     def quality(case:str|None=None,u=Depends(user)):
         return [{**r,'summary':json.loads(r['summary'])} for r in ledger.history('imports',case_scope(u,case))]
+
+    @app.get('/api/quality/{import_id}/statement-rows')
+    def quality_statement_rows(import_id: str, offset: int = 0, u=Depends(user)):
+        if offset < 0 or offset > 5000:
+            raise HTTPException(422, 'Invalid row offset')
+        try:
+            summary, rows, pages, next_page = ledger.statement_import_review(import_id, u['cases'], offset, 25)
+        except KeyError:
+            raise HTTPException(404, 'Statement import unavailable') from None
+        return JSONResponse({
+            'rows': [stored_statement_row(row, summary['statement_settings']) for row in rows],
+            'accepted': summary['accepted_new'],
+            'repeats': summary['recognized_repeat'],
+            'pages': pages,
+            'next_page': next_page,
+            'scope': summary.get('statement_scope'),
+        }, headers={'Cache-Control': 'no-store'})
     @app.get('/api/audit')
     def audit(case:str|None=None,u=Depends(user)):return ledger.history('audit',case_scope(u,case))
     @app.get('/api/benchmarks')
@@ -587,24 +648,73 @@ def create_app(store=None):
         g=graph(u);ids={n['id'] for n in g['nodes']}
         if start not in ids or (end and end not in ids):raise HTTPException(404,'Entity unavailable')
         return fund_flow(g,start,end)
-    @app.post('/api/import/bank-statement/{case_id}')
-    async def upload_statement(case_id: str, request: Request, u=Depends(user)):
-        if case_id not in u['cases']:
-            raise HTTPException(403, 'Case access required')
-        content, filename, password, currency, date_order, page_range = await read_statement_form(request, with_file=True)
+    async def process_statement(case_id, actor, content, filename, password, currency, date_order, page_range,
+                                *, preview, manual=None, corrections=None):
         try:
-            records = await run_in_threadpool(statement_records, content, password, currency, date_order, page_range=page_range)
+            records = await run_in_threadpool(statement_records, content, password, currency, date_order,
+                                              page_range=page_range, preview=preview, manual=manual, corrections=corrections)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         finally:
             del password
+        if preview:
+            return JSONResponse(statement_preview(records, currency, page_range), headers={'Cache-Control': 'no-store'})
+        source_format = next(record['locator']['format'] for record in records if 'facts' in record)
+        if source_format in {'xls', 'xlsx'} and Path(filename).suffix.lower() != f'.{source_format}':
+            filename = f'{Path(filename).stem}.{source_format}'
+        settings = {'currency': currency, 'date_order': date_order}
+        if manual:
+            settings['column_mapping'] = manual
         try:
+            coverage = statement_page_coverage(records)
+            scope = {'requested': list(page_range) if page_range else None,
+                     'processed_pages': [page['page'] for page in coverage],
+                     'accepted_pages': [page['page'] for page in coverage if page['accepted']],
+                     'coverage': coverage}
             return await run_in_threadpool(
-                ledger.import_records, filename, content, STATEMENT_DATASET, False, case_id, records, u['name'],
-                statement_settings={'currency': currency, 'date_order': date_order},
+                ledger.import_records, filename, content, STATEMENT_DATASET, False, case_id, records, actor,
+                statement_settings=settings, statement_scope=scope,
             )
         except ImportSettingsConflict as exc:
             raise HTTPException(409, str(exc)) from None
+
+    @app.post('/api/quality/{import_id}/statement-page')
+    async def recover_statement_page(import_id: str, request: Request, page: int = Query(ge=1, le=10000),
+                                     preview: bool = True, u=Depends(user)):
+        try:
+            case_id, filename, content, settings = await run_in_threadpool(
+                ledger.statement_import_source, import_id, u['cases'])
+        except KeyError:
+            raise HTTPException(404, 'Saved statement unavailable') from None
+        password = await read_statement_form(request, with_file=False)
+        try:
+            return await process_statement(case_id, u['name'], content, filename, password,
+                                           settings['currency'], settings['date_order'], (page, page),
+                                           preview=preview, manual=settings.get('column_mapping'))
+        finally:
+            del password
+
+    @app.post('/api/import/bank-statement/{case_id}')
+    async def upload_statement(case_id: str, request: Request, preview: bool = False,
+                               layout_page: bool = False, u=Depends(user)):
+        if case_id not in u['cases']:
+            raise HTTPException(403, 'Case access required')
+        content, filename, password, currency, date_order, page_range, manual, corrections = await read_statement_form(
+            request, with_file=True)
+        try:
+            if layout_page:
+                page_number = page_range[0] if page_range else 1
+                try:
+                    page_image = await run_in_threadpool(statement_layout_page, content, password, page_number)
+                except ValueError as exc:
+                    raise HTTPException(422, str(exc)) from None
+                return Response(page_image, media_type='image/png',
+                                headers={'Cache-Control': 'no-store', 'X-Statement-Page': str(page_number)})
+            return await process_statement(case_id, u['name'], content, filename, password,
+                                           currency, date_order, page_range,
+                                           preview=preview, manual=manual, corrections=corrections)
+        finally:
+            del password
 
     @app.post('/api/import/{kind}/{case_id}')
     async def upload(kind:Literal['ibm','narrative','cdr','pdf','history','judgment','judgment-document','fir-document'],case_id:str,request:Request,u=Depends(user)):

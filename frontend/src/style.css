@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MAHA · Forensic Criminal Network Intelligence Workspace
+   VRITRA · Forensic Criminal Network Intelligence Workspace
    Design system: Space Grotesk + Inter + JetBrains Mono
    ========================================================================== */
 
@@ -1838,16 +1838,15 @@ button, input:not([type='range']), select { min-height: 36px; }
   border-color: var(--border-subtle);
 }
 .brand-mark {
-  width: 27px;
-  height: 27px;
-  margin-right: 4px;
-  fill: var(--bg-surface);
-  stroke: var(--accent-cyan);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
 }
-.brand-mark path { stroke-dasharray: 44; animation: mark-draw .55s ease-out both; }
-@keyframes mark-draw { from { stroke-dashoffset: 44; } to { stroke-dashoffset: 0; } }
+.brand-mark path { stroke-dasharray: 60; animation: mark-draw .65s ease-out both; }
+@keyframes mark-draw { from { stroke-dashoffset: 60; } to { stroke-dashoffset: 0; } }
 .nav-icon { font-family: var(--font-mono); font-size: 10px; }
 .dossier-group {
   --group-accent: var(--text-muted);
@@ -2051,8 +2050,7 @@ h1, h2, h3, .wordmark { letter-spacing: -0.03em; }
 .dark-theme .btn-train-primary:hover, .dark-theme .login form button:hover { background: #F6C76A; }
 .dark-theme header { background: rgb(10 16 32 / 85%); }
 .dark-theme .sidebar nav button.active { background: rgb(90 169 255 / 12%); color: #EDF2FA; border-color: rgb(90 169 255 / 35%); }
-.dark-theme .brand-mark { stroke: #F2B544; }
-.dark-theme .brand-mark circle { fill: #F2B544; }
+.dark-theme .brand-mark { filter: drop-shadow(0 0 8px rgba(90, 169, 255, 0.25)); }
 .dark-theme .panel { transition: border-color .3s, box-shadow .3s; }
 .dark-theme .panel:hover { border-color: #34476B; }
 .dark-theme.login, .login-stage .dark-theme.login { background: rgb(19 30 53 / 78%); border-color: #233350; box-shadow: 0 30px 80px -20px rgb(0 0 0 / 70%); }
@@ -2104,8 +2102,7 @@ h1, h2, h3, .wordmark { letter-spacing: -0.03em; }
 .login:not(.dark-theme) form button:hover { background: #E5A52E; }
 .shell:not(.dark-theme) header { background: rgb(243 245 250 / 88%); }
 .shell:not(.dark-theme) .sidebar nav button.active { background: rgb(31 100 200 / 9%); color: #0A1020; border-color: rgb(31 100 200 / 30%); }
-.shell:not(.dark-theme) .brand-mark, .login:not(.dark-theme) .brand-mark { stroke: #9A6400; }
-.shell:not(.dark-theme) .brand-mark circle, .login:not(.dark-theme) .brand-mark circle { fill: #9A6400; }
+.shell:not(.dark-theme) .brand-mark, .login:not(.dark-theme) .brand-mark { filter: drop-shadow(0 0 6px rgba(31, 100, 200, 0.15)); }
 .shell:not(.dark-theme) .btn-tmpl { background: transparent; color: #0A1020; border: 1px solid #D6DCE8; }
 .shell:not(.dark-theme) .btn-tmpl:hover { border-color: #1F64C8; }
 .shell:not(.dark-theme) .view-switch button.active { color: #9A6400; }

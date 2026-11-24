@@ -1,10 +1,10 @@
 /* ==========================================================================
-   MAHA styles entry: Tailwind v4 (prefixed `tw:`) + shadcn/ui theme + legacy CSS.
+   VRITRA styles entry: Tailwind v4 (prefixed `tw:`) + shadcn/ui theme + legacy CSS.
 
    Layer order (lowest priority first):
      theme   – Tailwind design tokens
      base    – minimal defaults for shadcn components (no full Tailwind reset)
-     legacy  – MAHA's hand-written CSS (style.css, record-intake.css)
+     legacy  – VRITRA's hand-written CSS (style.css, record-intake.css)
      components
      utilities – `tw:` classes, so they win over legacy rules on the same element
    No Preflight reset is loaded, so existing screens keep their look.

@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth, UserButton } from '@clerk/react';
 
 // Clerk is a front-door gate only: it decides who may open /app.
-// Case access is still enforced by the MAHA backend token inside the workspace.
+// Case access is still enforced by the VRITRA backend token inside the workspace.
 export const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || '';
 export const clerkEnabled = /^pk_(test|live)_/.test(CLERK_KEY);
 

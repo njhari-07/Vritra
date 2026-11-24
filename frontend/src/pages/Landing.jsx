@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { clerkEnabled } from '../auth';
 import BrandMark from '../components/BrandMark';
+import DynamicBrand from '../components/DynamicBrand';
 import GraphStory from '../components/landing/GraphStory';
 import { cn } from '@/lib/utils';
 
@@ -176,7 +177,7 @@ function Stepper() {
   return (
     <div className={cn('tw:grid tw:grid-cols-[minmax(0,340px)_minmax(0,1fr)] tw:items-start tw:gap-7 tw:max-[1000px]:grid-cols-1', auto && 'autoplay')}
       style={{ '--dur': `${STEP_MS}ms` }}>
-      <ol className="tw:m-0 tw:grid tw:list-none tw:gap-2 tw:p-0 tw:max-[1000px]:grid-cols-[repeat(auto-fit,minmax(150px,1fr))]" role="tablist" aria-label="How MAHA works">
+      <ol className="tw:m-0 tw:grid tw:list-none tw:gap-2 tw:p-0 tw:max-[1000px]:grid-cols-[repeat(auto-fit,minmax(150px,1fr))]" role="tablist" aria-label="How VRITRA works">
         {STEPS.map((s, i) => (
           <li key={s.title}>
             <button type="button" role="tab" id={`step-tab-${i}`} aria-selected={i === active} aria-controls="step-panel" onClick={() => pick(i)}
@@ -199,7 +200,7 @@ function Stepper() {
         <h3 className={cn(H2, 'tw:text-[clamp(22px,2.4vw,30px)]')}>{step.title}: {step.hint.toLowerCase()}</h3>
         <p className="tw:m-0 tw:max-w-[62ch] tw:text-ink-2">{step.body}</p>
         <div className="tw:overflow-x-auto tw:rounded-xl tw:border tw:border-line tw:bg-night tw:p-[18px] tw:font-mono tw:text-[13px] tw:text-ink-2">
-          <span className="tw:mb-3 tw:block tw:text-[11px] tw:tracking-[0.1em] tw:text-ink-4 tw:uppercase">Illustrative example · synthetic data</span>
+
           {step.demo()}
         </div>
       </div>
@@ -219,7 +220,7 @@ export default function Landing() {
       <div aria-hidden="true" className="tw:pointer-events-none tw:absolute! tw:inset-0 tw:lp-dotgrid" />
 
       <header className="tw:fixed! tw:inset-x-0 tw:top-0 tw:z-30 tw:m-0 tw:flex tw:items-center tw:justify-between tw:gap-4 tw:border-0 tw:px-[max(16px,4vw)] tw:py-3.5 tw:shadow-none tw:backdrop-blur-[8px] tw:lp-nav-fade">
-        <Link to="/" className="tw:flex tw:items-center tw:gap-2.5 tw:font-display tw:text-[19px] tw:font-bold tw:tracking-[0.04em]"><BrandMark /> MAHA</Link>
+        <Link to="/" className="tw:inline-flex tw:items-center tw:text-ink tw:no-underline"><DynamicBrand size={22} textClassName="tw:font-display tw:text-[19px] tw:font-bold tw:tracking-[0.04em] tw:text-white" /></Link>
         <nav className="tw:flex tw:gap-7 tw:text-sm tw:text-ink-3 tw:max-sm:hidden tw:[&_a]:transition-colors tw:[&_a:hover]:text-ink" aria-label="Sections">
           <a href="#story">The story</a>
           <a href="#how">How it works</a>
@@ -236,7 +237,7 @@ export default function Landing() {
             Turn scattered case files into <em className="tw:text-gold tw:not-italic">one network</em> you can check.
           </h1>
           <p className="tw:m-0 tw:mb-[30px] tw:max-w-[540px] tw:text-[clamp(16px,1.45vw,19px)] tw:text-ink-2">
-            MAHA reads bank transfers, case notes, call records and statements, connects the people,
+            VRITRA reads bank transfers, case notes, call records and statements, connects the people,
             accounts, phones and places in them, and shows where money loops. Every link points back
             to the exact record it came from.
           </p>
@@ -257,7 +258,6 @@ export default function Landing() {
         <div aria-hidden="true"
           className="tw:relative tw:h-[min(68vh,640px)] tw:min-h-[380px] tw:[&>div:first-child]:lp-stage-fade tw:[&_canvas]:block tw:max-[1000px]:order-first tw:max-[1000px]:-mx-[max(16px,5vw)] tw:max-[1000px]:h-[340px] tw:max-[1000px]:min-h-0 tw:max-sm:h-[280px]">
           <Suspense fallback={null}><HeroScene /></Suspense>
-          <span className="tw:absolute tw:right-0 tw:bottom-1.5 tw:font-mono tw:text-[11px] tw:text-ink-4 tw:max-[1000px]:right-[max(16px,5vw)]">Illustrative network · synthetic</span>
         </div>
       </section>
 
@@ -337,7 +337,7 @@ export default function Landing() {
       </section>
 
       <footer className="tw:mt-[72px] tw:flex tw:flex-wrap tw:justify-between tw:gap-3 tw:border-t tw:border-line tw:px-[max(16px,4vw)] tw:py-[26px] tw:text-[13px] tw:text-ink-4">
-        <span className="tw:inline-flex tw:items-center tw:gap-2"><BrandMark /> MAHA evidence workspace · BAI506 academic prototype</span>
+        <span className="tw:inline-flex tw:items-center tw:gap-2"><BrandMark /> VRITRA evidence workspace · BAI506 academic prototype</span>
         <span className="tw:inline-flex tw:items-center tw:gap-2 tw:font-mono">FastAPI · React · three.js · SQLite ledger · Neo4j</span>
       </footer>
     </div>

@@ -32,6 +32,15 @@ export default function StatementRowReview({ evidence, api }) {
   return (
     <div className="statement-review">
       <h4>{result ? 'Row read from the original file' : 'Extracted statement row'}</h4>
+      {evidence.source_locator.layout?.includes('balance-verified') && (
+        <p>Column mapping was inferred from matching running balances.</p>
+      )}
+      {evidence.source_locator.header_page && (
+        <p>Column headings read from page {evidence.source_locator.header_page}.</p>
+      )}
+      {evidence.source_locator.recovered_layout && (
+        <p>A second reader recovered this row after matching another transaction on the same page.</p>
+      )}
       <dl className="statement-row-fields">
         {cells.map((cell, index) => (
           <div key={index}>
@@ -40,6 +49,17 @@ export default function StatementRowReview({ evidence, api }) {
           </div>
         ))}
       </dl>
+      {evidence.statement_correction && (
+        <section>
+          <h4>Reviewer corrections</h4>
+          <dl className="statement-row-fields">
+            {Object.entries(evidence.statement_correction.fields).map(([field, values]) => (
+              <div key={field}><dt>{field}</dt><dd>{values.extracted || '—'} → {values.corrected || '—'}</dd></div>
+            ))}
+          </dl>
+          <p>{evidence.statement_correction.actor} · {new Date(evidence.statement_correction.at).toLocaleString()}</p>
+        </section>
+      )}
       <form onSubmit={verify}>
         {encrypted && (
           <label>Original file password
