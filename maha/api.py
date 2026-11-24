@@ -1,5 +1,6 @@
 import csv
 from contextlib import asynccontextmanager, closing
+from datetime import date, datetime, timezone
 import hashlib
 import io
 import json
@@ -12,7 +13,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 from python_multipart.exceptions import MultipartParseError
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
@@ -25,17 +26,43 @@ from .nlp import candidates
 from .judgments import judgment_records
 from .document_intake import extract_document, render_source_page
 from .judgment_review import ReviewConflict, load_review, save_review
+from .statement_flow import statement_flow, statement_flow_rows
 from .suspects import compute_suspect_dossiers
 from .ingestion import ibm_records, narrative_records, cdr_records, pdf_records, history_records, json_row
+from .intake_profile import inspect_intake
+from .locations import (
+    DATASET as LOCATION_DATASET, EARTH_RADIUS_M, LOCATION_HEADER, csv_bytes, location_records,
+    pair_matches, place_matches, synthetic_location_scenario, timestamp, window_observations,
+)
 from .statements import (
     CURRENCIES, IMAGE_EXTENSIONS, MAX_BYTES, METHOD as STATEMENT_METHOD, STATEMENT_DATASET,
-    statement_layout_page, statement_page_coverage, statement_preview, statement_records, statement_rows, stored_statement_row,
+    saved_statement_reconciliation, statement_layout_page, statement_page_coverage, statement_preview, statement_reconciliation,
+    statement_records, statement_rows, stored_statement_row,
     validate_statement_layout,
 )
 
 
 class StatementRequestTooLarge(MultiPartException):
     pass
+
+
+async def read_raw_upload(request):
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > MAX_BYTES:
+            raise HTTPException(413, '25 MiB upload limit exceeded')
+        chunks.append(chunk)
+    return b''.join(chunks)
+
+
+def clean_statement_name(value):
+    name = value.strip() if isinstance(value, str) else ''
+    if not 1 <= len(name) <= 100 or not any(char.isalnum() for char in name) or not all(
+        char.isalnum() or char in " -–—_.'()" for char in name
+    ):
+        raise HTTPException(422, 'Use up to 100 characters for the statement name. Letters, numbers, spaces, and simple punctuation are allowed.')
+    return name
 
 
 async def read_statement_form(request, *, with_file):
@@ -54,7 +81,7 @@ async def read_statement_form(request, *, with_file):
     try:
         form = await MultiPartParser(
             request.headers, bounded_stream(), max_files=int(with_file),
-            max_fields=6 if with_file else 1, max_part_size=16 * 1024 if with_file else 4096,
+            max_fields=7 if with_file else 1, max_part_size=16 * 1024 if with_file else 4096,
         ).parse()
     except StatementRequestTooLarge as exc:
         raise HTTPException(413, exc.message) from None
@@ -66,6 +93,7 @@ async def read_statement_form(request, *, with_file):
             raise HTTPException(422, 'Invalid password field')
         if not with_file:
             return password
+        name = clean_statement_name(form['statement_name']) if 'statement_name' in form else None
         source = form.get('file')
         currency, date_order = form.get('currency'), form.get('date_order')
         if not isinstance(source, UploadFile):
@@ -120,7 +148,7 @@ async def read_statement_form(request, *, with_file):
             valid_suffixes.add('.tif')
         if Path(filename).suffix.lower() not in valid_suffixes or len(filename) > 120:
             filename = 'bank-statement' + extension
-        return content, filename, password, currency, date_order, page_range, manual, corrections
+        return content, filename, password, currency, date_order, page_range, manual, corrections, name
     finally:
         await form.close()
 
@@ -150,6 +178,16 @@ class CopilotQuery(BaseModel):
 
 class CreateCase(BaseModel):
     case_id: str=Field(min_length=2,max_length=64)
+
+
+class StatementName(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class StatementOwner(BaseModel):
+    account: str = Field(pattern=r'^[a-f0-9]{32}$')
+    name: str = Field(min_length=1, max_length=100)
+    person_id: str | None = Field(default=None, max_length=160)
 
 
 class RawTextImport(BaseModel):
@@ -571,21 +609,86 @@ def create_app(store=None):
         return [{**r,'summary':json.loads(r['summary'])} for r in ledger.history('imports',case_scope(u,case))]
 
     @app.get('/api/quality/{import_id}/statement-rows')
-    def quality_statement_rows(import_id: str, offset: int = 0, u=Depends(user)):
+    def quality_statement_rows(import_id: str, offset: int = 0, all_rows: bool = False, u=Depends(user)):
         if offset < 0 or offset > 5000:
             raise HTTPException(422, 'Invalid row offset')
         try:
-            summary, rows, pages, next_page = ledger.statement_import_review(import_id, u['cases'], offset, 25)
+            summary, rows, pages, next_page, saved_count, verification, unpublished, publication_impact = ledger.statement_import_review(
+                import_id, u['cases'], offset, 25, all_rows=all_rows,
+            )
         except KeyError:
             raise HTTPException(404, 'Statement import unavailable') from None
         return JSONResponse({
             'rows': [stored_statement_row(row, summary['statement_settings']) for row in rows],
-            'accepted': summary['accepted_new'],
+            'accepted': saved_count if all_rows else summary['accepted_new'],
             'repeats': summary['recognized_repeat'],
             'pages': pages,
             'next_page': next_page,
             'scope': summary.get('statement_scope'),
+            'unpublished_rows': unpublished,
+            'publication_impact': publication_impact,
+            'saved_reconciliation': saved_statement_reconciliation(verification, summary['statement_settings']['currency']),
         }, headers={'Cache-Control': 'no-store'})
+
+    @app.put('/api/quality/{import_id}/statement')
+    def rename_statement(import_id: str, body: StatementName, u=Depends(user)):
+        name = clean_statement_name(body.name)
+        try:
+            ledger.rename_statement(import_id, u['cases'], name, u['name'])
+        except KeyError:
+            raise HTTPException(404, 'Statement unavailable') from None
+        return {'statement_name': name}
+
+    @app.get('/api/quality/{import_id}/money-flow')
+    def statement_money_flow(import_id: str, account: str | None = None, start: date | None = None, end: date | None = None,
+                             direction: Literal['all', 'debit', 'credit'] = 'all',
+                             status: Literal['all', 'completed', 'pending', 'failed', 'reversed', 'unknown'] = 'completed',
+                             group: str | None = None, offset: int = Query(default=0, ge=0, le=5000), u=Depends(user)):
+        if start and end and start > end:
+            raise HTTPException(422, 'Start date must be on or before the end date')
+        try:
+            case_id, summary, evidence, owners = ledger.statement_flow_source(import_id, u['cases'])
+            settings = summary['statement_settings']
+            rows = list(statement_flow_rows(evidence, settings))
+            return {'case_id': case_id, **statement_flow(
+                summary.get('statement_name') or 'Bank statement', settings, owners, rows, account=account,
+                start=start.isoformat() if start else None, end=end.isoformat() if end else None,
+                direction=direction, status=status, group=group, offset=offset,
+            )}
+        except KeyError:
+            raise HTTPException(404, 'Statement or account unavailable') from None
+
+    @app.put('/api/quality/{import_id}/money-flow/owner')
+    def confirm_statement_owner(import_id: str, body: StatementOwner, u=Depends(user)):
+        name = clean_statement_name(body.name)
+        try:
+            _, summary, evidence, _ = ledger.statement_flow_source(import_id, u['cases'])
+            account = next((row for row in statement_flow_rows(evidence, summary['statement_settings'])
+                            if row['account_key'] == body.account), None)
+            if account is None:
+                raise KeyError(body.account)
+            ledger.set_statement_owner(import_id, u['cases'], account, name, body.person_id, u['name'])
+        except KeyError:
+            raise HTTPException(404, 'Statement or account unavailable') from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {'name': name, 'person_id': body.person_id}
+
+    @app.delete('/api/quality/{import_id}/statement')
+    def delete_statement(import_id: str, u=Depends(user)):
+        try:
+            count = ledger.delete_statement(import_id, u['cases'], u['name'])
+        except KeyError:
+            raise HTTPException(404, 'Statement unavailable') from None
+        return {'deleted_rows': count}
+
+    @app.post('/api/quality/{import_id}/publish-statement')
+    def publish_statement(import_id: str, u=Depends(user)):
+        try:
+            return {'published_rows': ledger.publish_statement(import_id, u['cases'], u['name'])}
+        except KeyError:
+            raise HTTPException(404, 'Statement unavailable') from None
+
     @app.get('/api/audit')
     def audit(case:str|None=None,u=Depends(user)):return ledger.history('audit',case_scope(u,case))
     @app.get('/api/benchmarks')
@@ -612,6 +715,64 @@ def create_app(store=None):
     def retired_adjudication(u=Depends(user)):
         raise HTTPException(410,'Lead precision requires independent human labels. Automated adjudication is retired.')
 
+    def location_rows(case_id):
+        return [{**row['location_observation'], 'id': row['id'], 'event_time': row['event_time'],
+                 'source_locator': row['source_locator'], 'evidence_ids': [row['id']]}
+                for row in ledger.location_evidence(case_id) if 'location_observation' in row]
+
+    def locations_in_window(case_id, start, end, subject=None):
+        try:
+            start = timestamp(start.isoformat()) if start else None
+            end = timestamp(end.isoformat()) if end else None
+            return window_observations(location_rows(case_id), start, end, subject)
+        except (ValueError, OverflowError) as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.get('/api/locations/{case_id}/template')
+    def location_template(case_id: str, u=Depends(user)):
+        case_scope(u, case_id)
+        return Response(csv_bytes(LOCATION_HEADER), media_type='text/csv',
+                        headers={'Content-Disposition': 'attachment; filename="synthetic-location-template.csv"'})
+
+    @app.post('/api/locations/{case_id}')
+    async def upload_locations(case_id: str, request: Request, u=Depends(user)):
+        case_scope(u, case_id)
+        content = await read_raw_upload(request)
+        try:
+            return await run_in_threadpool(ledger.import_records, 'synthetic-locations.csv', content,
+                                           LOCATION_DATASET, True, case_id, location_records(content), u['name'])
+        except (ValueError, UnicodeError, csv.Error) as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.post('/api/locations/{case_id}/demo')
+    def load_location_scenario(case_id: str, u=Depends(user)):
+        case_scope(u, case_id)
+        content, records = synthetic_location_scenario()
+        return ledger.import_records('synthetic-location-scenario.csv', content, LOCATION_DATASET, True,
+                                     case_id, records, u['name'])
+
+    @app.get('/api/locations/{case_id}')
+    def get_locations(case_id: str, start: AwareDatetime | None = None, end: AwareDatetime | None = None,
+                      subject: str | None = None, u=Depends(user)):
+        case_scope(u, case_id)
+        return locations_in_window(case_id, start, end, subject)
+
+    @app.get('/api/locations/{case_id}/near-place')
+    def locations_near_place(case_id: str, start: AwareDatetime, end: AwareDatetime,
+                             latitude: float = Query(ge=-90, le=90), longitude: float = Query(ge=-180, le=180),
+                             radius_m: float = Query(gt=0, le=EARTH_RADIUS_M), u=Depends(user)):
+        case_scope(u, case_id)
+        return place_matches(locations_in_window(case_id, start, end), latitude, longitude, radius_m)
+
+    @app.get('/api/locations/{case_id}/near-pair')
+    def locations_near_pair(case_id: str, start: AwareDatetime, end: AwareDatetime,
+                            subject: str, other: str, radius_m: float = Query(gt=0, le=EARTH_RADIUS_M),
+                            tolerance_seconds: int = Query(60, ge=0, le=3600), u=Depends(user)):
+        case_scope(u, case_id)
+        if not subject.strip() or not other.strip() or subject == other:
+            raise HTTPException(422, 'Choose two different subjects')
+        return pair_matches(locations_in_window(case_id, start, end), subject, other, radius_m, tolerance_seconds)
+
     @app.get('/api/timeline')
     def timeline(case:str|None=None,u=Depends(user)):
         g=graph(u,case);names={n['id']:n['label'] for n in g['nodes']}
@@ -619,23 +780,52 @@ def create_app(store=None):
                  'time_basis':n['attrs'].get('time_basis'),'evidence_ids':n['evidence_ids']}
                 for n in g['nodes'] if n['attrs'].get('event_time')]
         events += [{'id':e['id'],'label':f"Call: {names[e['source']]} → {names[e['target']]}",'event_time':e['attrs']['event_time'],'evidence_ids':e['evidence_ids']} for e in g['edges'] if e['type']=='COMMUNICATED_WITH' and e['attrs'].get('event_time')]
-        return sorted(events,key=lambda n:n['event_time'])
+        if case:
+            for row in ledger.location_evidence(case):
+                if 'location_observation' in row:
+                    observation = row['location_observation']
+                    label = f"{observation['subject_id']} · {observation['source_kind'].replace('_', ' ')} observation"
+                    context = {'kind': 'location', 'observation_id': row['id']}
+                elif context := row.get('location_context'):
+                    label = context['label']
+                else:
+                    continue
+                events.append({'id': row['id'], 'label': label, 'event_time': row['event_time'],
+                               'time_basis': row['time_basis'], 'evidence_ids': [row['id']], **context})
+        def order(event):
+            raw = event['event_time']
+            try:
+                value = datetime.fromisoformat(raw)
+            except ValueError:
+                return True, 0, raw
+            return False, value.replace(tzinfo=value.tzinfo or timezone.utc).timestamp(), raw
+        return sorted(events, key=order)
     @app.get('/api/flow')
     def flow(start:str,end:str|None=None,u=Depends(user)):
         g=graph(u);ids={n['id'] for n in g['nodes']}
         if start not in ids or (end and end not in ids):raise HTTPException(404,'Entity unavailable')
         return fund_flow(g,start,end)
     async def process_statement(case_id, actor, content, filename, password, currency, date_order, page_range,
-                                *, preview, manual=None, corrections=None):
+                                *, preview, manual=None, corrections=None, name=None, recovery_batch=None,
+                                destination='graph'):
+        summaries = []
         try:
             records = await run_in_threadpool(statement_records, content, password, currency, date_order,
-                                              page_range=page_range, preview=preview, manual=manual, corrections=corrections)
+                                              page_range=page_range, preview=preview, manual=manual,
+                                              corrections=corrections, summaries=summaries)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         finally:
             del password
+        reconciliation = statement_reconciliation(records, summaries)
         if preview:
-            return JSONResponse(statement_preview(records, currency, page_range), headers={'Cache-Control': 'no-store'})
+            result = statement_preview(records, currency, page_range)
+            result['graph_impact'] = await run_in_threadpool(
+                ledger.statement_graph_impact, case_id, hashlib.sha256(content).hexdigest(), records,
+            )
+            if reconciliation is not None:
+                result['reconciliation'] = reconciliation
+            return JSONResponse(result, headers={'Cache-Control': 'no-store'})
         source_format = next(record['locator']['format'] for record in records if 'facts' in record)
         if source_format in {'xls', 'xlsx'} and Path(filename).suffix.lower() != f'.{source_format}':
             filename = f'{Path(filename).stem}.{source_format}'
@@ -648,18 +838,24 @@ def create_app(store=None):
                      'processed_pages': [page['page'] for page in coverage],
                      'accepted_pages': [page['page'] for page in coverage if page['accepted']],
                      'coverage': coverage}
+            if reconciliation is not None:
+                scope['reconciliation'] = reconciliation
             return await run_in_threadpool(
-                ledger.import_records, filename, content, STATEMENT_DATASET, False, case_id, records, actor,
-                statement_settings=settings, statement_scope=scope,
+                ledger.import_records, filename, content, STATEMENT_DATASET, False, case_id,
+                (record for record in records if 'row' in record['locator']), actor,
+                statement_settings=settings, statement_scope=scope, statement_name=name, recovery_batch=recovery_batch,
+                statement_destination=destination,
             )
         except ImportSettingsConflict as exc:
             raise HTTPException(409, str(exc)) from None
+        except KeyError:
+            raise HTTPException(404, 'Saved statement unavailable') from None
 
     @app.post('/api/quality/{import_id}/statement-page')
     async def recover_statement_page(import_id: str, request: Request, page: int = Query(ge=1, le=10000),
                                      preview: bool = True, u=Depends(user)):
         try:
-            case_id, filename, content, settings = await run_in_threadpool(
+            case_id, filename, content, settings, destination = await run_in_threadpool(
                 ledger.statement_import_source, import_id, u['cases'])
         except KeyError:
             raise HTTPException(404, 'Saved statement unavailable') from None
@@ -667,16 +863,17 @@ def create_app(store=None):
         try:
             return await process_statement(case_id, u['name'], content, filename, password,
                                            settings['currency'], settings['date_order'], (page, page),
-                                           preview=preview, manual=settings.get('column_mapping'))
+                                           preview=preview, manual=settings.get('column_mapping'), recovery_batch=import_id,
+                                           destination=destination)
         finally:
             del password
 
     @app.post('/api/import/bank-statement/{case_id}')
     async def upload_statement(case_id: str, request: Request, preview: bool = False,
-                               layout_page: bool = False, u=Depends(user)):
+                               layout_page: bool = False, destination: Literal['graph', 'evidence'] = 'graph', u=Depends(user)):
         if case_id not in u['cases']:
             raise HTTPException(403, 'Case access required')
-        content, filename, password, currency, date_order, page_range, manual, corrections = await read_statement_form(
+        content, filename, password, currency, date_order, page_range, manual, corrections, name = await read_statement_form(
             request, with_file=True)
         try:
             if layout_page:
@@ -689,21 +886,24 @@ def create_app(store=None):
                                 headers={'Cache-Control': 'no-store', 'X-Statement-Page': str(page_number)})
             return await process_statement(case_id, u['name'], content, filename, password,
                                            currency, date_order, page_range,
-                                           preview=preview, manual=manual, corrections=corrections)
+                                           preview=preview, manual=manual, corrections=corrections, name=name, destination=destination)
         finally:
             del password
+
+    @app.post('/api/intake/{case_id}/inspect')
+    async def inspect_document(case_id: str, request: Request, u=Depends(user)):
+        if case_id not in u['cases']:
+            raise HTTPException(403, 'Case access required')
+        content = await read_raw_upload(request)
+        try:
+            return await run_in_threadpool(inspect_intake, content)
+        except (ValueError, csv.Error) as exc:
+            raise HTTPException(422, str(exc)) from None
 
     @app.post('/api/import/{kind}/{case_id}')
     async def upload(kind:Literal['ibm','narrative','cdr','pdf','history','judgment','judgment-document','fir-document'],case_id:str,request:Request,u=Depends(user)):
         if case_id not in u['cases']:raise HTTPException(403,'Case access required')
-        # Raw request streaming bounds memory before parsing. Filename/path supplied by client is ignored.
-        chunks=[];size=0
-        async for chunk in request.stream():
-            size+=len(chunk)
-            if size>25*1024*1024:raise HTTPException(413,'25 MiB upload limit exceeded')
-            chunks.append(chunk)
-        content=b''.join(chunks)
-        del chunks
+        content = await read_raw_upload(request)
         if kind in {'judgment', 'judgment-document', 'fir-document'}:
             def import_document():
                 judgment = kind != 'fir-document'

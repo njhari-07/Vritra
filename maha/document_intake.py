@@ -30,6 +30,10 @@ _slots = BoundedSemaphore(1)
 pdfium_lock = Lock()
 
 
+class DocumentOcrTimeout(ResourceLimitError):
+    pass
+
+
 def render_pdf_image(page, **options):
     with pdfium_lock:
         return page.to_image(**options)
@@ -51,7 +55,7 @@ def _ocr(image, deadline, *, words=False):
         raise FileNotFoundError('Local OCR is unavailable. Install Tesseract and its English language data.')
     remaining = deadline - monotonic()
     if remaining <= 0:
-        raise ResourceLimitError('Document OCR exceeded its time budget')
+        raise DocumentOcrTimeout('Document OCR exceeded its time budget')
     with BytesIO() as pixels:
         image.save(pixels, format='PNG')
         try:
@@ -61,7 +65,7 @@ def _ocr(image, deadline, *, words=False):
                 capture_output=True, timeout=min(20, remaining), env=environment,
             )
         except subprocess.TimeoutExpired as exc:
-            raise ResourceLimitError('Document OCR exceeded its time budget') from exc
+            raise DocumentOcrTimeout('Document OCR exceeded its time budget') from exc
     if result.returncode:
         raise FileNotFoundError('Local OCR could not run. Check Tesseract and its English language data.')
     return result.stdout.decode('utf-8')

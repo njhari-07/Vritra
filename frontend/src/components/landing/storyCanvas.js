@@ -72,7 +72,9 @@ function buildStory() {
   const nb = nodes.map(() => new Set());
   edges.forEach(e => { nb[e.a].add(e.b); nb[e.b].add(e.a); });
   for (let q = 0; q < 3; q++) { nb[loop[q]].add(loop[(q + 1) % 3]); nb[loop[(q + 1) % 3]].add(loop[q]); }
-  const stars = []; for (let i = 0; i < 160; i++) stars.push([rand(), rand(), rand() * 1.1 + 0.3, rand() * 6.28]);
+  const stars = Array.from({ length: 160 }, () => ({
+    x: rand(), y: rand(), size: rand() * 1.1 + 0.3, phase: rand() * 12, period: 3 + rand() * 8,
+  }));
   return { docs, CASES, nodes, bridge, loop, edges, nb, stars };
 }
 
@@ -138,7 +140,27 @@ export function startStory(cv, ctl, onStep, reduced) {
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    for (const st of stars) { ctx.globalAlpha = 0.2 + 0.3 * (0.5 + 0.5 * Math.sin(time * 1.2 + st[3])); ctx.fillStyle = '#C3CEDF'; ctx.fillRect(st[0] * W, st[1] * H, st[2], st[2]); }
+    ctx.fillStyle = '#C3CEDF';
+    for (const star of stars) {
+      const cycle = (time + star.phase) / star.period;
+      const jitter = Math.abs(Math.sin((Math.floor(cycle) + star.phase) * 91.73));
+      const progress = ((cycle % 1) - (0.15 + jitter * 0.5)) * star.period / 0.7;
+      const pulse = reduced ? 0 : Math.sin(Math.PI * clamp(progress, 0, 1));
+      ctx.globalAlpha = 0.30 + 0.59 * pulse;
+      const x = star.x * W, y = star.y * H;
+      if (pulse < 0.35) {
+        ctx.fillRect(x, y, star.size, star.size);
+        continue;
+      }
+      const tip = star.size + 2.3 * pulse;
+      const shoulder = tip * 0.23;
+      ctx.beginPath();
+      ctx.moveTo(x, y - tip); ctx.lineTo(x + shoulder, y - shoulder);
+      ctx.lineTo(x + tip, y); ctx.lineTo(x + shoulder, y + shoulder);
+      ctx.lineTo(x, y + tip); ctx.lineTo(x - shoulder, y + shoulder);
+      ctx.lineTo(x - tip, y); ctx.lineTo(x - shoulder, y - shoulder);
+      ctx.closePath(); ctx.fill();
+    }
     ctx.globalAlpha = 1;
     // Desktop: graph sits right of the caption. Narrow screens: caption on top, graph centred below.
     const narrow = W < 900;

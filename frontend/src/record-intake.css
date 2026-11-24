@@ -216,6 +216,22 @@
 .statement-page-coverage li + li { border-top: 1px solid var(--border-subtle); }
 .statement-page-diagnostic { flex-basis: 100%; }
 
+.statement-reconciliation dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  gap: .5rem;
+  margin: .75rem 0 0;
+}
+.statement-reconciliation dl > div {
+  min-width: 0;
+  padding: .5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+.statement-reconciliation dt { color: var(--text-secondary); font-size: 12px; }
+.statement-reconciliation dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
 .statement-recovery-form {
   display: flex;
   flex-wrap: wrap;

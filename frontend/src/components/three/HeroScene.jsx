@@ -1,8 +1,8 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Stars } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
+import TwinklingStars from './TwinklingStars';
 
 // "Case File Night" entity colours: each colour names one kind of entity.
 const C = {
@@ -166,7 +166,7 @@ export default function HeroScene({ dim = false }) {
     <Canvas camera={{ position: [0, 0.4, 8.2], fov: 50 }} dpr={[1, 1.75]} frameloop={reduced ? 'demand' : 'always'} gl={{ antialias: true }}>
       <color attach="background" args={[C.night]} />
       <fog attach="fog" args={[C.night, 7, 15]} />
-      <Stars radius={60} depth={30} count={1400} factor={2.6} fade speed={0.3} />
+      <TwinklingStars animate={!reduced} />
       <Network dim={dim} />
       <EffectComposer>
         <Bloom intensity={dim ? 0.55 : 1.0} luminanceThreshold={0.28} luminanceSmoothing={0.3} mipmapBlur />

@@ -47,6 +47,304 @@ def make_encrypted_pdf(page_count, rows=ROWS):
     return original.getvalue()
 
 
+def make_payment_export(*, split=False):
+    headings = ['Date', 'Time', 'Bank Name', 'Account\nNumber', 'Sender', 'Receiver',
+                'Payment ID/Reference\nNumber', 'Pay\n/Collect', 'Amount (in\nRs.)', 'DR\n/CR', 'Status']
+    values = [
+        ('26/05\n/2001', '09:17:\n43', 'payer@upi (Example Payer)', 'owner@upi', 'TEST-001', 'PAY', '2.10', 'CR', 'SUCCESS'),
+        ('26/05/2001', '09:17:42', 'owner@upi', 'vendor@upi (Example Vendor)', 'TEST-002', 'PAY', '3.45', 'DR', 'SUCCESS'),
+        ('25/05/2001', '10:11:12', 'owner@upi', 'vendor@upi', 'TEST-003', 'COLLECT', '5.55', 'DR', 'SUCCESS'),
+        ('25/05/2001', '10:11:11', 'owner@upi', 'vendor@upi', 'TEST-004', 'PAY', '20.00', 'DR', 'FAILED'),
+        ('25/05/2001', '10:11:10', 'xxx0001@upi (Masked)', 'owner@upi', 'TEST-005', 'PAY', '1.10', 'CR', 'SUCCESS'),
+        ('25/05/2001', '10:11:09', 'xxx0001@upi (Masked)', 'owner@upi', 'TEST-006', 'PAY', '1.00', 'CR', 'PENDING'),
+    ]
+    rows = [[day, time, 'Example Bank', 'XX1234', *details] for day, time, *details in values]
+    continuation = []
+    if split:
+        rows[1][:2] = ['26/05', '09:17:']
+        continuation.append(['/2001', '42', *[''] * 9])
+    output = BytesIO()
+    canvas = Canvas(output, pagesize=(920, 500))
+    for page_rows in ([headings, *rows[:2]], [*continuation, *rows[2:]]):
+        table = Table(page_rows, colWidths=[61, 55, 70, 59, 155, 155, 109, 50, 62, 35, 70])
+        table.setStyle([('GRID', (0, 0), (-1, -1), .5, colors.black)])
+        table.wrapOn(canvas, 850, 430)
+        table.drawOn(canvas, 8, 307)
+        canvas.showPage()
+    canvas.save()
+    return output.getvalue()
+
+
+def test_payment_row_split_between_pdf_pages_retains_both_locations():
+    content = make_payment_export(split=True)
+    parsed = statement_records(content, '', 'INR', 'DMY', page_range=(1, 1), preview=True)
+    assert len(parsed) == 2 and all('facts' in row for row in parsed)
+    assert parsed[-1]['fields']['reference'] == 'TEST-002'
+    assert parsed[-1]['locator']['page'] == 1
+    assert parsed[-1]['locator']['continuation']['page'] == 2
+    whole = statement_records(content, '', 'INR', 'DMY', preview=True)
+    assert len(whole) == 6 and all('facts' in row for row in whole)
+    assert [row['fields']['reference'] for row in whole].count('TEST-002') == 1
+
+
+def test_money_flow_groups_legacy_statement_narrations_with_distinct_review_labels(tmp_path, monkeypatch):
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['CASE'])}
+    workbook = Workbook()
+    workbook.active.append(['Date', 'Narration', 'Debit', 'Credit'])
+    for narration, debit, credit in [
+        (f'WDL TFR\nUPI/DR/{1:012d}/Example Person/TEST/partial01/UPI', '5.25', None),
+        (f'WDL TFR\nUPI/DR/{2:012d}/Example Person/TEST/partial01/UPI', '1.75', None),
+        (f'UPI/DR/{3:012d}/Example Person/TEST/partial02/UPI', '2.00', None),
+        (f'UPI/CR/{4:012d}/Example Person/TEST/vendor@upi/UPI', None, '6.00'),
+        (f'UPI/CR/{5:012d}/Example Person/TEST/vendor@upi/UPI', '0.50', None),
+        ('POS ATM PURCHASE', '1.50', None),
+    ]:
+        workbook.active.append(['11/10/2026', narration, debit, credit])
+    content = BytesIO()
+    workbook.save(content)
+    with TestClient(create_app(store)) as client:
+        imported = client.post('/api/import/bank-statement/CASE', headers=headers,
+                               data={'currency': 'INR', 'date_order': 'DMY'},
+                               files={'file': ('example.xlsx', content.getvalue())})
+        assert imported.status_code == 200, imported.text
+        path = f"/api/quality/{imported.json()['import_id']}/money-flow"
+        flow = client.get(path, headers=headers).json()
+        assert flow['totals'] == {'credit': '6.00', 'debit': '11.00', 'net': '-5.00'}
+        assert flow['row_count'] == 6
+        review = [group for group in flow['groups'] if group['kind'] == 'narration']
+        assert [(group['count'], group['total']) for group in review] == [(2, '7.00'), (1, '2.00')]
+        assert review[0]['key'] != review[1]['key']
+        assert all('identity unconfirmed' in group['basis'] for group in review)
+        assert [group['label'] for group in flow['groups'] if group['kind'] == 'identifier'] == ['vendor@upi']
+        assert {group['label'] for group in flow['groups'] if group['kind'] == 'channel'} == {'UPI', 'Card payments'}
+        assert not client.get('/api/graph?case=CASE', headers=headers).json()['edges']
+
+
+def test_payment_export_flows_use_completed_directions_and_scoped_saved_rows(tmp_path, monkeypatch):
+    from maha.ingestion import node
+
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['CASE'])}
+    outside = {'Authorization': 'Bearer ' + store.create_user('outside', ['OTHER'])}
+    for case, person in [('CASE', 'example-owner'), ('OTHER', 'other-person')]:
+        store.import_records(case + '.txt', case.encode(), 'fixture', True, case, [
+            {'locator': {'row': 1}, 'facts': [node('Person', person, 'Example Person')]},
+        ])
+
+    url = '/api/import/bank-statement/CASE'
+    fields = {'currency': 'INR', 'date_order': 'DMY', 'statement_name': 'Example payment export'}
+    files = {'file': ('synthetic.pdf', make_payment_export())}
+    with TestClient(create_app(store)) as client:
+        result = client.post(url + '?preview=true', headers=headers, data=fields, files=files)
+        assert result.status_code == 200, result.text
+        preview = result.json()
+        assert (preview['accepted'], preview['rejected']) == (6, 0)
+        assert preview['rows'][0]['normalized'] == {'debit': '', 'credit': '2.10'}
+        assert preview['rows'][0]['fields']['payment_type'] == 'PAY'
+        assert preview['rows'][1]['normalized'] == {'debit': '3.45', 'credit': ''}
+        assert preview['rows'][2]['locator']['header_page'] == 1
+
+        saved = client.post(url, headers=headers, data=fields, files=files)
+        assert saved.status_code == 200, saved.text
+        batch = '/api/quality/' + saved.json()['import_id']
+        flow_url = batch + '/money-flow'
+        assert client.get(flow_url, headers=outside).status_code == 404
+        flow = client.get(flow_url, headers=headers).json()
+        assert flow['case_id'] == 'CASE'
+        assert flow['totals'] == {'credit': '3.20', 'debit': '9.00', 'net': '-5.80'}
+        assert flow['status_counts'] == {'completed': 4, 'failed': 1, 'pending': 1}
+        assert flow['rows'][0]['printed_time'] == '09:17:43'
+        assert flow['rows'][0]['locator']['page'] == 1
+        assert flow['row_count'] == 4
+        outgoing = flow['groups'][0]
+        assert (outgoing['label'], outgoing['direction'], outgoing['count'], outgoing['total']) == ('vendor@upi', 'debit', 2, '9.00')
+        assert any(group['basis'] == 'masked or incomplete identifiers' for group in flow['groups'])
+        subset = client.get(flow_url, headers=headers, params={'group': outgoing['key']}).json()
+        assert {row['fields']['reference'] for row in subset['rows']} == {'TEST-002', 'TEST-003'}
+        failed = client.get(flow_url, headers=headers, params={'status': 'failed'}).json()
+        assert failed['row_count'] == 1 and not failed['groups']
+        assert failed['rows'][0]['fields']['reference'] == 'TEST-004'
+        only_day = client.get(flow_url, headers=headers, params={'start': '2001-05-26', 'direction': 'debit'}).json()
+        assert only_day['totals']['debit'] == '3.45' and only_day['row_count'] == 1
+        assert client.get(flow_url, headers=headers, params={'account': 'not-an-account'}).status_code == 404
+
+        owner = {'account': flow['account'], 'name': 'Example owner', 'person_id': 'other-person'}
+        assert client.put(flow_url + '/owner', headers=headers, json=owner).status_code == 422
+        owner['person_id'] = 'example-owner'
+        assert client.put(flow_url + '/owner', headers=outside, json=owner).status_code == 404
+        assert client.put(flow_url + '/owner', headers=headers, json=owner).status_code == 200
+        assert client.get(flow_url, headers=headers).json()['accounts'][0]['owner']['name'] == 'Example owner'
+        graph = client.get('/api/graph?case=CASE', headers=headers).json()
+        links = [edge for edge in graph['edges'] if edge['type'] == 'OWNS_ACCOUNT']
+        assert len(links) == 1 and links[0]['source'] == 'example-owner' and links[0]['evidence_ids']
+        assert client.delete(batch + '/statement', headers=headers).status_code == 200
+        assert not client.get('/api/graph?case=CASE', headers=headers).json()['edges']
+
+
+def statement_with_printed_summary(*, declare_extra_debit=False, transactions_on_last_page=False):
+    source = BytesIO()
+    canvas = Canvas(source, encrypt=StandardEncryption(PASSWORD, strength=128))
+
+    def draw(rows, top, widths, *, summary=False):
+        table = Table(rows, colWidths=widths)
+        table.setStyle([('GRID', (0, 0), (-1, -1), .5, colors.black)])
+        if summary:
+            table.setStyle([('SPAN', (0, 0), (-1, 0)), ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#494888')),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('ALIGN', (0, 0), (-1, 0), 'CENTER')])
+        _, height = table.wrapOn(canvas, 550, 650)
+        table.drawOn(canvas, 22, top - height)
+
+    pages_with_transactions = 11 if transactions_on_last_page else 10
+    for page in range(1, pages_with_transactions + 1):
+        if page == 1:
+            canvas.drawString(22, 790, 'Synthetic current account statement')
+        draw([
+            ['Value Date', 'Post Date', 'Details', 'Ref No/\nCheque No', 'Debit (INR)', 'Credit (INR)', 'Balance'],
+            [f'{page:02d}/05/2001', f'{page:02d}/05/2001', 'Synthetic debit', '-', '11.50', '-', '11.50DR'],
+            [f'{page:02d}/05/2001', f'{page:02d}/05/2001', 'Synthetic credit', '-', '-', '11.50', '0.00CR'],
+        ], 690, [63, 63, 105, 62, 78, 78, 80])
+        if page < 11:
+            canvas.showPage()
+    debit_count = pages_with_transactions + int(declare_extra_debit)
+    credit_count = pages_with_transactions
+    draw([
+        [f'Statement Summary  01-05-2001 To {pages_with_transactions}-05-2001', '', '', '', '', ''],
+        ['Brought Forward (INR)', 'Dr Count', 'Cr Count', 'Total Debits (INR)', 'Total Credits (INR)', 'Closing Balance (INR)'],
+        ['0.00CR', str(debit_count), str(credit_count), f'{debit_count * 11.50:.2f}',
+         f'{credit_count * 11.50:.2f}', '11.50DR' if declare_extra_debit else '0.00CR'],
+    ], 300, [114, 53, 53, 101, 104, 113], summary=True)
+    canvas.drawString(22, 200, 'Synthetic fixture footer')
+    canvas.save()
+    return source.getvalue()
+
+
+def test_printed_summary_and_transactions_can_share_the_last_pdf_page():
+    source = statement_with_printed_summary(transactions_on_last_page=True)
+    summaries = []
+    records = statement_records(source, PASSWORD, 'INR', 'DMY', preview=True, summaries=summaries)
+    assert statement_preview(records, 'INR')['rejected'] == 0
+    assert [row['locator']['page'] for row in records] == [page for page in range(1, 12) for _ in range(2)]
+    assert summaries[0]['page'] == 11
+    assert summaries[0]['arithmetic_matches'] is True
+
+
+@pytest.mark.parametrize('declare_extra_debit', [False, True])
+def test_printed_summary_checks_all_statement_pages(tmp_path, monkeypatch, declare_extra_debit):
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    source = statement_with_printed_summary(declare_extra_debit=declare_extra_debit)
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+    url = '/api/import/bank-statement/C1'
+    fields = {'password': PASSWORD, 'currency': 'INR', 'date_order': 'DMY'}
+    files = {'file': ('synthetic.pdf', source)}
+    with TestClient(create_app(store)) as client:
+        def submit(*, preview=True, pages=''):
+            return client.post(url, params={'preview': str(preview).lower()}, headers=headers,
+                               data={**fields, 'pdf_pages': pages}, files=files)
+
+        response = submit(pages='1-11')
+        assert response.status_code == 200, response.text
+        preview = response.json()
+        assert (preview['accepted'], preview['rejected']) == (20, 0)
+        assert [page['accepted'] for page in preview['page_coverage']] == [2] * 10 + [0]
+        assert 'summary found' in preview['page_coverage'][-1]['diagnostic']
+        assert preview['rows'][1]['balance_check'] == 'Matched'
+        assert preview['balance_checks'] == {'matched': 19, 'mismatched': 0, 'unverified': 1}
+        report = preview['reconciliation']
+        assert report['page'] == 11
+        assert report['bbox']
+        assert report['arithmetic_matches'] is True
+        assert report['printed']['closing_balance'].endswith('DR' if declare_extra_debit else 'CR')
+        assert report['checks'] == {
+            'debit_count': {'extracted': '10', 'matches': not declare_extra_debit},
+            'credit_count': {'extracted': '10', 'matches': True},
+            'total_debit': {'extracted': '115.00', 'matches': not declare_extra_debit},
+            'total_credit': {'extracted': '115.00', 'matches': True},
+        }
+
+        footer = submit(pages='11').json()
+        assert (footer['accepted'], footer['rejected']) == (0, 0)
+        assert footer['reconciliation']['checks'] is None
+        assert submit(preview=False, pages='11').status_code == 422
+        assert not store.history('imports', ['C1'])
+
+        result = submit(preview=False).json()
+        assert (result['accepted_new'], result['quarantined']) == (20, 0)
+        assert result['statement_scope']['reconciliation'] == report
+        history = client.get(f"/api/quality/{result['import_id']}/statement-rows", headers=headers).json()
+        assert history['scope']['reconciliation'] == report
+        assert [item['page'] for item in history['pages']] == list(range(1, 11))
+        saved = client.get(f"/api/quality/{result['import_id']}/statement-rows?all_rows=true", headers=headers).json()
+        assert saved['accepted'] == 20
+        assert saved['saved_reconciliation'] == report
+        if not declare_extra_debit:
+            evidence_id = saved['rows'][0]['evidence_id']
+            with store.db() as db:
+                db.execute('DELETE FROM facts WHERE evidence_id=?', (evidence_id,))
+                db.execute('DELETE FROM evidence WHERE id=?', (evidence_id,))
+            after_loss = client.get(f"/api/quality/{result['import_id']}/statement-rows?all_rows=true", headers=headers).json()
+            assert after_loss['accepted'] == 19
+            assert after_loss['saved_reconciliation']['checks']['debit_count'] == {'extracted': '9', 'matches': False}
+            assert after_loss['scope']['reconciliation']['checks']['debit_count']['matches'] is True
+
+
+def test_statement_name_and_delete_apply_to_all_saved_pages_in_one_case(tmp_path, monkeypatch):
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    store = Store(tmp_path / 'ledger')
+    allowed = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1', 'C2'])}
+    outside = {'Authorization': 'Bearer ' + store.create_user('outside', ['C3'])}
+    original = make_encrypted_pdf(2, ROWS[:3])
+    unrelated = make_encrypted_pdf(1, ROWS[:4])
+    fields = {'password': PASSWORD, 'currency': 'INR', 'date_order': 'DMY'}
+    name = 'Example Account 25-26'
+    with TestClient(create_app(store)) as client:
+        def upload(case, *, pages='', content=original, statement_name=name):
+            return client.post(f'/api/import/bank-statement/{case}', headers=allowed,
+                               files={'file': ('synthetic.pdf', content)},
+                               data={**fields, 'pdf_pages': pages, 'statement_name': statement_name})
+
+        assert upload('C1', statement_name='../../unsafe').status_code == 422
+        initial = upload('C1', pages='2').json()
+        assert initial['statement_name'] == name
+        batch = initial['import_id']
+        url = f'/api/quality/{batch}'
+        first_page = client.post(f'{url}/statement-page?page=1&preview=false', headers=allowed,
+                                 files={'password': (None, PASSWORD)}).json()
+        assert first_page['statement_name'] == name
+        same_elsewhere = upload('C2').json()
+        other_file = upload('C1', content=unrelated).json()
+        total = client.get(f'{url}/statement-rows?all_rows=true', headers=allowed).json()
+        assert total['accepted'] == 4
+        assert total['pages'] == [{'page': 1, 'count': 2}, {'page': 2, 'count': 2}]
+        assert total['saved_reconciliation'] is None
+        assert [row['locator']['page'] for row in total['rows']] == [1, 1, 2, 2]
+
+        revised = '  Example Account 2025-26  '
+        assert client.put(f'{url}/statement', headers=outside, json={'name': revised}).status_code == 404
+        renamed = client.put(f'{url}/statement', headers=allowed, json={'name': revised}).json()
+        assert renamed['statement_name'] == revised.strip()
+        batches = client.get('/api/quality?case=C1', headers=allowed).json()
+        assert {r['summary']['statement_name'] for r in batches if r['source_id'] == initial['source_id']} == {revised.strip()}
+        assert client.delete(f'{url}/statement', headers=outside).status_code == 404
+        assert client.delete(f'{url}/statement', headers=allowed).json() == {'deleted_rows': 4}
+        assert client.delete(f'{url}/statement', headers=allowed).status_code == 404
+        assert client.get(f'{url}/statement-rows', headers=allowed).status_code == 404
+        assert client.get(f"/api/quality/{first_page['import_id']}/statement-rows", headers=allowed).status_code == 404
+        assert client.get(f"/api/quality/{other_file['import_id']}/statement-rows", headers=allowed).status_code == 200
+        assert client.get(f"/api/quality/{same_elsewhere['import_id']}/statement-rows", headers=allowed).status_code == 200
+        for row in total['rows']:
+            assert client.get(f"/api/evidence/{row['evidence_id']}", headers=allowed).status_code == 404
+        assert client.get('/api/graph?case=C1', headers=allowed).json()['nodes']
+        assert client.get('/api/source/' + initial['source_id'], headers=allowed).content == original
+        assert client.delete(f"/api/quality/{same_elsewhere['import_id']}/statement", headers=allowed).status_code == 200
+        assert client.get('/api/source/' + initial['source_id'], headers=allowed).status_code == 404
+        assert any(row['action'] == 'statement_deleted' for row in store.history('audit', ['C1']))
+        assert len(store.facts(['C1'])) == 3
+
+
 @pytest.mark.parametrize('source_format', ['pdf', 'xlsx', 'xls', 'png'])
 def test_manual_columns_preview_import_and_replay_unknown_headers(source_format, tmp_path, monkeypatch):
     monkeypatch.delenv('NEO4J_URI', raising=False)
@@ -284,6 +582,111 @@ def test_long_statement_ranges_preserve_page_locators_and_respect_case_limit(tmp
         full = upload('')
         assert full.status_code == 200, full.text
         assert (full.json()['accepted_new'], full.json()['recognized_repeat']) == (115, 2)
+
+
+def test_statement_evidence_can_be_saved_beyond_graph_capacity(tmp_path, monkeypatch):
+    from maha.ingestion import node
+
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    monkeypatch.setenv('MAHA_MAX_GRAPH_NODES', '2000')
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+    outside = {'Authorization': 'Bearer ' + store.create_user('outside', ['C2'])}
+    store.import_records('synthetic.txt', b'seeded case graph', 'fixture', True, 'C1', (
+        {'locator': {'row': index}, 'facts': [node('Transaction', f'original:{index}')]} for index in range(1200)
+    ))
+    workbook = Workbook()
+    workbook.active.append(['Date', 'Details', 'Debit', 'Credit'])
+    for _ in range(900):
+        workbook.active.append(['27/05/2001', 'Synthetic payment', '2.10', None])
+    stream = BytesIO()
+    workbook.save(stream)
+    content = stream.getvalue()
+    url = '/api/import/bank-statement/C1'
+    with TestClient(create_app(store)) as client:
+        def upload(query=''):
+            return client.post(url + query, headers=headers,
+                               data={'currency': 'INR', 'date_order': 'DMY'},
+                               files={'file': ('synthetic.xlsx', content)})
+
+        preview = upload('?preview=true').json()
+        assert preview['accepted'] == 900
+        blocked = upload()
+        assert blocked.status_code == 413
+        assert 'case limit of 2,000 graph nodes' in blocked.json()['detail']
+        assert len(store.history('imports', ['C1'])) == 1
+        assert len(store.facts(['C1'])) == 1200
+        assert preview['graph_impact']['nodes'] == {'current': 1200, 'added': 900, 'projected': 2100, 'limit': 2000}
+        assert preview['graph_impact']['fits'] is False
+
+        saved_response = upload('?destination=evidence')
+        assert saved_response.status_code == 200, saved_response.text
+        saved = saved_response.json()
+        assert saved['accepted_new'] == 900 and saved['statement_destination'] == 'evidence'
+        assert len(store.facts(['C1'])) == 1200
+        batch = f"/api/quality/{saved['import_id']}"
+        review = client.get(batch + '/statement-rows?all_rows=true', headers=headers).json()
+        assert review['accepted'] == 900 and review['unpublished_rows'] == 900
+        assert client.get(batch + '/money-flow', headers=headers).json()['totals']['debit'] == '1890.00'
+        assert client.get('/api/source/' + saved['source_id'], headers=headers).content == content
+        assert upload('?destination=evidence').json()['recognized_repeat'] == 900
+        assert client.post(batch + '/publish-statement', headers=outside).status_code == 404
+        assert client.post(batch + '/publish-statement', headers=headers).status_code == 413
+        assert len(store.facts(['C1'])) == 1200
+        assert client.get(batch + '/statement-rows?all_rows=true', headers=headers).json()['unpublished_rows'] == 900
+
+        monkeypatch.setenv('MAHA_MAX_GRAPH_NODES', '2100')
+        assert client.post(batch + '/publish-statement', headers=headers).json()['published_rows'] == 900
+        assert client.post(batch + '/publish-statement', headers=headers).json()['published_rows'] == 0
+        assert len(store.facts(['C1'])) == 2100
+        assert client.get(batch + '/statement-rows?all_rows=true', headers=headers).json()['unpublished_rows'] == 0
+
+
+def test_intake_inspection_suggests_existing_adapters_and_keeps_case_read_only(tmp_path, monkeypatch):
+    from maha.ingestion import CDR_HEADER
+
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+    path = '/api/intake/C1/inspect'
+
+    workbook = Workbook()
+    workbook.active.append(['Account activity'])
+    workbook.active.append(['Date', 'Details', 'Debit', 'Credit'])
+    xlsx = BytesIO()
+    workbook.save(xlsx)
+    image = BytesIO()
+    Image.new('RGB', (40, 40), 'white').save(image, format='PNG')
+    fir = BytesIO()
+    canvas = Canvas(fir)
+    canvas.drawString(45, 770, 'FIRST INFORMATION REPORT')
+    canvas.save()
+    scans = BytesIO()
+    canvas = Canvas(scans)
+    canvas.drawImage(ImageReader(BytesIO(image.getvalue())), 45, 650, width=200, height=150)
+    canvas.save()
+
+    with TestClient(create_app(store)) as client:
+        for content, file_type, kind in (
+            (make_payment_export(), 'Digital PDF', 'bank-statement'),
+            (make_encrypted_pdf(1), 'Password-protected PDF', None),
+            (xlsx.getvalue(), 'Excel workbook', 'bank-statement'),
+            (image.getvalue(), 'Scanned image', None),
+            (scans.getvalue(), 'Scanned PDF', None),
+            (fir.getvalue(), 'Digital PDF', 'fir-document'),
+            (','.join(CDR_HEADER).encode() + b'\n', 'CSV', 'cdr'),
+            (b'IN THE HIGH COURT, synthetic document.', 'Text document', 'judgment'),
+            (b'generic,columns\nitem,value\n', 'CSV', None),
+        ):
+            response = client.post(path, headers=headers, content=content)
+            assert response.status_code == 200, response.text
+            assert response.json() == {'file_type': file_type, 'kind': kind}
+        assert client.post(path, headers=headers, content=b'%PDF-broken').status_code == 422
+        assert client.post('/api/intake/C2/inspect', headers=headers, content=xlsx.getvalue()).status_code == 403
+        assert not store.history('imports', ['C1'])
+        assert not store.facts(['C1'])
+        with store.db() as db:
+            assert db.execute('SELECT COUNT(*) FROM sources').fetchone()[0] == 0
 
 
 def test_bank_pdf_can_read_aligned_text_without_table_lines():
