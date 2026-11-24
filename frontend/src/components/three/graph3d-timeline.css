@@ -1,0 +1,41 @@
+/* Timeline mode, scroll cue and background polish for the 3D graph.
+   Imported by Graph3D.jsx, so nothing else needs to change.
+   Kept in the "legacy" layer with the other .g3d styles (style.css), so Tailwind utility
+   classes (e.g. moving the bar clear of the details panel) can still override it. */
+@layer legacy {
+
+/* soft vignette over the 3D scene (the gradient sky itself is drawn in the scene) */
+.g3d::after { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 58%, rgba(3, 6, 16, 0.55) 100%); }
+.g3d-toolbar, .g3d-card, .g3d-hint, .g3d-timebar, .g3d-cue, .g3d-labels { z-index: 2; }
+
+/* date labels standing on the floor of the time corridor */
+.g3d-tick { position: absolute; left: 0; top: 0; opacity: 0; will-change: transform; white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; letter-spacing: 0.04em;
+  color: #7f95d6; text-shadow: 0 1px 6px #000; }
+.g3d-tick[style*="translate"] { opacity: 0.9; transition: opacity 0.2s ease; }
+
+/* play / scrub bar */
+.g3d-timebar { position: absolute; left: 12px; right: 12px; bottom: 34px; display: flex; align-items: center; gap: 14px;
+  padding: 8px 14px; border-radius: 14px; background: rgb(10 16 32 / 78%); border: 1px solid #233350;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.g3d-play { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer; color: #fff; font-size: 13px;
+  background: linear-gradient(135deg, #5AA9FF, #8a6bff); box-shadow: 0 0 16px rgb(90 169 255 / 55%); }
+.g3d-timebar input[type='range'] { flex: 1; min-width: 0; accent-color: #5AA9FF; cursor: pointer; }
+.g3d-timeread { flex: none; min-width: 150px; text-align: right; }
+.g3d-timeread b { display: block; font-size: 15px; font-weight: 700; color: #EDF2FA; font-variant-numeric: tabular-nums; }
+.g3d-timeread small { font-size: 11px; color: #8D87B3; }
+
+/* "scroll to travel through time" hint, fades after the first scroll */
+.g3d-cue { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); pointer-events: none; text-align: center;
+  font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #cdd6ff; text-shadow: 0 0 16px rgb(122 140 255 / 80%);
+  transition: opacity 0.8s ease; animation: g3d-bob 1.6s ease-in-out infinite; }
+.g3d-cue.gone { opacity: 0; }
+.g3d-cue i { display: block; position: relative; width: 20px; height: 32px; margin: 0 auto 8px; border: 2px solid #cdd6ff; border-radius: 12px; }
+.g3d-cue i::after { content: ''; position: absolute; left: 50%; top: 6px; width: 3px; height: 7px; border-radius: 2px; background: #cdd6ff;
+  transform: translateX(-50%); animation: g3d-wheel 1.4s infinite; }
+@keyframes g3d-wheel { 0% { opacity: 1; top: 6px; } 100% { opacity: 0; top: 16px; } }
+@keyframes g3d-bob { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, -6px); } }
+
+@media (max-width: 640px) { .g3d-timeread { display: none; } .g3d-cue { display: none; } }
+}
