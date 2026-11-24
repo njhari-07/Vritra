@@ -467,72 +467,72 @@ export default function App({ userSlot = null }) {
   if (!me)
     return (
       <div className="login-stage">
-      <div className="login-stage-bg" aria-hidden="true">
-        <Suspense fallback={null}><HeroScene dim /></Suspense>
-      </div>
-      <main className={`login ${darkMode ? 'dark-theme' : ''}`}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-          <Link to="/" className="login-back">← Home</Link>
-          {userSlot && <div className="clerk-user-slot">{userSlot}</div>}
-          <button
-            type="button"
-            className="theme-toggle-btn"
-            onClick={() => setDarkMode(prev => !prev)}
-            title={darkMode ? "Switch to light canvas" : "Switch to dark canvas"}
-          >
-            {darkMode ? 'Light mode' : 'Dark mode'}
-          </button>
+        <div className="login-stage-bg" aria-hidden="true">
+          <Suspense fallback={null}><HeroScene dim /></Suspense>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <span className="badge" style={{ background: 'rgba(56,189,248,0.12)', color: 'var(--accent-cyan)', borderColor: 'rgba(56,189,248,0.3)' }}>
-            NCRB PS 26189 · PMLA 2002
-          </span>
-          <span className="badge" style={{ background: 'rgba(16,185,129,0.12)', color: 'var(--accent-emerald)', borderColor: 'rgba(16,185,129,0.3)' }}>
-            ● LEDGER ONLINE
-          </span>
-        </div>
-        <div className="wordmark">
-          <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 18L12 5l7 13H5Z" />
-            <circle cx="5" cy="18" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="18" r="2" />
-          </svg> MAHA
-        </div>
-        <p className="eyebrow">LOCAL EVIDENCE WORKSPACE</p>
-        <h1>
-          Open your workspace
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', margin: '0 0 24px' }}>
-          Explore case records, trace connections, and review source evidence.
-        </p>
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            sessionToken.current = input;
-            if (input === token) load();
-            else setToken(input);
-          }}
-        >
-          <input
-            type="password"
-            aria-label="Access token"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder="Local access token"
-            required
-          />
-          <button disabled={busy}>{busy ? 'Opening…' : 'Open workspace →'}</button>
-        </form>
-        {error && (
-          <p role="alert" className="error">
-            {error}
+        <main className={`login ${darkMode ? 'dark-theme' : ''}`}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <Link to="/" className="login-back">← Home</Link>
+            {userSlot && <div className="clerk-user-slot">{userSlot}</div>}
+            <button
+              type="button"
+              className="theme-toggle-btn"
+              onClick={() => setDarkMode(prev => !prev)}
+              title={darkMode ? "Switch to light canvas" : "Switch to dark canvas"}
+            >
+              {darkMode ? 'Light mode' : 'Dark mode'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <span className="badge" style={{ background: 'rgba(56,189,248,0.12)', color: 'var(--accent-cyan)', borderColor: 'rgba(56,189,248,0.3)' }}>
+              NCRB PS 26189 · PMLA 2002
+            </span>
+            <span className="badge" style={{ background: 'rgba(16,185,129,0.12)', color: 'var(--accent-emerald)', borderColor: 'rgba(16,185,129,0.3)' }}>
+              ● LEDGER ONLINE
+            </span>
+          </div>
+          <div className="wordmark">
+            <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 18L12 5l7 13H5Z" />
+              <circle cx="5" cy="18" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="18" r="2" />
+            </svg> MAHA
+          </div>
+          <p className="eyebrow">LOCAL EVIDENCE WORKSPACE</p>
+          <h1>
+            Open your workspace
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', margin: '0 0 24px' }}>
+            Explore case records, trace connections, and review source evidence.
           </p>
-        )}
-        <small>
-          Token file: data/private/runtime/access.json
-          <br />
-          Synthetic demonstration · Decision support, never a verdict
-        </small>
-      </main>
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              sessionToken.current = input;
+              if (input === token) load();
+              else setToken(input);
+            }}
+          >
+            <input
+              type="password"
+              aria-label="Access token"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="Local access token"
+              required
+            />
+            <button disabled={busy}>{busy ? 'Opening…' : 'Open workspace →'}</button>
+          </form>
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+          <small>
+            Token file: data/private/runtime/access.json
+            <br />
+            Synthetic demonstration · Decision support, never a verdict
+          </small>
+        </main>
       </div>
     );
 
@@ -711,19 +711,19 @@ export default function App({ userSlot = null }) {
               {tab === 'Overview'
                 ? 'Case overview'
                 : tab === 'Dossiers'
-                ? isTrained && !showTrainingStudio
-                  ? 'Dossiers'
-                  : 'Case analysis'
-                : tab}
+                  ? isTrained && !showTrainingStudio
+                    ? 'Dossiers'
+                    : 'Case analysis'
+                  : tab}
             </h1>
             <p>
               {tab === 'Overview'
                 ? 'Explore relationships. Review unusual activity. Keep every source within reach.'
                 : tab === 'Dossiers'
-                ? isTrained && !showTrainingStudio
-                  ? 'Synthesized across judicial proceedings, financial layering cycles, prior FIR records, and telecom communications.'
-                  : 'Import structured evidence and run case analysis.'
-                : 'Findings are for investigator review. A connection does not establish wrongdoing.'}
+                  ? isTrained && !showTrainingStudio
+                    ? 'Synthesized across judicial proceedings, financial layering cycles, prior FIR records, and telecom communications.'
+                    : 'Import structured evidence and run case analysis.'
+                  : 'Findings are for investigator review. A connection does not establish wrongdoing.'}
             </p>
           </div>
           <button className="quiet" onClick={() => load(activeCase)} disabled={busy}>
@@ -1150,6 +1150,10 @@ export default function App({ userSlot = null }) {
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="case-actions" style={{ marginTop: '12px' }}>
+                    <button className="quiet" onClick={() => setTab('Import records')}>Open Import records</button>
                   </div>
                 </div>
 

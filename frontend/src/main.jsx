@@ -2,17 +2,15 @@ import React, { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/react';
-import { CLERK_KEY, clerkEnabled, clerkAppearance, RequireAuth, UserSlot } from './auth';
+import { CLERK_KEY, clerkEnabled, clerkAppearance, RequireAuth, UserSlot, Splash } from './auth';
 import Landing from './pages/Landing';
-import './style.css';
+import './index.css'; // Tailwind (tw:) + shadcn theme + legacy CSS
 
 // The workspace (vis-network, three.js) loads only when someone opens /app.
 const Workspace = lazy(() => import('./Workspace'));
 const AuthPage = lazy(() => import('./pages/AuthPage'));
 
-function Loading() {
-  return <div className="auth-splash" role="status"><span className="auth-spinner" aria-hidden="true" />Loading…</div>;
-}
+const Loading = () => <Splash label="Loading…" />;
 
 function AppRoutes() {
   return (

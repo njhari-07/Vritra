@@ -79,6 +79,17 @@ def test_flow_time_currency_checks():
     assert not fund_flow(make_graph(currencies=('US Dollar','Euro','US Dollar')))['paths']
 
 
+def test_flow_does_not_infer_same_day_order_from_date_only_transfers():
+    graph = make_graph()
+    transfers = [edge for edge in graph['edges'] if edge['type'] == 'TRANSACTED_WITH']
+    day = datetime(2022, 9, 1, tzinfo=timezone.utc)
+    for index, transfer in enumerate(transfers):
+        transfer['attrs'].update(time_basis='date_only', event_time=(day + timedelta(days=index)).isoformat())
+    assert len(fund_flow(graph)['paths']) == 1
+    transfers[1]['attrs']['event_time'] = transfers[0]['attrs']['event_time']
+    assert not fund_flow(graph)['paths']
+
+
 def test_documents_do_not_change_projection():
     g=make_graph();before=projection(g)
     g['nodes'].append({'id':'doc','type':'Document'})

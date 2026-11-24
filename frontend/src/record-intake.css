@@ -1,0 +1,206 @@
+/* Tailwind (prefixed `tw:`) is now loaded once for the whole app from src/index.css. */
+
+.record-intake {
+  --record-tint: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-surface));
+  --record-accent: var(--accent-blue);
+  --record-on-accent: var(--text-inverted);
+}
+.dark-theme .record-intake { --record-on-accent: var(--bg-app); }
+.record-intake :is(h2, h3, p) { margin: 0; }
+.record-intake h2 { font-size: 19px; line-height: 1.25; letter-spacing: -.025em; }
+.record-intake h3 { font-size: 15px; line-height: 1.3; }
+.record-intake p {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.record-mode-picker {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.record-tabs {
+  margin: 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.record-intake .record-tab {
+  min-width: 0;
+  min-height: 46px;
+  padding: 6px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.record-intake .record-tab[aria-selected="true"] {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+}
+.record-tab[aria-selected="true"] svg { color: var(--record-accent); }
+.record-card {
+  min-width: 0;
+  padding: clamp(16px, 2vw, 24px);
+  color: var(--text-primary);
+}
+.record-mode-picker .record-card { padding-top: 10px; }
+.record-shortcuts > p { margin-bottom: 12px; }
+.record-intake .record-quick {
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.record-quick .record-format {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.record-presets { margin: 14px 0 16px; }
+.record-presets > span {
+  margin-right: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.record-intake :is(.record-chip, .record-secondary) {
+  min-height: 32px;
+  padding: 5px 9px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.record-intake .record-chip { border-radius: var(--radius-full); }
+.record-intake :is(.record-chip, .record-secondary):hover {
+  color: var(--text-primary);
+  background: var(--record-tint);
+}
+.record-fields { margin-bottom: 14px; }
+.record-intake label { min-width: 0; font-size: 13px; font-weight: 600; }
+.record-fields label:not(.record-check),
+.record-upload form > label { display: grid; gap: 6px; }
+.record-intake :is(select, input:not([type='checkbox'], [type='file']), textarea) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 14px;
+}
+.record-intake :is(select, input:not([type='checkbox'], [type='file'])) { min-height: 40px; }
+.record-fields .record-check { color: var(--text-secondary); font-weight: 500; }
+.record-check input[type='checkbox'] {
+  min-height: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--record-accent);
+}
+.record-text-meta { margin-bottom: 6px; }
+.record-text-meta > span { color: var(--text-muted); font-size: 12px; }
+.record-intake .record-textarea { padding: 12px 14px; line-height: 1.55; }
+.record-actions { margin-top: 14px; }
+.record-scope {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.record-scope strong { margin-left: 4px; color: var(--text-primary); }
+.record-intake .record-primary {
+  min-height: 40px;
+  padding: 8px 14px;
+  color: var(--record-on-accent);
+  background: var(--record-accent);
+  font-size: 13px;
+}
+.record-upload form { margin-top: 16px; }
+.record-upload-feedback {
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.record-upload-feedback[data-status='error'] { border-inline-start: 3px solid var(--accent-rose); }
+.record-upload .record-primary,
+.record-quick .record-secondary { justify-self: start; }
+.record-intake .record-dropzone {
+  align-content: center;
+  min-height: 104px;
+  padding: 10px 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+.record-upload .record-dropzone { min-height: 154px; }
+.record-dropzone:is(:hover, :focus-within, [data-dragging="true"]) {
+  border-color: var(--border-focus);
+  background: var(--record-tint);
+}
+.record-dropzone[data-dragging="true"],
+.record-dropzone:focus-within { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.record-dropzone input[type='file'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.record-upload-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--record-accent);
+}
+.record-upload-hint { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.record-file-selection {
+  padding: 6px 8px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .record-mode-picker [role="tabpanel"]:not([hidden]) { animation: record-panel-in 160ms ease-out; }
+  @keyframes record-panel-in {
+    from { opacity: .65; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+@media (max-width: 520px) {
+  .record-actions .record-primary,
+  .record-upload .record-primary { width: 100%; }
+}
+
+.statement-review { margin-top: 14px; }
+.statement-row-fields { margin: 0 0 12px; }
+.statement-row-fields > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.statement-row-fields dt { color: var(--text-secondary); font-weight: 600; }
+.statement-row-fields dd { min-width: 0; margin: 0; white-space: pre-wrap; }
+.statement-review form { display: grid; gap: 8px; }
+.statement-review form input { display: block; width: 100%; margin-top: 5px; }
+.statement-review form button { justify-self: start; }
+.record-upload label small { color: var(--text-secondary); font-weight: 400; }

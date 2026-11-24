@@ -156,3 +156,43 @@ and leaves NLP output as review evidence. Current limits are 25 MiB per upload,
 20 PDF pages, 20 megapixels per OCR image, and 100,000 extracted characters.
 This document adapter handles printed English prose. CDR and statement tables
 still use their existing structured adapters.
+
+### Bank statements
+
+Create or select a case and open **Import records → Upload file**. Choose
+**Bank statement (PDF or Excel .xlsx)**, confirm the currency and numeric date
+order, attach your file, and enter its password if protected. The adapter
+supports text PDF tables and Excel .xlsx worksheets with a recognized date and
+debit/credit or amount header. `Post Date` and `Value Date` are supported date
+headers. If those are the only two date columns, the importer uses `Post Date`
+for the timeline and preserves both source cells in the row evidence.
+If a PDF has selectable transaction rows but its headings are drawn into the
+page, local OCR can recover the debit and credit headings above the first row.
+Transaction values still come from the PDF text layer.
+In an amount column without a direction column,
+positive values are credits and negative values are debits. Image-only bank
+statement PDFs and legacy .xls files require a supported export format.
+
+A statement upload can read up to 200 PDF pages, separate from the 20-page
+document OCR limit. The default record limit is 5,000 per upload and the case
+graph has a separate default limit of 2,000 nodes. Use **PDF pages** to select a
+page or range such as `1-10` when testing a layout or importing a large file.
+Overlapping ranges of the same source count as repeats. Each import retains the
+full original file and uses its original page numbers in the evidence. If the
+import would exceed the case's graph capacity, MAHA rejects the whole batch.
+The upload form shows progress and errors next to **Validate and import**.
+
+After upload, the confirmation shows accepted, repeated, and quarantined counts.
+**Quality** lists rejected row reasons and links to the first 25 extracted rows.
+**Timeline** shows recognized transaction dates, with date-only records displayed
+as dates. **Run case analysis** can rank unusual amounts in groups of at least
+eight date-only transactions. These statement rows do not create account links
+or fund-flow edges.
+
+The original stored blob is byte-for-byte the upload. For an encrypted statement
+it remains encrypted, with the same SHA-256 as the file received. MAHA uses the
+password for that request and retains only the original blob and extracted
+records, including row evidence. From the drawer, **Re-check original row**
+opens the source again and compares it with the ingested row. Encrypted files
+ask for the password again. Automated evidence audits defer statement replay to
+this review action.

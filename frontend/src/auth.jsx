@@ -34,11 +34,12 @@ export const clerkAppearance = {
   }
 };
 
-function Splash() {
+/** Full-screen loading state, shown while the session or a page chunk loads. */
+export function Splash({ label = 'Checking your session…' }) {
   return (
-    <div className="auth-splash" role="status">
-      <span className="auth-spinner" aria-hidden="true" />
-      Checking your session…
+    <div className="tw:flex tw:min-h-screen tw:items-center tw:justify-center tw:gap-3 tw:bg-night tw:font-sans tw:text-sm tw:text-ink-3" role="status">
+      <span className="tw:size-[18px] tw:animate-spin tw:rounded-full tw:border-2 tw:border-gold/25 tw:border-t-gold tw:motion-reduce:animate-none" aria-hidden="true" />
+      {label}
     </div>
   );
 }

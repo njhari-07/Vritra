@@ -7,7 +7,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from .limits import budget, check
+from .limits import ResourceLimitError, budget, check
 
 
 def now():
@@ -16,6 +16,10 @@ def now():
 
 def uid(*parts):
     return hashlib.sha256(json.dumps(parts, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()[:32]
+
+
+class ImportSettingsConflict(ValueError):
+    pass
 
 
 class Store:
@@ -243,13 +247,25 @@ class Store:
             raise KeyError(source_id)
         return row[0], row[1]
 
-    def import_records(self, name, content, dataset, synthetic, case_id, records, actor="cli"):
+    def import_records(self, name, content, dataset, synthetic, case_id, records, actor="cli", *, statement_settings=None):
         """Records are validated by an adapter; one atomic transaction per source import."""
         source_id = hashlib.sha256(content).hexdigest()
         import_id = secrets.token_hex(16)
         summary = {"rows_seen": 0, "accepted_new": 0, "recognized_repeat": 0, "quarantined": 0, "issues": []}
         with self.db() as db:
             db.execute("INSERT OR IGNORE INTO cases(id) VALUES(?)", (case_id,))
+            if statement_settings is not None:
+                previous = db.execute(
+                    """SELECT DISTINCT json_extract(summary, '$.statement_settings') AS settings
+                       FROM imports WHERE source_id=? AND case_id=?""", (source_id, case_id)
+                ).fetchall()
+                for row in previous:
+                    settings = json.loads(row["settings"]) if row["settings"] else None
+                    if settings is not None and settings != statement_settings:
+                        raise ImportSettingsConflict(
+                            'This statement already exists in this case with different currency or date settings'
+                        )
+                summary["statement_settings"] = statement_settings
             db.execute("INSERT OR IGNORE INTO sources VALUES(?,?,?,?,?)", (source_id, Path(name).name, content, dataset, int(synthetic)))
             for record in records:
                 summary["rows_seen"] += 1
@@ -269,6 +285,10 @@ class Store:
                 if 'text_label' in record['locator']:
                     summary.setdefault('text_mentions', []).append({
                         'evidence_id': evidence_id, 'label': record['locator']['text_label']
+                    })
+                if 'statement_label' in record and len(summary.get('statement_rows', [])) < 25:
+                    summary.setdefault('statement_rows', []).append({
+                        'evidence_id': evidence_id, 'label': record['statement_label'],
                     })
                 if db.execute("SELECT 1 FROM evidence WHERE id=?", (evidence_id,)).fetchone():
                     summary["recognized_repeat"] += 1
@@ -294,6 +314,20 @@ class Store:
                     fact["fact_id"] = fid
                     db.execute("INSERT OR IGNORE INTO facts VALUES(?,?,?,?)", (fid, case_id, evidence_id, json.dumps(fact)))
                 summary["accepted_new"] += 1
+            if statement_settings is not None and summary['accepted_new']:
+                counts = db.execute(
+                    """SELECT COUNT(*) AS facts,
+                              COUNT(DISTINCT CASE WHEN json_extract(data, '$.kind')='node'
+                                                  THEN json_extract(data, '$.id') END) AS nodes
+                       FROM facts WHERE case_id=?""", (case_id,)
+                ).fetchone()
+                for kind, default in [('facts', 20_000), ('nodes', 2_000)]:
+                    limit = budget('GRAPH_' + kind.upper(), default)
+                    if counts[kind] > limit:
+                        raise ResourceLimitError(
+                            f'This upload would exceed the case limit of {limit:,} graph {kind}. '
+                            'Try a shorter PDF page range or select a different case. No rows were imported.'
+                        )
             db.execute("INSERT INTO imports VALUES(?,?,?,?,?)", (import_id, source_id, case_id, now(), json.dumps(summary)))
             db.execute("INSERT INTO audit(at,actor,action,case_id,object_id) VALUES(?,?,?,?,?)", (now(), actor, "import", case_id, import_id))
         return {"import_id": import_id, "source_id": source_id, **summary}
