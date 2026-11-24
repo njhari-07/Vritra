@@ -1,0 +1,9 @@
+[
+  {
+    "document_id": "CR-COURT-CMC-01",
+    "case_id": "CASE-MONTE-CRISTO",
+    "filed_date": "2026-05-20",
+    "synthetic": true,
+    "text": "COMMERCIAL TRIBUNAL & BANKRUPTCY COURT OF PARIS // BANQUE DANGLARS LIQUIDATION PROCEEDINGS.\n1. Person Baron Danglars [ID:P521] is named as Prime Accused in fraudulent bankruptcy and securities manipulation.\n2. Person Baron Danglars [ID:P521] owns account [Bank:010; Account:ACC-BANQUE-DANGLARS].\n3. Charges framed under Articles 405 & 408 French Penal Code (Swindling and Criminal Breach of Trust).\n4. Person Edmond Dantes [ID:P522] is named as the Count of Monte Cristo and beneficial owner of credit bonds.\n5. Person Edmond Dantes [ID:P522] owns account [Bank:010; Account:ACC-THOMSON-FRENCH].\n6. Person Gerard de Villefort [ID:P523] is named as Crown Prosecutor indicted for concealing judicial treason.\n7. Person Gerard de Villefort [ID:P523] owns account [Bank:010; Account:ACC-VILLEFORT-PROC].\n8. Person Lucien Debray [ID:P525] owns account [Bank:010; Account:ACC-MINISTRY-INSIDER] and operated insider telegraph signals.\n9. Evidence confirms Accused P521 diverted $950,000 from Account 010 / ACC-BANQUE-DANGLARS through telegraphic insider manipulation before attempting flight to Rome."
+  }
+]

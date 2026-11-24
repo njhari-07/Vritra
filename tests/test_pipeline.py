@@ -39,6 +39,41 @@ def test_positional_accounts_leading_zero_and_decimal(store):
     assert {e['type'] for e in g['edges']}=={'SENT_FROM','SENT_TO','TRANSACTED_WITH'}
 
 
+def test_access_file_cannot_restore_stale_tokens(store):
+    old = store.create_user('reviewer', ['C1'])
+    removed = store.create_user('removed', ['C2'])
+    (store.root / 'access.json').write_text(json.dumps({'reviewer': old, 'removed': removed}))
+    current = store.create_user('reviewer', ['C1'])
+    with store.db() as db:
+        db.execute("DELETE FROM users WHERE name='removed'")
+
+    reopened = Store(store.root)
+    for token in (old, removed):
+        with pytest.raises(PermissionError):
+            reopened.authenticate(token)
+    assert reopened.authenticate(current) == {'name': 'reviewer', 'cases': ['C1']}
+
+
+def test_role_scoring_is_scoped_to_bundled_sample_evidence(store):
+    from maha.api import create_app
+
+    case = 'C1'
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', [case])}
+    with TestClient(create_app(store)) as client:
+        assert client.post('/api/cases/C1/load-sample', headers=headers).status_code == 200
+        trained = client.post('/api/cases/C1/train', headers=headers)
+        assert trained.status_code == 200
+        assert trained.json()['kingpin']['scope'] == 'bundled synthetic sample review cue'
+        store.import_records('fixture.txt', b'Independent evidence fixture', 'fixture', False, case, [
+            {'locator': {'line': 1}, 'facts': [node('Person', 'person:fixture', 'Example person')]},
+        ])
+        mixed = client.post('/api/cases/C1/train', headers=headers)
+        assert mixed.status_code == 200
+        assert mixed.json()['kingpin'] is None
+        assert mixed.json()['suspects']
+        assert all('kingpin_score' not in dossier for dossier in mixed.json()['suspects'])
+
+
 def test_duplicate_values_retained_repeat_import_idempotent(store):
     r=ingest(store,[row(),row()]);assert r['accepted_new']==2
     assert any(i['reason']=='possible_duplicate_retained' for i in r['issues'])

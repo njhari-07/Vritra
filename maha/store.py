@@ -10,6 +10,9 @@ from pathlib import Path
 from .limits import ResourceLimitError, budget, check
 
 
+SAMPLE_EXCHANGE_ACTOR = 'sample-exchange-loader'
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -132,6 +135,22 @@ class Store:
     def audit(self, actor, action, case_id="", object_id=""):
         with self.db() as db:
             db.execute("INSERT INTO audit(at,actor,action,case_id,object_id) VALUES(?,?,?,?,?)", (now(), actor, action, case_id, object_id))
+
+    def is_exchange_sample(self, case_id, evidence_ids):
+        if not evidence_ids:
+            return False
+        with self.db() as db:
+            count = db.execute("""
+                SELECT count(*) FROM evidence e
+                WHERE e.case_id=? AND e.id IN (SELECT value FROM json_each(?))
+                  AND json_extract(e.data, '$.synthetic')=1
+                  AND EXISTS (
+                    SELECT 1 FROM audit a
+                    WHERE a.case_id=e.case_id AND a.action='import' AND a.actor=?
+                      AND a.object_id=json_extract(e.data, '$.import_id')
+                  )
+            """, (case_id, json.dumps(sorted(evidence_ids)), SAMPLE_EXCHANGE_ACTOR)).fetchone()[0]
+        return count == len(evidence_ids)
 
     def create_user(self, name, cases):
         token = secrets.token_urlsafe(32)

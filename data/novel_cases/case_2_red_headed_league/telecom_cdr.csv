@@ -1,0 +1,4 @@
+record_id,caller_person_id,callee_person_id,start_time,duration_seconds,synthetic
+CDR-RHL-511,P511,P512,2026-05-04T00:55:00+00:00,260,true
+CDR-RHL-512,P512,P511,2026-05-04T01:35:00+00:00,310,true
+CDR-RHL-513,P513,P515,2026-05-04T03:30:00+00:00,450,true

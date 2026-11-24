@@ -1,0 +1,8 @@
+record_id,person_id,case_id,record_date,record_status,text,synthetic
+CR-EXCH-01,P601,CASE-THE-EXCHANGE,2024-03-01,Interpol Red Notice,"Red Notice A-2024/9918 issued for prime accused Adheem Barakat for armed kidnapping, warlord terrorism, and $100M extortion conspiracy. Look Out Circular active.",true
+CR-EXCH-02,P601,CASE-THE-EXCHANGE,2024-03-05,Non-Bailable Warrant,International arrest warrant issued by Counter-Terror Tribunal against Adheem Barakat for hostage taking at Great Gaddafi Bridge.,true
+CR-EXCH-03,P602,CASE-THE-EXCHANGE,2024-03-06,Active Warrant,European Arrest Warrant and Interpol notice issued for extortion negotiator Noura.,true
+CR-EXCH-04,P603,CASE-THE-EXCHANGE,2024-03-08,PMLA Indictment,"Financial Crimes Investigation Board (MASAK) indictment for corporate fraud, $400M sham arbitration claims, and laundering proceeds of crime.",true
+CR-EXCH-05,P609,CASE-THE-EXCHANGE,2024-03-09,Active Charge-Sheet,Armed kidnapping facilitation and desert convoy ambush charges against driver Samir.,true
+CR-EXCH-06,P604,CASE-THE-EXCHANGE,2024-03-10,Exonerated Witness,Department of Justice memorandum confirming full immunity and witness status for defense courier Mitchell Y McDeere.,true
+CR-EXCH-07,P605,CASE-THE-EXCHANGE,2024-03-10,Victim Protection,Interpol and consular victim protection registry for kidnapped associate attorney Giovanna Sandroni.,true

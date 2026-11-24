@@ -22,10 +22,22 @@ def extract(doc,base,nlp=None):
     declared=[]
     for m in re.finditer(person_pattern,text):
         pid="person:demo:"+m['pid'];declared.append((m.start(),m.end(),pid))
-        facts=[node("Person",pid,m['name'].strip(),authoritative_id=m['pid']),edge("MENTIONED_IN",pid,did, str(m.start()))]
         tail=text[m.end():].split('\n',1)[0]
-        if tail.startswith(" is referenced in this case"):
-            facts.append(edge("INVOLVED_IN_CASE",pid,cid,str(m.start())))
+        role = None
+        role_match = re.search(r"\bis (?:named as|referenced in this case as|referenced as)\s+([^.\n]+?)(?:\s+in this case)?\.?$", tail, re.IGNORECASE)
+        if role_match:
+            role = role_match.group(1).strip()
+        elif "is referenced in this case" in tail:
+            role = "Referenced in case"
+
+        person_attrs = dict(authoritative_id=m['pid'])
+        if role:
+            person_attrs['case_role'] = role
+            person_attrs['role'] = role
+
+        facts=[node("Person",pid,m['name'].strip(),**person_attrs),edge("MENTIONED_IN",pid,did, str(m.start()))]
+        if role:
+            facts.append(edge("INVOLVED_IN_CASE",pid,cid,str(m.start()),role=role,case_role=role,source_text=f"{m['name'].strip()} - {role}"))
         own=re.match(r" owns account \[Bank:([^;\]]+); Account:([^\]]+)\]",tail)
         if own:
             aid=account(own[1],own[2]);facts.extend([node("Account",aid,own[1]+" / "+own[2],bank=own[1],account=own[2]),edge("OWNS_ACCOUNT",pid,aid,str(m.start())),edge("INVOLVED_IN_CASE",aid,cid,str(m.start()))])

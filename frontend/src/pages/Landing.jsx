@@ -4,7 +4,7 @@ import { clerkEnabled } from '../auth';
 import BrandMark from '../components/BrandMark';
 import DynamicBrand from '../components/DynamicBrand';
 import GraphStory from '../components/landing/GraphStory';
-import { cn } from '@/lib/utils';
+import { cn } from '../lib/utils';
 
 const HeroScene = lazy(() => import('../components/three/HeroScene'));
 

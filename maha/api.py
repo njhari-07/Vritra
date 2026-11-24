@@ -281,9 +281,26 @@ def create_app(store=None):
         }} if t_run else None
         result['active_case']=primary_case
         result['case_graph_size']=(len(g['nodes']),len(g['edges']))
-        dossiers=compute_suspect_dossiers(g,valid,result['metrics']) if t_run or include_unreviewed else []
-        result['suspects']=[d for d in dossiers if d['evidence_ids'] and
-                            all(evidence_exists(eid,active_cases) for eid in d['evidence_ids'])]
+        dossiers=[]
+        if t_run or include_unreviewed:
+            sample_roles = bool(target_case and ledger.is_exchange_sample(
+                target_case, {eid for item in g['nodes'] + g['edges'] for eid in item['evidence_ids']}
+            ))
+            dossiers=compute_suspect_dossiers(g,valid,result['metrics'],score_sample_roles=sample_roles)
+        filtered_suspects=[d for d in dossiers if d['evidence_ids'] and
+                           all(evidence_exists(eid,active_cases) for eid in d['evidence_ids'])]
+        result['suspects']=filtered_suspects
+        kingpin_suspect=next((s for s in filtered_suspects if s.get('is_kingpin')), None)
+        result['kingpin']={
+            'scope': 'bundled synthetic sample review cue',
+            'id': kingpin_suspect['id'],
+            'name': kingpin_suspect['name'],
+            'kingpin_score': kingpin_suspect.get('kingpin_score'),
+            'syndicate_role': kingpin_suspect.get('syndicate_role'),
+            'role_badge': kingpin_suspect.get('role_badge'),
+            'reasons': kingpin_suspect.get('kingpin_reasons', []),
+            'breakdown': kingpin_suspect.get('kingpin_breakdown', {})
+        } if kingpin_suspect else None
         return result
     @app.middleware('http')
     async def headers(request,call_next):
@@ -329,12 +346,12 @@ def create_app(store=None):
         ledger.audit(u['name'],'case_reset',case_id)
         return {'status':'reset','case_id':case_id,'case':ledger.case_status([case_id])[0]}
     @app.post('/api/cases/{case_id}/load-sample')
-    def load_sample_endpoint(case_id:str,u=Depends(user)):
+    def load_sample_endpoint(case_id:str,dataset:str|None='the_exchange',u=Depends(user)):
         if case_id not in u['cases']:raise HTTPException(403,'Case access required')
         from .court_data import seed_case_evidence
-        res=seed_case_evidence(ledger,case_id)
+        res=seed_case_evidence(ledger,case_id,dataset=dataset or 'the_exchange')
         ledger.audit(u['name'],'seed_sample_evidence',case_id)
-        return {'status':'seeded','case_id':case_id,'details':len(res),'case':ledger.case_status([case_id])[0]}
+        return {'status':'seeded','case_id':case_id,'dataset':dataset or 'the_exchange','details':len(res),'case':ledger.case_status([case_id])[0]}
     @app.post('/api/import/raw-text/{case_id}')
     def import_raw_text(case_id:str,body:RawTextImport,u=Depends(user)):
         if case_id not in u['cases']:raise HTTPException(403,'Case access required')
@@ -370,6 +387,7 @@ def create_app(store=None):
         res=results(u,target_case=case_id,include_unreviewed=True)
         node_count,edge_count=res['case_graph_size']
         suspects=res['suspects']
+        kingpin_suspect=next((s for s in suspects if s.get('is_kingpin')), None)
         train_meta={
             'case_id':case_id,
             'trained_at':now(),
@@ -377,6 +395,8 @@ def create_app(store=None):
             'edges_count':edge_count,
             'leads_count':len(res['leads']),
             'suspects_count':len(suspects),
+            'kingpin_identified':kingpin_suspect['name'] if kingpin_suspect else None,
+            'kingpin_score':kingpin_suspect.get('kingpin_score') if kingpin_suspect else None,
             'anomaly_status':res['anomaly_status'],
             'status':'ANALYSIS_COMPLETE',
         }
@@ -386,6 +406,7 @@ def create_app(store=None):
             'status':'success',
             'case_id':case_id,
             'training_metadata':train_meta,
+            'kingpin':res['kingpin'],
             'suspects':suspects,
             'leads':res.get('leads',[]),
             'metrics':res.get('metrics',{})

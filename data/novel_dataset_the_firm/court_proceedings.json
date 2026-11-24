@@ -1,0 +1,23 @@
+[
+  {
+    "document_id": "CR-COURT-FIRM-01",
+    "case_id": "CASE-THE-FIRM",
+    "filed_date": "2026-04-12",
+    "synthetic": true,
+    "text": "IN THE UNITED STATES DISTRICT COURT FOR THE WESTERN DISTRICT OF TENNESSEE.\nCRIMINAL DOCKET NO. CR-2026-8819: UNITED STATES OF AMERICA v. JOEY MOROLTO ET AL.\n\n1. Person Joey Morolto [ID:P401] is named as Prime Accused and head of the Chicago criminal enterprise.\n2. Person Joey Morolto [ID:P401] owns account [Bank:010; Account:ACC-MOROLTO-CHI].\n3. Charges framed under 18 U.S.C. Section 1961 (Racketeer Influenced and Corrupt Organizations Act - RICO), 18 U.S.C. Section 1956 (Laundering of Monetary Instruments), and 18 U.S.C. Section 1343 (Wire Fraud).\n4. Person Oliver Lambert [ID:P402] is named as Managing Partner of Bendini, Lambert & Locke and primary structuring architect.\n5. Person Oliver Lambert [ID:P402] owns account [Bank:010; Account:ACC-BENDINI-MEMPHIS].\n6. Person Nathan Locke [ID:P403] is named as Co-Accused and executive compliance enforcer in this case.\n7. Person Nathan Locke [ID:P403] owns account [Bank:010; Account:ACC-LOCKE-SPECIAL].\n8. Person Avery Tolar [ID:P407] owns account [Bank:010; Account:ACC-CAYMAN-TRUST] and operated offshore pass-through trusts in George Town, Grand Cayman.\n9. Prosecution establishes that Accused P401 skimmed $12,500,000 from gaming enterprises, routed tranches through Account 010 / ACC-BENDINI-MEMPHIS under fraudulent legal retainer billings, layered sums into Account 010 / ACC-CAYMAN-TRUST, and repatriated capital as foreign commercial loans to purchase US office complexes."
+  },
+  {
+    "document_id": "CR-COURT-FIRM-02",
+    "case_id": "CASE-THE-FIRM",
+    "filed_date": "2026-04-20",
+    "synthetic": false,
+    "text": "MEMORANDUM DECISION AND PRETRIAL DETENTION ORDER // UNITED STATES MAGISTRATE COURT.\nIn the Matter of the Pretrial Detention of Nathan Locke and Oliver Lambert.\n\n1. Accused Nathan Locke [ID:P403] was recorded at [Location:Cotton Exchange Building, Memphis].\n2. Pretrial release is DENIED under 18 U.S.C. Section 3142(e) due to clear danger to the community, flight risk, and substantial evidence of witness tampering.\n3. FBI electronic intercepts established that Accused Nathan Locke [ID:P403] authorized unauthorized surveillance and wiretaps on associates and maintained direct communication with hitman conduits following suspicious deaths in the Caymans.\n4. The court orders immediate seizure of Account 010 / ACC-LOCKE-SPECIAL."
+  },
+  {
+    "document_id": "CR-COURT-FIRM-03",
+    "case_id": "CASE-THE-FIRM",
+    "filed_date": "2026-04-28",
+    "synthetic": false,
+    "text": "FEDERAL GRAND JURY PROCEEDINGS: WITNESS DEPOSITION UNDER 18 U.S.C. SECTION 3500.\n\n1. Person Mitchell Y McDeere [ID:P404] is referenced in this case as a witness.\n2. Witness Mitchell Y McDeere [ID:P404] served as Tax Associate at Bendini, Lambert & Locke.\n3. Witness P404 delivered unredacted corporate records, billing tapes, and offshore wire logs confirming that over 70% of firm billings were fictitious vehicles designed to launder Morolto cash.\n4. Witness P404 testified under oath that nocturnal wire transfers between 01:00 AM and 03:30 AM were routinely executed by Oliver Lambert [ID:P402] following encrypted telephone coordination with Chicago."
+  }
+]

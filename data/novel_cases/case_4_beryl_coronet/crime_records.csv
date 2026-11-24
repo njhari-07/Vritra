@@ -1,0 +1,3 @@
+record_id,person_id,case_id,record_date,record_status,text,synthetic
+CR-BC-531,P531,CASE-BERYL-CORONET,2024-02-19,Arrest Warrant,"Bow Street Warrant for defaulting on £40,000 illegal hazard betting syndicates.",false
+CR-BC-532,P531,CASE-BERYL-CORONET,2024-07-28,Look Out Circular,Scotland Yard surveillance circular at Dover and Folkestone Continental packet ports.,false

@@ -1,0 +1,9 @@
+[
+  {
+    "document_id": "CR-COURT-VOF-01",
+    "case_id": "CASE-VALLEY-FEAR",
+    "filed_date": "2026-05-10",
+    "synthetic": true,
+    "text": "IN THE SPECIAL ASSIZES COURT OF SUSSEX // INQUEST INTO BIRLSTONE MANOR HOMICIDE.\n1. Person James Moriarty [ID:P501] is named as Prime Syndicate Controller in this case.\n2. Person James Moriarty [ID:P501] owns account [Bank:010; Account:ACC-MORIARTY-LDN].\n3. Charges framed under Section 120B (Criminal Conspiracy) and Section 302 (Murder) for funding contract killings.\n4. Person Boss McGinty [ID:P502] is named as Bodymaster Extortion Organizer in this case.\n5. Person Boss McGinty [ID:P502] owns account [Bank:010; Account:ACC-SCOWRERS-VALLEY].\n6. Person Ted Baldwin [ID:P503] is named as Co-Accused and syndicate hitman.\n7. Person Ted Baldwin [ID:P503] owns account [Bank:010; Account:ACC-BALDWIN-POOL].\n8. Person John Douglas [ID:P504] owns account [Bank:010; Account:ACC-DOUGLAS-BIRLSTONE] and is referenced as the primary target.\n9. Person Alec MacDonald [ID:P505] is referenced in this case as a witness and Scotland Yard investigating officer.\n10. Evidence confirms Accused P501 structured $400,000 in extortion proceeds from Account 010 / ACC-SCOWRERS-VALLEY into London investments."
+  }
+]

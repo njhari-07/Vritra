@@ -1,0 +1,3 @@
+record_id,person_id,case_id,record_date,record_status,text,synthetic
+CR-BCB-541,P541,CASE-BLUE-CARBUNCLE,2024-11-05,Active Charge-Sheet,Metropolitan Police charge for aggravated grand larceny of registered crown jewel.,false
+CR-BCB-542,P543,CASE-BLUE-CARBUNCLE,2021-06-12,Prior Acquittal Record,Prior bar conviction record used by Ryder to falsely shift suspicion onto Horner.,false
