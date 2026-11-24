@@ -1,7 +1,7 @@
 import React, { useId, useRef, useState } from 'react';
 import { IntakeIcon } from './RecordIntakeModes';
 
-export default function RecordFilePicker({ accept, label, name, required, onPick }) {
+export default function RecordFilePicker({ accept, label, name, required, onPick, onClear }) {
   const input = useRef(null);
   const hint = useId();
   const [dragging, setDragging] = useState(false);
@@ -17,6 +17,7 @@ export default function RecordFilePicker({ accept, label, name, required, onPick
     input.current.value = '';
     input.current.focus();
     setFileName('');
+    onClear?.();
   }
 
   return (

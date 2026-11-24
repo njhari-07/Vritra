@@ -1,14 +1,18 @@
+from datetime import datetime
 from hashlib import sha256
 from io import BytesIO
 import json
+from math import cos, radians, sin
 from pathlib import Path
 import shutil
 
 from fastapi.testclient import TestClient
 import msoffcrypto
 from openpyxl import Workbook
+from PIL import Image
 import pdfplumber
 import pytest
+import xlwt
 from reportlab.lib import colors
 from reportlab.lib.pdfencrypt import StandardEncryption
 from reportlab.lib.utils import ImageReader
@@ -16,7 +20,7 @@ from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import Table
 
 from maha.api import create_app
-from maha.statements import statement_records
+from maha.statements import balance_verified_rows, select_row_layout, statement_preview, statement_records
 from maha.store import Store
 
 
@@ -41,6 +45,116 @@ def make_encrypted_pdf(page_count, rows=ROWS):
         canvas.showPage()
     canvas.save()
     return original.getvalue()
+
+
+@pytest.mark.parametrize('source_format', ['pdf', 'xlsx', 'xls', 'png'])
+def test_manual_columns_preview_import_and_replay_unknown_headers(source_format, tmp_path, monkeypatch):
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    rows = [['Recorded', 'Memo text', 'Outflows', 'Inflows', 'Total on hand'],
+            ['13/11/2026', 'Synthetic withdrawal', '10.25', '-', '894.75'],
+            ['14/11/2026', 'Synthetic deposit', '-', '12.00', '906.75']]
+    password = ''
+    if source_format == 'xlsx':
+        workbook = Workbook()
+        for row in rows:
+            workbook.active.append(row)
+        stream = BytesIO()
+        workbook.save(stream)
+        content = stream.getvalue()
+    elif source_format == 'xls':
+        workbook = xlwt.Workbook()
+        sheet = workbook.add_sheet('Statement')
+        date_style = xlwt.easyxf(num_format_str='DD/MM/YYYY')
+        for y, row in enumerate(rows):
+            for x, cell in enumerate(row):
+                if y and x == 0:
+                    sheet.write(y, x, datetime.strptime(cell, '%d/%m/%Y'), date_style)
+                else:
+                    sheet.write(y, x, cell)
+        stream = BytesIO()
+        workbook.save(stream)
+        content = stream.getvalue()
+    else:
+        pdf = make_encrypted_pdf(1, rows)
+        if source_format == 'pdf':
+            content, password = pdf, PASSWORD
+        else:
+            bundled = Path(__file__).resolve().parents[1] / 'data/private/ocr-runtime/usr/bin/tesseract'
+            if not shutil.which('tesseract') and not bundled.is_file():
+                pytest.skip('Local Tesseract runtime unavailable')
+            stream = BytesIO()
+            with pdfplumber.open(BytesIO(pdf), password=PASSWORD) as document:
+                page = document.pages[0]
+                left, top, right, bottom = page.find_tables()[0].bbox
+                page = page.crop((left - 12, top - 12, right + 12, bottom + 12))
+                with page.to_image(resolution=240, antialias=True).original as image:
+                    image.save(stream, 'PNG')
+            content = stream.getvalue()
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+    path = '/api/import/bank-statement/C1'
+    fields = {'currency': 'INR', 'date_order': 'DMY', 'password': password}
+    files = {'file': (f'fixture.{source_format}', content)}
+    columns = {'date': 1, 'narration': 2, 'debit': 3, 'credit': 4, 'balance': 5}
+    mapping = {'columns': columns, 'separators': []}
+    with TestClient(create_app(store)) as client:
+        if source_format in {'pdf', 'png'}:
+            page = client.post(path + '?layout_page=true', headers=headers, data=fields, files=files)
+            assert page.status_code == 200, page.text
+            assert page.headers['Cache-Control'] == 'no-store'
+            assert page.headers['X-Statement-Page'] == '1'
+            assert page.content.startswith(b'\x89PNG\r\n\x1a\n')
+            assert not store.history('imports', ['C1'])
+            if password:
+                locked = client.post(path + '?layout_page=true', headers=headers,
+                                     data={**fields, 'password': 'wrong'}, files=files)
+                assert locked.status_code == 422
+        automatic = client.post(path + '?preview=true', headers=headers, data=fields, files=files)
+        assert automatic.status_code == 422, automatic.text
+        fields['column_mapping'] = json.dumps(mapping)
+        preview = client.post(path + '?preview=true', headers=headers, data=fields, files=files)
+        assert preview.status_code == 200, preview.text
+        assert preview.json()['accepted'] == 2
+        assert preview.json()['rows'][1]['balance_check'] == 'Matched'
+        assert not store.history('imports', ['C1'])
+        imported = client.post(path, headers=headers, data=fields, files=files)
+        assert imported.status_code == 200, imported.text
+        result = imported.json()
+        assert result['accepted_new'] == 2
+        assert result['source_id'] == sha256(content).hexdigest()
+        for row in result['statement_rows']:
+            evidence = row['evidence_id']
+            response = client.post(f'/api/evidence/{evidence}/statement-row', headers=headers,
+                                   files={'password': (None, password)})
+            assert response.status_code == 200 and response.json()['matches_ingested']
+            assert response.json()['locator']['format'] == ('image' if source_format == 'png' else source_format)
+            assert response.json()['locator']['statement_layout'] == mapping
+        assert client.post(path, headers=headers, data=fields, files=files).json()['recognized_repeat'] == 2
+        fields['column_mapping'] = json.dumps({'columns': {**columns, 'narration': 5}})
+        assert client.post(path, headers=headers, data=fields, files=files).status_code == 422
+        fields['column_mapping'] = json.dumps({'columns': {key: value for key, value in columns.items() if key != 'narration'}})
+        assert client.post(path, headers=headers, data=fields, files=files).status_code == 409
+
+
+def test_manual_dividers_group_wrapped_borderless_pdf_rows():
+    stream = BytesIO()
+    canvas = Canvas(stream, pagesize=(500, 500))
+    canvas.drawString(25, 470, 'Page title')
+    canvas.drawString(25, 410, '13/11/2026')
+    canvas.drawString(130, 410, 'Synthetic transfer')
+    canvas.drawString(330, 410, '10.25')
+    canvas.drawString(130, 395, 'Memo continuation')
+    canvas.drawString(25, 380, '14/11/2026')
+    canvas.drawString(130, 380, 'Synthetic deposit')
+    canvas.drawString(445, 380, '12.00')
+    canvas.save()
+    manual = {'columns': {'date': 1, 'narration': 2, 'debit': 3, 'credit': 4},
+              'separators': [20, 60, 80]}
+    records = statement_records(stream.getvalue(), '', 'INR', 'DMY', manual=manual)
+    assert len(records) == 2
+    assert [row['locator']['layout'] for row in records] == ['manual-text', 'manual-text']
+    assert json.loads(records[0]['passage'])[1][1] == 'Synthetic transfer\nMemo continuation'
+    assert [row['facts'][0]['attrs']['direction'] for row in records] == ['debit', 'credit']
 
 
 @pytest.fixture(params=['pdf', 'xlsx'])
@@ -272,7 +386,7 @@ def test_rejects_false_layout_before_reading_statement_values(monkeypatch):
 
     def false_first(page, encrypted, strategy, settings):
         if strategy == 'ruled':
-            yield {'page': 1, 'row': 2}, ['Date', 'Amount'], ['Header fragment', '10'], {'date': 0, 'amount': 1}
+            yield {'page': 1, 'row': 2}, ['Date', 'Amount'], ['21/11/2026', 'Narration 10'], {'date': 0, 'amount': 1}
         else:
             yield from original(page, encrypted, strategy, settings)
 
@@ -282,6 +396,426 @@ def test_rejects_false_layout_before_reading_statement_values(monkeypatch):
     assert result[0]['facts'][0]['attrs']['amount_paid'] == '125000.00'
     with pytest.raises(ValueError, match='Amount currency differs from the selected statement currency'):
         statement_records(make_encrypted_pdf(1, rows), PASSWORD, 'USD', 'DMY')
+
+
+def test_pdfium_recovers_ruled_rows_when_primary_text_extraction_fails(monkeypatch):
+    from pdfplumber.page import Page
+    from pdfplumber.table import Table as PdfTable
+
+    rows = [['Post Date', 'Details', 'Debit', 'Credit', 'Balance'],
+            ['13/11/2026', 'Synthetic transfer\nNarration continuation', '10.25', '-', '894.75'],
+            ['14/11/2026', 'Synthetic deposit', '-', '12.00', '906.75']]
+    source = make_encrypted_pdf(1, rows)
+    monkeypatch.setattr(Page, 'extract_words', lambda *args, **kwargs: [])
+    monkeypatch.setattr(PdfTable, 'extract', lambda *args, **kwargs: [])
+    result = statement_records(source, PASSWORD, 'INR', 'DMY', preview=True)
+    assert [row['locator']['layout'] for row in result] == ['pdfium-grid', 'pdfium-grid']
+    assert result[0]['fields']['narration'] == rows[1][1]
+    assert [row['normalized'] for row in result] == [
+        {'debit': '10.25', 'credit': ''}, {'debit': '', 'credit': '12.00'},
+    ]
+
+
+def test_fallback_recovers_a_failed_slot_without_replacing_the_accepted_row(monkeypatch):
+    from pdfplumber.table import Table as PdfTable
+
+    rows = [['Post Date', 'Details', 'Debit', 'Credit', 'Balance'],
+            ['13/11/2026', 'Synthetic transfer', '10.25', '-', '894.75'],
+            ['14/11/2026', 'Synthetic deposit', '-', '12.00', '906.75']]
+    source = make_encrypted_pdf(1, rows)
+    standard = statement_records(source, PASSWORD, 'INR', 'DMY')
+    extract = PdfTable.extract
+
+    def partial(self, *args, **kwargs):
+        cells = extract(self, *args, **kwargs)
+        for row in cells:
+            if 'Synthetic deposit' in row and '12.00' in row:
+                row[row.index('12.00')] = '12.OO'
+        return cells
+
+    monkeypatch.setattr(PdfTable, 'extract', partial)
+    recovered = statement_records(source, PASSWORD, 'INR', 'DMY', preview=True)
+    assert len(recovered) == 2
+    assert recovered[0]['locator'] == standard[0]['locator']
+    assert recovered[0]['facts'] == standard[0]['facts']
+    assert recovered[1]['locator']['recovered_layout'] is True
+    assert recovered[1]['normalized'] == {'debit': '', 'credit': '12.00'}
+    assert statement_preview(recovered, 'INR')['recovered_layout_rows'] == 1
+
+
+def test_fallback_rejects_a_reader_that_disagrees_on_the_accepted_transaction():
+    columns = {'date': 0, 'debit': 1, 'credit': 2}
+    headers = ['Date', 'Debit', 'Credit']
+
+    def row(number, amount, layout):
+        top = 10 * number
+        return ({'page': 1, 'row': number, 'layout': layout, 'format': 'pdf', 'bbox_units': 'points',
+                 'bbox': [0, top, 100, top + 9]}, headers, [f'{number:02d}/11/2026', amount, ''], columns)
+
+    original = [row(13, '10', 'ruled'), row(14, 'unreadable', 'ruled')]
+    disagreeing = [row(13, '15', 'pdfium-grid'), row(14, '20', 'pdfium-grid')]
+    result = list(select_row_layout(((item for item in original), (item for item in disagreeing))))
+    assert result == original
+
+
+def test_decimal_comma_and_direction_markers_preserve_transaction_and_balance_signs():
+    workbook = Workbook()
+    for row in [
+        ['Post Date', 'Amount (Dr/Cr)', 'Running Balance'],
+        ['13/11/2026', '€ 1.000,25 Cr', '€ 500,00 Cr'],
+        ['14/11/2026', '€ 1.050,25 DR', '550,25 Dr'],
+        ['15/11/2026', '€ 2\u202f000,45Cr', '1\u202f450,20Cr'],
+        ['16/11/2026', '-123,45 Cr', '1.326,75'],
+    ]:
+        workbook.active.append(row)
+    stream = BytesIO()
+    workbook.save(stream)
+    records = statement_records(stream.getvalue(), '', 'EUR', 'DMY', preview=True)
+    assert [row['normalized'] for row in records[:3]] == [
+        {'debit': '', 'credit': '1000.25'},
+        {'debit': '1050.25', 'credit': ''},
+        {'debit': '', 'credit': '2000.45'},
+    ]
+    preview = statement_preview(records, 'EUR')
+    assert [row['balance_check'] for row in preview['rows'][:3]] == ['Unverified', 'Matched', 'Matched']
+    assert preview['rows'][3]['error'] == 'Invalid signed amount or debit/credit direction'
+
+
+@pytest.mark.parametrize('source_format', ['pdf', 'png', 'xlsx'])
+def test_recovers_seven_column_layout_from_balances_when_headings_are_unusable(source_format):
+    rows = [
+        ['A', 'B', 'C', 'D', 'E', 'F', 'G'],
+        ['01/04/2025', '01/04/2025', 'Synthetic withdrawal\nAdditional detail', '-', '31.00', '-', '700.19'],
+        ['02/04/2025', '02/04/2025', 'Synthetic transfer', '-', '13.00', '-', '687.19'],
+        ['02/04/2025', '02/04/2025', 'Synthetic deposit', '-', '-', '29.00', '716.19'],
+    ]
+    content = make_encrypted_pdf(1, rows)
+    if source_format == 'xlsx':
+        workbook = Workbook()
+        for row in rows:
+            workbook.active.append(row)
+        stream = BytesIO()
+        workbook.save(stream)
+        content = stream.getvalue()
+    if source_format == 'png':
+        bundled = Path(__file__).resolve().parents[1] / 'data/private/ocr-runtime/usr/bin/tesseract'
+        if not shutil.which('tesseract') and not bundled.is_file():
+            pytest.skip('Local Tesseract runtime unavailable')
+        stream = BytesIO()
+        with pdfplumber.open(BytesIO(content), password=PASSWORD) as document:
+            page = document.pages[0]
+            left, top, right, bottom = page.find_tables()[0].bbox
+            with page.crop((left - 15, top - 15, right + 15, bottom + 15)).to_image(resolution=240, antialias=True).original as image:
+                image.save(stream, 'PNG')
+        content = stream.getvalue()
+    detected = statement_records(content, PASSWORD, 'INR', 'DMY', preview=True)
+    assert len(detected) == 3
+    assert [row['normalized'] for row in detected] == [
+        {'debit': '31.00', 'credit': ''}, {'debit': '13.00', 'credit': ''}, {'debit': '', 'credit': '29.00'},
+    ]
+    assert detected[0]['fields']['narration'] == rows[1][2]
+    preview = statement_preview(detected, 'INR')
+    assert preview['balance_inferred_pages'] == ([] if source_format == 'xlsx' else [1])
+    assert preview['balance_inferred_sheets'] == (['Sheet'] if source_format == 'xlsx' else [])
+    assert [row['balance_check'] for row in preview['rows']] == ['Unverified', 'Matched', 'Matched']
+
+
+def test_balance_inference_defers_different_date_roles_or_unreconciled_amounts():
+    unreadable_headers = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+    body = [
+        ['01/04/2025', '01/04/2025', 'Synthetic withdrawal', '-', '31.00', '-', '700.19'],
+        ['01/04/2025', '02/04/2025', 'Synthetic transfer', '-', '13.00', '-', '687.19'],
+        ['02/04/2025', '02/04/2025', 'Synthetic deposit', '-', '-', '29.00', '716.19'],
+    ]
+    location = {'format': 'pdf', 'page': 1, 'layout': 'balance-verified-ruled'}
+    def extract(headers):
+        table = ((number, row, None) for number, row in enumerate([headers, *body], 1))
+        return list(balance_verified_rows(table, location))
+    assert not extract(unreadable_headers)
+    readable = ['Value Date', 'Post Date', *unreadable_headers[2:]]
+    assert len(extract(readable)) == 3
+    body[2][6] = '710.10'
+    assert not extract(readable)
+
+
+def test_first_page_can_use_verified_columns_from_page_two_and_quality_shows_details(tmp_path, monkeypatch):
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    first = [
+        ['12/11/2026', '12/11/2026', 'Synthetic first-page withdrawal', '0007', '12.00', '-', '350.00'],
+        ['13/11/2026', '13/11/2026', 'Synthetic first-page deposit', '0008', '-', '20.00', '369.00'],
+    ]
+    second = [
+        ['14/11/2026', '14/11/2026', 'Synthetic withdrawal', '-', '30.00', '-', '339.00'],
+        ['15/11/2026', '15/11/2026', 'Synthetic transfer', '-', '15.00', '-', '324.00'],
+        ['15/11/2026', '15/11/2026', 'Synthetic deposit', '-', '-', '5.00', '329.00'],
+    ]
+    output = BytesIO()
+    canvas = Canvas(output, pagesize=(600, 750), encrypt=StandardEncryption(PASSWORD, strength=128))
+    for rows in (first, second):
+        table = Table(rows, colWidths=[60, 60, 175, 50, 58, 58, 65])
+        table.setStyle([('GRID', (0, 0), (-1, -1), .5, colors.black)])
+        table.wrapOn(canvas, 600, 700)
+        table.drawOn(canvas, 30, 420)
+        canvas.showPage()
+    canvas.save()
+    content = output.getvalue()
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+    restricted = {'Authorization': 'Bearer ' + store.create_user('other', ['C2'])}
+    previous = store.import_records(
+        'fixture.pdf', content, 'bank-statement', False, 'C1',
+        statement_records(content, PASSWORD, 'INR', 'DMY', page_range=(2, 2)),
+        statement_settings={'currency': 'INR', 'date_order': 'DMY'},
+    )
+    recovery = f"/api/quality/{previous['import_id']}/statement-page?page=1"
+    fields = {'password': (None, PASSWORD)}
+    with TestClient(create_app(store)) as client:
+        assert client.post(recovery, headers=restricted, files=fields).status_code == 404
+        assert client.post(recovery, headers=headers, files={'password': (None, 'wrong')}).status_code == 422
+        preview = client.post(recovery, headers=headers, files=fields)
+        assert preview.status_code == 200 and preview.json()['accepted'] == 2
+        assert len(store.history('imports', ['C1'])) == 1
+        response = client.post(recovery + '&preview=false', headers=headers, files=fields)
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data['accepted_new'] == 2
+        assert data['statement_scope'] == {
+            'requested': [1, 1], 'processed_pages': [1], 'accepted_pages': [1],
+            'coverage': [{'page': 1, 'accepted': 2, 'rejected': 0, 'diagnostic': None}],
+        }
+        url = f"/api/quality/{data['import_id']}/statement-rows"
+        quality = client.get(url, headers=headers).json()
+        assert client.get(url, headers=restricted).status_code == 404
+        assert quality['pages'] == [{'page': 1, 'count': 2}]
+        assert quality['next_page'] == 3
+        view = quality['rows'][0]
+        assert view['locator']['header_page'] == 2
+        assert view['fields']['reference'] == '0007'
+        assert view['fields']['narration'] == first[0][2]
+        assert view['fields']['value_date'] == first[0][0]
+        assert view['fields']['balance'] == first[0][6]
+        assert view['normalized'] == {'debit': '12.00'}
+        replay = client.post(f"/api/evidence/{view['evidence_id']}/statement-row", headers=headers,
+                             files={'password': (None, PASSWORD)})
+        assert replay.status_code == 200 and replay.json()['matches_ingested']
+
+
+def test_statement_new_pages_allow_a_different_mapping_without_changing_previous_rows(tmp_path, monkeypatch):
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    source = make_encrypted_pdf(2, ROWS[:3])
+    store = Store(tmp_path / 'ledger')
+    token = store.create_user('reviewer', ['C1'])
+    previous = statement_records(source, PASSWORD, 'INR', 'DMY', page_range=(2, 2))
+    store.import_records('original.pdf', source, 'bank-statement', False, 'C1', previous,
+                         statement_settings={'currency': 'INR', 'date_order': 'DMY'})
+    headers = {'Authorization': 'Bearer ' + token}
+    fields = {'currency': 'INR', 'date_order': 'DMY', 'pdf_pages': '1', 'password': PASSWORD,
+              'column_mapping': json.dumps({'columns': {'date': 1, 'narration': 2, 'debit': 3, 'credit': 4}})}
+    files = {'file': ('original.pdf', source)}
+    url = '/api/import/bank-statement/C1'
+    with TestClient(create_app(store)) as client:
+        assert client.post(url + '?preview=true', data=fields, files=files, headers=headers).json()['page_coverage'] == [
+            {'page': 1, 'accepted': 2, 'rejected': 0, 'diagnostic': None},
+        ]
+        result = client.post(url, data=fields, files=files, headers=headers)
+        assert result.status_code == 200, result.text
+        assert result.json()['accepted_new'] == 2
+        fields['pdf_pages'] = '2'
+        assert client.post(url, data=fields, files=files, headers=headers).status_code == 409
+        assert len(store.facts(['C1'])) == 4
+
+
+def test_rejected_preview_correction_retains_original_extraction(tmp_path, monkeypatch):
+    monkeypatch.delenv('NEO4J_URI', raising=False)
+    workbook = Workbook()
+    workbook.active.append(['Date', 'Debit', 'Credit'])
+    workbook.active.append(['21/11/2026', '1O.25', ''])
+    output = BytesIO()
+    workbook.save(output)
+    store = Store(tmp_path / 'ledger')
+    headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+    fields = {'currency': 'INR', 'date_order': 'DMY'}
+    files = {'file': ('fixture.xlsx', output.getvalue())}
+    url = '/api/import/bank-statement/C1'
+    with TestClient(create_app(store)) as client:
+        preview = client.post(url + '?preview=true', headers=headers, data=fields, files=files)
+        token = preview.json()['rows'][0]['candidate_id']
+        assert preview.json()['rejected'] == 1
+        fields['row_corrections'] = json.dumps({token: {'debit': '10.25'}})
+        check = client.post(url + '?preview=true', headers=headers, data=fields, files=files)
+        assert check.json()['rows'][0]['corrected']
+        assert not store.history('imports', ['C1'])
+        imported = client.post(url, headers=headers, data=fields, files=files)
+        assert imported.status_code == 200, imported.text
+        evidence_id = imported.json()['statement_rows'][0]['evidence_id']
+        ev = store.evidence(evidence_id, ['C1'])
+        assert json.loads(ev['passage'])[1][1] == '1O.25'
+        assert ev['statement_correction']['fields']['debit'] == {'extracted': '1O.25', 'corrected': '10.25'}
+        assert store.facts(['C1'])[0]['attrs']['amount_paid'] == '10.25'
+        assert client.post(url, headers=headers, data=fields, files=files).json()['recognized_repeat'] == 1
+        fields['row_corrections'] = json.dumps({token: {'debit': '12.25'}})
+        assert client.post(url, headers=headers, data=fields, files=files).status_code == 409
+        fields['row_corrections'] = json.dumps({'a' * 32: {'debit': '12.25'}})
+        assert client.post(url, headers=headers, data=fields, files=files).status_code == 422
+
+
+@pytest.mark.parametrize('source_format', ['pdf', 'scanned-pdf', 'tiff'])
+def test_continuation_pages_reuse_confirmed_layout_for_ranges(source_format, tmp_path, monkeypatch):
+    headings = ['Date', 'Details', 'Debit', 'Credit', 'Balance']
+    first = [['21/11/2026', 'Synthetic withdrawal', '10.00', '', '490.00'],
+             ['22/11/2026', 'Synthetic deposit', '', '20.00', '510.00']]
+    second = [['23/11/2026', 'Synthetic second-page withdrawal', '30.00', '', '480.00'],
+              ['24/11/2026', 'Synthetic second-page deposit', '', '15.00', '495.00']]
+    origin = BytesIO()
+    canvas = Canvas(origin, pagesize=(600, 750), encrypt=StandardEncryption(PASSWORD, strength=128))
+    for data in ([headings, *first], second, second):
+        table = Table(data, colWidths=[72, 190, 70, 70, 80])
+        table.setStyle([('GRID', (0, 0), (-1, -1), .5, colors.black)])
+        table.wrapOn(canvas, 600, 700)
+        table.drawOn(canvas, 75 if canvas.getPageNumber() == 3 else 40, 400)
+        canvas.showPage()
+    canvas.save()
+    source = origin.getvalue()
+    password = PASSWORD
+    if source_format != 'pdf':
+        bundled = Path(__file__).resolve().parents[1] / 'data/private/ocr-runtime/usr/bin/tesseract'
+        if not shutil.which('tesseract') and not bundled.is_file():
+            pytest.skip('Local Tesseract runtime unavailable')
+        with pdfplumber.open(BytesIO(source), password=PASSWORD) as document:
+            images = [page.to_image(resolution=220, antialias=True).original for page in document.pages[:2]]
+        scanned = BytesIO()
+        try:
+            if source_format == 'tiff':
+                images[0].save(scanned, 'TIFF', save_all=True, append_images=images[1:], compression='tiff_deflate')
+                password = ''
+            else:
+                scan = Canvas(scanned, pagesize=(600, 750), encrypt=StandardEncryption(PASSWORD, strength=128))
+                for image in images:
+                    scan.drawImage(ImageReader(image), 0, 0, 600, 750)
+                    scan.showPage()
+                scan.save()
+        finally:
+            for image in images:
+                image.close()
+        source = scanned.getvalue()
+    full = statement_records(source, password, 'INR', 'DMY', page_range=(1, 2))
+    partial = statement_records(source, password, 'INR', 'DMY', page_range=(2, 2))
+    assert len(full) == 4 and len(partial) == 2
+    assert partial == full[2:]
+    assert [row['facts'][0]['attrs']['amount_paid'] for row in partial] == ['30.00', '15.00']
+    assert all(row['locator'].get('header_page') == 1 for row in partial)
+    assert all(row['locator']['page'] == 2 for row in partial)
+    if source_format == 'pdf':
+        with pytest.raises(ValueError, match='could not identify the transaction columns'):
+            statement_records(source, password, 'INR', 'DMY', page_range=(3, 3))
+        monkeypatch.delenv('NEO4J_URI', raising=False)
+        store = Store(tmp_path / 'ledger')
+        headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+        fields = {'currency': 'INR', 'date_order': 'DMY', 'password': password, 'pdf_pages': '2'}
+        files = {'file': ('fixture.pdf', source, 'application/pdf')}
+        with TestClient(create_app(store)) as client:
+            response = client.post('/api/import/bank-statement/C1', headers=headers, data=fields, files=files)
+            assert response.status_code == 200, response.text
+            row_id = response.json()['statement_rows'][0]['evidence_id']
+            replay = client.post(f'/api/evidence/{row_id}/statement-row', headers=headers,
+                                 files={'password': (None, password)})
+            assert replay.status_code == 200 and replay.json()['matches_ingested']
+
+
+@pytest.mark.parametrize(('scan_format', 'turn', 'tilt'), [
+    ('png', 0, 0), ('jpeg', 0, 0), ('pdf', 0, 0), ('jpeg', 270, 0), ('pdf', 180, 0),
+    ('tiff', 0, 0), ('jpeg', 0, 3.5), ('jpeg', 270, -4),
+])
+def test_scanned_statement_recovers_ruled_multiline_rows(scan_format, turn, tilt, tmp_path, monkeypatch):
+    bundled_ocr = Path(__file__).resolve().parents[1] / 'data/private/ocr-runtime/usr/bin/tesseract'
+    if not shutil.which('tesseract') and not bundled_ocr.is_file():
+        pytest.skip('Local Tesseract runtime unavailable')
+    table = [
+        ['Value Date', 'Post Date', 'Details', 'Ref No/\nCheque No', 'Debit', 'Credit', 'Balance'],
+        ['01/04/2025', '01/04/2025', 'First synthetic transfer\nNarration continues here\nThird detail line', '-', '40.00', '-', '700.00'],
+        ['02/04/2025', '02/04/2025', 'Second synthetic transfer\nAdditional detail', '-', '15.00', '-', '685.00'],
+        ['02/04/2025', '02/04/2025', 'Synthetic deposit', '-', '-', '25.00', '710.00'],
+    ]
+    vector = make_encrypted_pdf(1, table)
+    with pdfplumber.open(BytesIO(vector), password=PASSWORD) as doc:
+        page = doc.pages[0]
+        raster = page.to_image(resolution=240, antialias=True)
+        source_row_bounds = [row.bbox for row in page.find_tables()[0].rows[1:]]
+        output = BytesIO()
+        with raster.original as image:
+            image_width, image_height = image.size
+            with image.rotate(tilt, resample=Image.Resampling.BICUBIC, fillcolor='white') as angled:
+                scan_image = angled.transpose(getattr(Image.Transpose, f'ROTATE_{turn}')) if turn else angled.copy()
+            with scan_image:
+                if scan_format == 'pdf':
+                    scan = Canvas(output, encrypt=StandardEncryption(PASSWORD, strength=128))
+                    scan.drawImage(ImageReader(scan_image), 0, 0, raster.page.width, raster.page.height)
+                    scan.save()
+                elif scan_format == 'tiff':
+                    with Image.new('RGB', scan_image.size, 'white') as cover:
+                        cover.save(output, format='TIFF', save_all=True, append_images=[scan_image],
+                                   compression='tiff_deflate')
+                else:
+                    scan_image.save(output, format=scan_format.upper())
+    content = output.getvalue()
+    page_range = (2, 2) if scan_format == 'tiff' else None
+    records = statement_records(content, PASSWORD, 'INR', 'DMY', page_range=page_range)
+    assert len(records) == 3
+    assert all(record['locator']['layout'] == 'ocr-grid' for record in records)
+    assert 'Narration continues here' in records[0]['passage']
+    assert [(row['facts'][0]['attrs']['amount_paid'], row['facts'][0]['attrs']['direction']) for row in records] == [
+        ('40.00', 'debit'), ('15.00', 'debit'), ('25.00', 'credit'),
+    ]
+    if turn or tilt:
+        locators = [row['locator'] for row in records]
+        assert all(item.get('ocr_rotation', 0) == (-turn) % 360 for item in locators)
+        if tilt:
+            assert all(abs(item['ocr_deskew_degrees'] + tilt) <= .5 for item in locators)
+        axis = 0 if turn == 270 else 1
+        if turn:
+            assert locators[0]['bbox'][axis] > locators[-1]['bbox'][axis]
+        else:
+            assert locators[0]['bbox'][axis] < locators[-1]['bbox'][axis]
+        assert all(x1 > x0 and y1 > y0 and x0 >= 0 and y0 >= 0
+                   for x0, y0, x1, y1 in (item['bbox'] for item in locators))
+    if tilt:
+        angle = radians(tilt)
+        center_x, center_y = image_width / 2, image_height / 2
+        for record, (left, top, right, bottom) in zip(records, source_row_bounds, strict=True):
+            offset_x = (left + right) * raster.scale / 2 - center_x
+            offset_y = (top + bottom) * raster.scale / 2 - center_y
+            x = center_x + offset_x * cos(angle) + offset_y * sin(angle)
+            y = center_y - offset_x * sin(angle) + offset_y * cos(angle)
+            if turn == 270:
+                x, y = image_height - y, x
+            x0, y0, x1, y1 = record['locator']['bbox']
+            assert x0 < x < x1 and y0 < y < y1
+    if scan_format in {'png', 'tiff'}:
+        monkeypatch.delenv('NEO4J_URI', raising=False)
+        store = Store(tmp_path / 'ledger')
+        headers = {'Authorization': 'Bearer ' + store.create_user('reviewer', ['C1'])}
+        with TestClient(create_app(store)) as client:
+            path = '/api/import/bank-statement/C1'
+            form = {'headers': headers, 'data': {'currency': 'INR', 'date_order': 'DMY'},
+                    'files': {'file': (f'fixture.{scan_format}', content, f'image/{scan_format}')}}
+            if page_range:
+                form['data']['pdf_pages'] = '2'
+                page_view = client.post(path + '?layout_page=true', **form)
+                assert page_view.status_code == 200 and page_view.headers['X-Statement-Page'] == '2'
+            preview = client.post(path + '?preview=true', **form)
+            assert preview.status_code == 200, preview.text
+            assert preview.headers['Cache-Control'] == 'no-store'
+            assert not store.history('imports', ['C1'])
+            assert [row['balance_check'] for row in preview.json()['rows']] == ['Unverified', 'Matched', 'Matched']
+            imported = client.post(path, **form)
+            assert imported.status_code == 200, imported.text
+            assert imported.json()['accepted_new'] == 3
+            assert imported.json()['source_id'] == sha256(content).hexdigest()
+            evidence = imported.json()['statement_rows'][0]['evidence_id']
+            checked = client.post(f'/api/evidence/{evidence}/statement-row', headers=headers,
+                                  files={'password': (None, '')})
+            assert checked.status_code == 200 and checked.json()['matches_ingested']
+            assert checked.json()['locator']['page'] == (2 if page_range else 1)
 
 
 @pytest.mark.parametrize('has_date_anchor', [True, False])
